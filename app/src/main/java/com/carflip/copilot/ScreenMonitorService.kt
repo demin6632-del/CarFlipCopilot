@@ -101,8 +101,6 @@ class ScreenMonitorService:Service(){
    if(v.mileage!=null)out.append("\nПробег: ").append("%,d".format(v.mileage).replace(',',' ')).append(" км")
    if(v.owners!=null)out.append("\nВладельцев: ").append(v.owners)
    if(v.plate.isNotEmpty())out.append("\nНомер: ").append(v.plate)
-   if(bal!=null)out.append("\nБаланс: ").append("%,d".format(bal).replace(',',' ')).append(" ₽")
-   if(garage!=null)out.append("\nГараж: ").append(garage).append("/3")
    out.append("\n\nБаланс: ").append("%,d".format(CopilotState.balance(this)).replace(',',' ')).append(" ₽")
    out.append("\nГараж: ").append(CopilotState.garage(this)).append("/3")
    out.append("\n\nМониторинг: ВКЛ • обновление ~0,6 с")
