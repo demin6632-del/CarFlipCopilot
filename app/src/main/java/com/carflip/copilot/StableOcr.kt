@@ -10,7 +10,7 @@ class StableOcr {
 
     fun accept(text: String): String? {
         val normalized = text.lowercase()
-            .replace(Regex("\s+"), " ")
+            .replace(Regex("\\s+"), " ")
             .trim()
         if (normalized.isBlank()) return null
         val signature = normalized.hashCode().toString()
