@@ -54,6 +54,15 @@ class ScreenMonitorService:Service(){
     CopilotState.setBalance(this,bal);lastBalance=bal;lastBalanceAt=System.currentTimeMillis()
    }
    if(garage!=null)CopilotState.setGarage(this,garage)
+   if(v.plate.isNotEmpty()){
+    val s=text.lowercase()
+    when{
+     s.contains("снять номер")||s.contains("снятие номера")||s.contains("снял номер")->CopilotState.setPlate(this,v.plate,"СНЯТ")
+     s.contains("хранилищ")||s.contains("хранении")->CopilotState.setPlate(this,v.plate,"ХРАНЕНИЕ")
+     s.contains("аукцион")->CopilotState.setPlate(this,v.plate,"АУКЦИОН",sale)
+     s.contains("продан")&&s.contains("номер")->CopilotState.setPlate(this,v.plate,"ПРОДАН",sale)
+    }
+   }
    val key=listOf(text.hashCode(),bal,garage,event,purchase,sale,expense,v.name,v.price,v.hp,v.mileage,v.owners,v.plate,v.origin,v.paintedParts).joinToString("|")
    if(key!=lastScreenKey){
     lastScreenKey=key;CopilotState.setSnapshot(this,v)
