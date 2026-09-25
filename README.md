@@ -1,2 +1,15 @@
-# CarFlipCopilot
-Android companion for Car Trading Simulator
+# 🚗 CarFlipCopilot
+
+Android companion for «Симулятор Перекупа 💸».
+
+## Уже реализовано
+- MediaProjection: явный захват экрана после подтверждения Android.
+- Локальный OCR через Google ML Kit.
+- Плавающая панель поверх Telegram.
+- Распознавание цены и мощности и первичная рекомендация.
+- Контракт: USA, от 300 л.с., максимум 2 500 000 ₽.
+- Стартовый баланс: 8 741 902 ₽.
+- Приложение не нажимает кнопки Telegram автоматически.
+
+## Сборка
+GitHub Actions собирает debug APK при push в `main` и загружает APK как artifact.
