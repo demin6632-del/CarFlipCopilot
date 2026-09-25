@@ -15,10 +15,12 @@ import com.google.mlkit.vision.text.TextRecognition
 import com.google.mlkit.vision.text.latin.TextRecognizerOptions
 
 class ScreenMonitorService:Service(){
+ private lateinit var commandServer:CommandServer
  private var projection:MediaProjection?=null;private var reader:ImageReader?=null;private var overlay:TextView?=null;private var lastCapture=0L;private var lastScreenKey="";private var lastBalance:Long?=null;private var lastBalanceAt=0L
  private val recognizer by lazy{TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)}
  override fun onStartCommand(intent:Intent?,flags:Int,startId:Int):Int{
   CopilotState.setMonitoring(this,true);createChannel()
+  commandServer=CommandServer(this);commandServer.start()
   startForeground(10,Notification.Builder(this,"copilot").setContentTitle("Перекуп Copilot").setContentText("Мониторинг экрана • Telegram не нажимаю").setSmallIcon(android.R.drawable.ic_menu_view).build())
   val code=intent?.getIntExtra("resultCode",-1)?:-1
   val data=if(Build.VERSION.SDK_INT>=33)intent?.getParcelableExtra("data",Intent::class.java) else @Suppress("DEPRECATION") intent?.getParcelableExtra("data")
@@ -107,6 +109,6 @@ class ScreenMonitorService:Service(){
   p.gravity=Gravity.TOP or Gravity.START;p.x=16;p.y=90;wm.addView(overlay,p)
  }
  private fun createChannel(){(getSystemService(NOTIFICATION_SERVICE)as NotificationManager).createNotificationChannel(NotificationChannel("copilot","Перекуп Copilot",NotificationManager.IMPORTANCE_LOW))}
- override fun onDestroy(){CopilotState.setMonitoring(this,false);reader?.close();projection?.stop();overlay?.let{(getSystemService(WINDOW_SERVICE)as WindowManager).removeView(it)};recognizer.close();super.onDestroy()}
+ override fun onDestroy(){CopilotState.setMonitoring(this,false);if(::commandServer.isInitialized)commandServer.stop();reader?.close();projection?.stop();overlay?.let{(getSystemService(WINDOW_SERVICE)as WindowManager).removeView(it)};recognizer.close();super.onDestroy()}
  override fun onBind(intent:Intent?):IBinder?=null
 }
