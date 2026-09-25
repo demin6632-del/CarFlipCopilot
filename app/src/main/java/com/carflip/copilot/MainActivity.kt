@@ -29,8 +29,8 @@ class MainActivity:AppCompatActivity(){
  override fun onResume(){super.onResume();handler.post(refreshTask)};override fun onPause(){handler.removeCallbacks(refreshTask);super.onPause()}
  private fun fmt(v:Long)="%,d".format(v).replace(',',' ')
  private fun refresh(){
-  val b=CopilotState.balance(this);val v=CopilotState.snapshot(this);val g=CopilotState.garage(this);val d=CopilotState.decision(this)
-  status.text="Решение: "+d+"\nБаланс: "+fmt(b)+" ₽\nГараж: "+g+"/3\nМониторинг: "+if(CopilotState.monitoring(this))"ВКЛ" else "ВЫКЛ"
+  val b=CopilotState.balance(this);val v=CopilotState.snapshot(this);val g=CopilotState.garage(this);val d=CopilotState.decision(this);val ls=LearningMemory.stats(this)
+  status.text="Решение: "+d+"\nОбучение: "+ls.samples+" сделок • "+ls.accuracy+"% положительных\nБаланс: "+fmt(b)+" ₽\nГараж: "+g+"/3\nМониторинг: "+if(CopilotState.monitoring(this))"ВКЛ" else "ВЫКЛ"
   vehicle.text=if(v.name.isEmpty())"Последняя машина: пока нет распознавания" else "Последняя машина:\n"+v.name+"\nЦена: "+(v.price?.let{fmt(it)+" ₽"}?:"—")+" • "+(v.hp?.let{it.toString()+" л.с."}?:"—")+"\nПроисхождение: "+v.origin.ifEmpty{"—"}+" • Крашеных: "+(v.paintedParts?.toString()?:"—")+"\nПробег: "+(v.mileage?.let{fmt(it)+" км"}?:"—")+" • Владельцев: "+(v.owners?:"—")+"\nНомер: "+v.plate.ifEmpty{"—"}
   val deals=CopilotState.deals(this).take(8).joinToString("\n"){x->val result=if(x.buy!=null&&x.sell!=null)"результат "+fmt(x.sell-x.buy-x.fees)+" ₽" else "открыта";"• "+x.name.ifEmpty{"Авто"}+" "+x.plate+" • "+(x.buy?.let{"куплено "+fmt(it)+" ₽"}?:"")+" "+(x.sell?.let{"продано "+fmt(it)+" ₽"}?:"")+" • расходы "+fmt(x.fees)+" ₽ • "+result}
   val ledger=CopilotState.ledger(this).take(10).joinToString("\n"){e->"• "+e.type+": "+fmt(e.amount?:0)+" ₽ "+e.note}
