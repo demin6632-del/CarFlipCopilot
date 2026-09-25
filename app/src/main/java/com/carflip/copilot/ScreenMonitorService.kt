@@ -90,7 +90,7 @@ class ScreenMonitorService:Service(){
     GameParser.contract(text)?.let{CopilotState.addEvent(this,"КОНТРАК • "+it)}
    }
    val decision=GameParser.decision(v);CopilotState.setDecision(this,decision)
-   val opportunity=OpportunityAnalyzer.analyze(text,v,bal?:CopilotState.balance(this),garage?:CopilotState.garage(this))
+   val opportunity=OpportunityAnalyzer.analyze(this,text,v,bal?:CopilotState.balance(this),garage?:CopilotState.garage(this))
    CopilotState.setDecision(this,opportunity.action)
    val out=StringBuilder("🚗 COPILOT • LIVE\\n").append(opportunity.action).append("  •  ").append(opportunity.confidence).append("%\\n").append(opportunity.title).append("\\n").append(opportunity.reason)
    if(v.name.isNotEmpty())out.append("\n").append(v.name)
