@@ -17,6 +17,8 @@ import com.google.mlkit.vision.text.latin.TextRecognizerOptions
 class ScreenMonitorService:Service(){
  private lateinit var commandServer:CommandServer
  private lateinit var remotePoller:RemoteCommandPoller
+ private lateinit var liveBridge:LiveBridge
+ private var lastFrame:Bitmap?=null
  private val stableOcr=StableOcr()
  private var projection:MediaProjection?=null;private var reader:ImageReader?=null;private var overlay:TextView?=null;private var lastCapture=0L;private var lastScreenKey="";private var lastBalance:Long?=null;private var lastBalanceAt=0L
  private val recognizer by lazy{TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)}
@@ -24,6 +26,8 @@ class ScreenMonitorService:Service(){
   CopilotState.setMonitoring(this,true);createChannel()
   commandServer=CommandServer(this);commandServer.start()
   remotePoller=RemoteCommandPoller(this);remotePoller.start()
+  liveBridge=LiveBridge(this){cmd->when(cmd.uppercase()){ "REQUEST_FRAME" -> lastFrame?.let{liveBridge.sendFrame(it)}; "STATUS" -> sendLiveStatus(); "STOP" -> stopSelf() }}
+  liveBridge.start()
   startForeground(10,Notification.Builder(this,"copilot").setContentTitle("Перекуп Copilot").setContentText("Мониторинг экрана • Telegram не нажимаю").setSmallIcon(android.R.drawable.ic_menu_view).build())
   val code=intent?.getIntExtra("resultCode",-1)?:-1
   val data=if(Build.VERSION.SDK_INT>=33)intent?.getParcelableExtra("data",Intent::class.java) else @Suppress("DEPRECATION") intent?.getParcelableExtra("data")
@@ -92,6 +96,9 @@ class ScreenMonitorService:Service(){
    val decision=GameParser.decision(v);CopilotState.setDecision(this,decision)
    val opportunity=OpportunityAnalyzer.analyze(this,text,v,bal?:CopilotState.balance(this),garage?:CopilotState.garage(this))
    CopilotState.setDecision(this,opportunity.action)
+   liveBridge.sendState(text,v,CopilotState.balance(this),CopilotState.garage(this),opportunity.action,opportunity)
+   val oldFrame=lastFrame; lastFrame=null
+   val maxW=720; val scaled=if(cropped.width>maxW)Bitmap.createScaledBitmap(cropped,maxW,(cropped.height*maxW/cropped.width),true) else cropped.copy(Bitmap.Config.ARGB_8888,false); if(oldFrame!=null&&oldFrame!==cropped)oldFrame.recycle(); lastFrame=scaled
    val out=StringBuilder("🚗 COPILOT • LIVE\\n").append(opportunity.action).append("  •  ").append(opportunity.confidence).append("%\\n").append(opportunity.title).append("\\n").append(opportunity.reason)
    if(v.name.isNotEmpty())out.append("\n").append(v.name)
    if(v.price!=null)out.append("\nЦена: ").append("%,d".format(v.price).replace(',',' ')).append(" ₽")
@@ -115,6 +122,7 @@ class ScreenMonitorService:Service(){
   p.gravity=Gravity.TOP or Gravity.START;p.x=16;p.y=90;wm.addView(overlay,p)
  }
  private fun createChannel(){(getSystemService(NOTIFICATION_SERVICE)as NotificationManager).createNotificationChannel(NotificationChannel("copilot","Перекуп Copilot",NotificationManager.IMPORTANCE_LOW))}
- override fun onDestroy(){CopilotState.setMonitoring(this,false);if(::commandServer.isInitialized)commandServer.stop();if(::remotePoller.isInitialized)remotePoller.stop();reader?.close();projection?.stop();overlay?.let{(getSystemService(WINDOW_SERVICE)as WindowManager).removeView(it)};recognizer.close();super.onDestroy()}
+ private fun sendLiveStatus(){val v=CopilotState.snapshot(this);val o=OpportunityAnalyzer.analyze(this,v.raw,v,CopilotState.balance(this),CopilotState.garage(this));liveBridge.sendState(v.raw,v,CopilotState.balance(this),CopilotState.garage(this),o.action,o)}
+ override fun onDestroy(){CopilotState.setMonitoring(this,false);if(::commandServer.isInitialized)commandServer.stop();if(::remotePoller.isInitialized)remotePoller.stop();if(::liveBridge.isInitialized)liveBridge.stop();lastFrame?.recycle();reader?.close();projection?.stop();overlay?.let{(getSystemService(WINDOW_SERVICE)as WindowManager).removeView(it)};recognizer.close();super.onDestroy()}
  override fun onBind(intent:Intent?):IBinder?=null
 }

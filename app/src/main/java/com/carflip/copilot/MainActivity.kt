@@ -23,8 +23,9 @@ class MainActivity:AppCompatActivity(){
   val perm=Button(this).apply{text="Разрешить панель поверх Telegram";setOnClickListener{startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION,Uri.parse("package:"+packageName)))}}
   val start=Button(this).apply{text="Запустить мониторинг";setOnClickListener{requestCapture()}}
   val stop=Button(this).apply{text="Остановить мониторинг";setOnClickListener{stopService(Intent(this@MainActivity,ScreenMonitorService::class.java))}}
+  val bridge=Button(this).apply{text="Подключить меня к Copilot";setOnClickListener{showBridgeDialog()}}
   val api=Button(this).apply{text="Ключ командного доступа";setOnClickListener{val t=getSharedPreferences("copilot_state",0).getString("api_token",null) ?: "Ключ появится после запуска мониторинга"; AlertDialog.Builder(this@MainActivity).setTitle("Локальный API").setMessage("Адрес: 127.0.0.1:18765\\n\\nКлюч:\\n"+t+"\\n\\nДоступ ограничен localhost. Telegram приложение не управляется автоматически.").setPositiveButton("OK",null).show()}}
-  root.addView(title);root.addView(status);root.addView(vehicle);root.addView(tabs);root.addView(perm);root.addView(start);root.addView(stop);root.addView(api);root.addView(history);setContentView(ScrollView(this).apply{addView(root)})
+  root.addView(title);root.addView(status);root.addView(vehicle);root.addView(tabs);root.addView(perm);root.addView(start);root.addView(stop);root.addView(bridge);root.addView(api);root.addView(history);setContentView(ScrollView(this).apply{addView(root)})
  }
  override fun onResume(){super.onResume();handler.post(refreshTask)};override fun onPause(){handler.removeCallbacks(refreshTask);super.onPause()}
  private fun fmt(v:Long)="%,d".format(v).replace(',',' ')
@@ -37,6 +38,13 @@ class MainActivity:AppCompatActivity(){
   val plates=CopilotState.plates(this).take(10).joinToString("\n"){x->"• "+x.plate+" — "+x.state+(x.value?.let{" • "+fmt(it)+" ₽"}?:"")}
   tabs.text="РАЗДЕЛЫ\nОбзор • Сделки • Расходы • Номера • События\n\nСделки:\n"+(if(deals.isEmpty())"пока нет" else deals)+"\n\nНомера:\n"+(if(plates.isEmpty())"пока нет" else plates)+"\n\nПоследние расходы/операции:\n"+(if(ledger.isEmpty())"пока нет" else ledger)
   history.text="\nСобытия:\n"+(CopilotState.events(this).take(12).joinToString("\n"){"• "+it}.ifEmpty{"пока пусто"})
+ }
+ private fun showBridgeDialog(){
+  val p=getSharedPreferences("live_bridge",0);val box=LinearLayout(this).apply{orientation=LinearLayout.VERTICAL;setPadding(20,0,20,0)}
+  val url=EditText(this).apply{hint="wss://адрес-моста/ws";setText(p.getString("url","")?:"")}
+  val token=EditText(this).apply{hint="Секретный ключ";setText(p.getString("token","")?:"")}
+  box.addView(url);box.addView(token)
+  AlertDialog.Builder(this).setTitle("Постоянный канал «телефон ↔ я»").setMessage("Введи адрес защищённого WebSocket-моста и ключ. Приложение будет отправлять мне состояние игры и по запросу — кадр экрана.").setView(box).setNegativeButton("Отмена",null).setPositiveButton("Сохранить"){_,_->LiveBridge(this){}.configure(url.text.toString(),token.text.toString());Toast.makeText(this,"Канал сохранён. Запусти мониторинг.",Toast.LENGTH_SHORT).show()}.show()
  }
  private fun requestCapture(){if(!Settings.canDrawOverlays(this)){startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION,Uri.parse("package:"+packageName)));return};val mgr=getSystemService(MEDIA_PROJECTION_SERVICE)as MediaProjectionManager;startActivityForResult(mgr.createScreenCaptureIntent(),captureCode)}
  override fun onActivityResult(requestCode:Int,resultCode:Int,data:Intent?){super.onActivityResult(requestCode,resultCode,data);if(requestCode==captureCode&&resultCode==Activity.RESULT_OK&&data!=null)startForegroundService(Intent(this,ScreenMonitorService::class.java).putExtra("resultCode",resultCode).putExtra("data",data))}
