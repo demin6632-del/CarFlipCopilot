@@ -15,10 +15,12 @@ import com.google.mlkit.vision.text.TextRecognition
 import com.google.mlkit.vision.text.latin.TextRecognizerOptions
 
 class ScreenMonitorService:Service(){
+ private lateinit var commandServer:CommandServer
  private var projection:MediaProjection?=null;private var reader:ImageReader?=null;private var overlay:TextView?=null;private var lastCapture=0L;private var lastScreenKey="";private var lastBalance:Long?=null;private var lastBalanceAt=0L
  private val recognizer by lazy{TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)}
  override fun onStartCommand(intent:Intent?,flags:Int,startId:Int):Int{
   CopilotState.setMonitoring(this,true);createChannel()
+  commandServer=CommandServer(this);commandServer.start()
   startForeground(10,Notification.Builder(this,"copilot").setContentTitle("Перекуп Copilot").setContentText("Мониторинг экрана • Telegram не нажимаю").setSmallIcon(android.R.drawable.ic_menu_view).build())
   val code=intent?.getIntExtra("resultCode",-1)?:-1
   val data=if(Build.VERSION.SDK_INT>=33)intent?.getParcelableExtra("data",Intent::class.java) else @Suppress("DEPRECATION") intent?.getParcelableExtra("data")
@@ -36,8 +38,17 @@ class ScreenMonitorService:Service(){
   },Handler(Looper.getMainLooper()))
  }
  private fun ocr(im:Image){
-  val bitmap=Bitmap.createBitmap(im.width,im.height,Bitmap.Config.ARGB_8888);bitmap.copyPixelsFromBuffer(im.planes[0].buffer);im.close()
-  recognizer.process(InputImage.fromBitmap(bitmap,0)).addOnSuccessListener{res->
+  val plane=im.planes[0]
+  val pixelStride=plane.pixelStride
+  val rowStride=plane.rowStride
+  val rowPadding=rowStride-pixelStride*im.width
+  val paddedWidth=im.width+rowPadding/pixelStride
+  val bitmap=Bitmap.createBitmap(paddedWidth,im.height,Bitmap.Config.ARGB_8888)
+  bitmap.copyPixelsFromBuffer(plane.buffer)
+  im.close()
+  val cropped=if(paddedWidth!=im.width)Bitmap.createBitmap(bitmap,0,0,im.width,im.height)else bitmap
+  if(cropped!==bitmap)bitmap.recycle()
+  recognizer.process(InputImage.fromBitmap(cropped,0)).addOnSuccessListener{res->
    val text=res.text.trim();if(text.isEmpty())return@addOnSuccessListener
    val v=VehicleSnapshot(GameParser.name(text),GameParser.price(text),GameParser.hp(text),GameParser.mileage(text),GameParser.owners(text),GameParser.plate(text),GameParser.origin(text),GameParser.paintedParts(text),text)
    val event=GameParser.event(text);val purchase=GameParser.purchaseAmount(text);val sale=GameParser.saleAmount(text);val expense=GameParser.expenseAmount(text)
@@ -75,8 +86,7 @@ class ScreenMonitorService:Service(){
     GameParser.contract(text)?.let{CopilotState.addEvent(this,"КОНТРАК • "+it)}
    }
    val decision=GameParser.decision(v);CopilotState.setDecision(this,decision)
-   val out=StringBuilder("COPILOT
-").append(decision)
+   val out=StringBuilder("COPILOT\n").append(decision)
    if(v.name.isNotEmpty())out.append("\n").append(v.name)
    if(v.price!=null)out.append("\nЦена: ").append("%,d".format(v.price).replace(',',' ')).append(" ₽")
    if(v.hp!=null)out.append("\nМощность: ").append(v.hp).append(" л.с.")
@@ -89,7 +99,7 @@ class ScreenMonitorService:Service(){
    if(garage!=null)out.append("\nГараж: ").append(garage).append("/3")
    out.append("\n\nTelegram не нажимаю — решение за тобой.")
    Handler(Looper.getMainLooper()).post{overlay?.text=out.toString()}
-  }.addOnCompleteListener{bitmap.recycle()}
+  }.addOnCompleteListener{cropped.recycle()}
  }
  private fun showOverlay(){
   if(!Settings.canDrawOverlays(this)||overlay!=null)return
@@ -99,6 +109,6 @@ class ScreenMonitorService:Service(){
   p.gravity=Gravity.TOP or Gravity.START;p.x=16;p.y=90;wm.addView(overlay,p)
  }
  private fun createChannel(){(getSystemService(NOTIFICATION_SERVICE)as NotificationManager).createNotificationChannel(NotificationChannel("copilot","Перекуп Copilot",NotificationManager.IMPORTANCE_LOW))}
- override fun onDestroy(){CopilotState.setMonitoring(this,false);reader?.close();projection?.stop();overlay?.let{(getSystemService(WINDOW_SERVICE)as WindowManager).removeView(it)};recognizer.close();super.onDestroy()}
+ override fun onDestroy(){CopilotState.setMonitoring(this,false);if(::commandServer.isInitialized)commandServer.stop();reader?.close();projection?.stop();overlay?.let{(getSystemService(WINDOW_SERVICE)as WindowManager).removeView(it)};recognizer.close();super.onDestroy()}
  override fun onBind(intent:Intent?):IBinder?=null
 }

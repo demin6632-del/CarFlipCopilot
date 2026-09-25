@@ -1,5 +1,6 @@
 package com.carflip.copilot
 import android.app.Activity
+import android.app.AlertDialog
 import android.content.Intent
 import android.media.projection.MediaProjectionManager
 import android.net.Uri
@@ -22,7 +23,8 @@ class MainActivity:AppCompatActivity(){
   val perm=Button(this).apply{text="Разрешить панель поверх Telegram";setOnClickListener{startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION,Uri.parse("package:"+packageName)))}}
   val start=Button(this).apply{text="Запустить мониторинг";setOnClickListener{requestCapture()}}
   val stop=Button(this).apply{text="Остановить мониторинг";setOnClickListener{stopService(Intent(this@MainActivity,ScreenMonitorService::class.java))}}
-  root.addView(title);root.addView(status);root.addView(vehicle);root.addView(tabs);root.addView(perm);root.addView(start);root.addView(stop);root.addView(history);setContentView(ScrollView(this).apply{addView(root)})
+  val api=Button(this).apply{text="Ключ командного доступа";setOnClickListener{val t=getSharedPreferences("copilot_state",0).getString("api_token",null) ?: "Ключ появится после запуска мониторинга"; AlertDialog.Builder(this@MainActivity).setTitle("Локальный API").setMessage("Адрес: 127.0.0.1:18765\\n\\nКлюч:\\n"+t+"\\n\\nДоступ ограничен localhost. Telegram приложение не управляется автоматически.").setPositiveButton("OK",null).show()}}
+  root.addView(title);root.addView(status);root.addView(vehicle);root.addView(tabs);root.addView(perm);root.addView(start);root.addView(stop);root.addView(api);root.addView(history);setContentView(ScrollView(this).apply{addView(root)})
  }
  override fun onResume(){super.onResume();handler.post(refreshTask)};override fun onPause(){handler.removeCallbacks(refreshTask);super.onPause()}
  private fun fmt(v:Long)="%,d".format(v).replace(',',' ')
