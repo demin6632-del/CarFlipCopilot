@@ -48,7 +48,7 @@ class ScreenMonitorService:Service(){
    val key=listOf(v.name,v.price,v.hp,v.mileage,v.owners,v.plate,event).joinToString("|")
    if(key!=lastScreenKey){
     lastScreenKey=key;CopilotState.setSnapshot(this,v)
-    event?.let{CopilotState.addEvent(this,it+" • "+text.lines().firstOrNull().orEmpty())}
+    event?.let{ CopilotState.addEvent(this,it+" • "+text.lines().firstOrNull().orEmpty()); val amount=v.price; if(it=="ПОКУПКА"&&amount!=null)CopilotState.addLedger(this,it,amount,v.name); if(it=="ПРОДАЖА"&&amount!=null)CopilotState.addLedger(this,it,amount,v.name); if(it=="РАСХОД"&&amount!=null)CopilotState.addLedger(this,it,amount,v.name) }
     GameParser.contract(text)?.let{CopilotState.addEvent(this,"КОНТРАК • "+it)}
    }
    val decision=when{v.price!=null&&v.price>2500000L->"НЕ ПОКУПАЙ";v.hp!=null&&v.hp<300->"НЕ ПОКУПАЙ";v.price!=null&&v.hp!=null->"ПРОВЕРЯЙ";else->"СМОТРЮ…"}
