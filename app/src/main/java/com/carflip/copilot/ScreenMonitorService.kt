@@ -36,7 +36,7 @@ class ScreenMonitorService:Service(){
   reader=ImageReader.newInstance(w,h,PixelFormat.RGBA_8888,2)
   projection?.createVirtualDisplay("CarFlipCopilot",w,h,dm.densityDpi,0,reader!!.surface,null,Handler(Looper.getMainLooper()))
   reader?.setOnImageAvailableListener({r->
-   val now=System.currentTimeMillis();if(now-lastCapture<900){r.acquireLatestImage()?.close();return@setOnImageAvailableListener}
+   val now=System.currentTimeMillis();if(now-lastCapture<600){r.acquireLatestImage()?.close();return@setOnImageAvailableListener}
    val im=r.acquireLatestImage()?:return@setOnImageAvailableListener;lastCapture=now;ocr(im)
   },Handler(Looper.getMainLooper()))
  }
@@ -90,7 +90,9 @@ class ScreenMonitorService:Service(){
     GameParser.contract(text)?.let{CopilotState.addEvent(this,"КОНТРАК • "+it)}
    }
    val decision=GameParser.decision(v);CopilotState.setDecision(this,decision)
-   val out=StringBuilder("COPILOT\n").append(decision)
+   val opportunity=OpportunityAnalyzer.analyze(text,v,bal?:CopilotState.balance(this),garage?:CopilotState.garage(this))
+   CopilotState.setDecision(this,opportunity.action)
+   val out=StringBuilder("🚗 COPILOT • LIVE\\n").append(opportunity.action).append("  •  ").append(opportunity.confidence).append("%\\n").append(opportunity.title).append("\\n").append(opportunity.reason)
    if(v.name.isNotEmpty())out.append("\n").append(v.name)
    if(v.price!=null)out.append("\nЦена: ").append("%,d".format(v.price).replace(',',' ')).append(" ₽")
    if(v.hp!=null)out.append("\nМощность: ").append(v.hp).append(" л.с.")
@@ -101,7 +103,9 @@ class ScreenMonitorService:Service(){
    if(v.plate.isNotEmpty())out.append("\nНомер: ").append(v.plate)
    if(bal!=null)out.append("\nБаланс: ").append("%,d".format(bal).replace(',',' ')).append(" ₽")
    if(garage!=null)out.append("\nГараж: ").append(garage).append("/3")
-   out.append("\n\nTelegram не нажимаю — решение за тобой.")
+   out.append("\n\nБаланс: ").append("%,d".format(CopilotState.balance(this)).replace(',',' ')).append(" ₽")
+   out.append("\nГараж: ").append(CopilotState.garage(this)).append("/3")
+   out.append("\n\nМониторинг: ВКЛ • обновление ~0,6 с")
    Handler(Looper.getMainLooper()).post{overlay?.text=out.toString()}
   }.addOnCompleteListener{cropped.recycle()}
  }
