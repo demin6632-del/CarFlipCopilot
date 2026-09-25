@@ -3,7 +3,7 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION"/>
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW"/>
-    <application android:theme="@style/AppTheme" android:label="@string/app_name" android:allowBackup="false">
+    <application android:theme="@style/AppTheme" android:label="@string/app_name" android:icon="@drawable/ic_copilot" android:roundIcon="@drawable/ic_copilot" android:allowBackup="false">
         <activity android:name=".MainActivity" android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN"/>

@@ -8,12 +8,13 @@ data class Opportunity(
 )
 
 object OpportunityAnalyzer {
-    fun analyze(text: String, v: VehicleSnapshot, balance: Long?, garage: Int?): Opportunity {
+    fun analyze(context: android.content.Context, text: String, v: VehicleSnapshot, balance: Long?, garage: Int?): Opportunity {
         val s = text.lowercase()
         val price = v.price
         val hp = v.hp
         val painted = v.paintedParts
         val hasCar = v.name.isNotBlank() || price != null || hp != null || v.plate.isNotBlank()
+        val learned = if (hasCar) LearningMemory.score(context, v) else 0
 
         if (s.contains("награда") || s.contains("награду") || s.contains("бонус")) {
             return Opportunity("ПОЛУЧИ", "Есть награда/бонус", "Проверь условия и забери, если доступно.", 85)
@@ -48,10 +49,10 @@ object OpportunityAnalyzer {
                 return Opportunity("НЕ ПОКУПАЙ", "Слишком много окраса", "Текущий контракт допускает максимум 99 окрашенных деталей.", 99)
             }
             if (price != null && hp != null && price <= 2500000L && hp >= 300 && v.origin == "USA" && (painted == null || painted <= 99)) {
-                return Opportunity("ПОКУПАЙ", "Кандидат под контракт", "USA + минимум 300 л.с. + цена до 2,5 млн + допустимый окрас.", 96)
+                return Opportunity("ПОКУПАЙ", "Кандидат под контракт", "USA + минимум 300 л.с. + цена до 2,5 млн + допустимый окрас. Опыт ИИ: ${if (learned >= 0) "+" else ""}$learned.", (96 + learned).coerceIn(70, 99))
             }
             if (price != null || hp != null || v.origin.isNotBlank()) {
-                return Opportunity("ПРОВЕРЯЙ", "Недостаточно данных", "Досмотри карточку: происхождение, мощность, цену и окрас.", 72)
+                return Opportunity("ПРОВЕРЯЙ", "Недостаточно данных", "Досмотри карточку: происхождение, мощность, цену и окрас. Опыт ИИ: ${if (learned >= 0) "+" else ""}$learned.", (72 + learned).coerceIn(50, 95))
             }
         }
         return Opportunity("НАБЛЮДАЮ", "Ищу возможность", "Слежу за экраном и обновляю сигнал при изменении ситуации.", 40)

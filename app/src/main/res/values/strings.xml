@@ -1,1 +1,4 @@
-<resources><string name="app_name">Перекуп Copilot</string></resources>
+<resources>
+    <string name="app_name">Car Flip Copilot</string>
+    <string name="app_desc">Игровой ИИ-помощник для Симулятора Перекупа</string>
+</resources>
