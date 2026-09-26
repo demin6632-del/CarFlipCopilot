@@ -38,6 +38,14 @@ fun lastAttachmentAnalysis(c:Context)=p(c).getString("last_attachment_analysis",
   p(c).edit().putString("forecast",o.toString()).apply()
  }
  fun forecast(c:Context):String=p(c).getString("forecast","{}")?:"{}"
+ fun dealForecast(c:Context,v:VehicleSnapshot):JSONObject{
+  val sale=LearningMemory.estimatedSale(c,v,v.price)
+  val open=deals(c).firstOrNull{it.closed==null&&(v.plate.isNotEmpty()&&it.plate==v.plate||v.plate.isEmpty()&&it.name==v.name)}
+  val buy=open?.buy?:v.price?:0L; val fees=open?.fees?:0L
+  val profit=sale?.minus(buy+fees)
+  val roi=if(buy+fees>0&&profit!=null)profit.toDouble()/(buy+fees)*100.0 else null
+  return JSONObject().put("sale_price",sale).put("purchase",buy).put("fees",fees).put("expected_profit",profit).put("roi_percent",roi)
+ }
  fun saveActionRoi(c:Context,action:String,cost:Long,delta:Long,reason:String=""){
   append(c,"action_roi",JSONObject().put("key",action+"|"+cost+"|"+System.currentTimeMillis()/60000).put("action",action.take(120)).put("cost",cost).put("delta",delta).put("roi",roi(cost,delta)).put("reason",reason.take(400)).put("time",System.currentTimeMillis()))
  }
