@@ -143,6 +143,15 @@ class ScreenMonitorService:Service(){
    if(forecast.optLong("sale_price",0)>0)out.append("\nПрогноз продажи: ").append("%,d".format(forecast.optLong("sale_price")).replace(',', ' ')).append(" ₽")
    if(forecast.has("expected_profit"))out.append("\nОжидаемая прибыль: ").append("%,d".format(forecast.optLong("expected_profit")).replace(',', ' ')).append(" ₽")
    if(forecast.has("roi_percent")&&!forecast.isNull("roi_percent"))out.append("\nROI сделки: ").append(String.format("%.1f",forecast.optDouble("roi_percent"))).append("%")
+   val actionOptions=ActionDecisionEngine.evaluate(this,v)
+   out.append("\n\n🎯 ДЕЙСТВИЯ")
+   actionOptions.forEach { a ->
+    out.append("\n").append(a.action).append(" • ")
+    if(a.cost!=null)out.append("cost ").append("%,d".format(a.cost).replace(',',' ')).append(" ₽ • ")
+    if(a.expectedDelta!=null)out.append("Δ ").append(if(a.expectedDelta>=0) "+" else "").append("%,d".format(a.expectedDelta).replace(',',' ')).append(" ₽ • ")
+    if(a.roi!=null)out.append("ROI ").append(String.format("%.1f",a.roi)).append("% • ")
+    out.append("conf ").append(a.confidence).append("%")
+   }
    if(v.hp!=null)out.append("\nМощность: ").append(v.hp).append(" л.с.")
    if(v.origin.isNotEmpty())out.append("\nПроисхождение: ").append(v.origin)
    if(v.paintedParts!=null)out.append("\nКрашеных деталей: ").append(v.paintedParts)
