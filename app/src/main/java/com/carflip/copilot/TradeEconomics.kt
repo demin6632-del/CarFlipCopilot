@@ -12,6 +12,8 @@ data class ContractRules(
 data class TradeEconomics(
     val purchasePrice: Long?,
     val inspectionCosts: Long,
+    val tuningCosts: Long,
+    val preSaleCosts: Long,
     val listingExtensionCost: Long,
     val plateRemovalCost: Long,
     val totalKnownCosts: Long,
@@ -25,6 +27,9 @@ data class TradeEconomics(
 object TradeEconomics {
     const val THICKNESS_GAUGE = 3_000L
     const val AUTOTEKA = 5_000L
+    const val POLISH_DETAILING = 7_416L
+    const val LOCAL_PAINT = 5_932L
+    const val ODOMETER_ROLLBACK = 30_000L
     const val LISTING_EXTENSION = 1_500L
     const val PLATE_REMOVAL = 55_000L
 
@@ -38,7 +43,13 @@ object TradeEconomics {
     )
 
     fun calculate(v: VehicleSnapshot, exitPrice: Long? = null): TradeEconomics {
-        val checks = THICKNESS_GAUGE + AUTOTEKA\n        val tuning = if (v.invested != null && v.price != null) (v.invested - v.price).coerceAtLeast(0L) else 0L
+        val checks = THICKNESS_GAUGE + AUTOTEKA
+        val tuning = if (v.invested != null && v.price != null) {
+            (v.invested - v.price).coerceAtLeast(0L)
+        } else 0L
+
+        val preSale = if (v.polishApplied == true) POLISH_DETAILING else 0L
+
         val missing = mutableListOf<String>()
         if (v.origin.isBlank()) missing += "происхождение"
         if (v.hp == null) missing += "мощность"
@@ -51,16 +62,20 @@ object TradeEconomics {
             v.paintedParts!! <= kinoProducer.maxPaintedParts &&
             v.price!! <= kinoProducer.maxPurchasePrice
 
-        val total = (v.price ?: 0L) + checks + tuning + LISTING_EXTENSION
+        val baseVehicleCost = maxOf(v.price ?: 0L, v.invested ?: 0L)
+        val total = baseVehicleCost + checks + LISTING_EXTENSION
+        val totalWithPreSale = total + preSale
         val bonus = if (eligible) kinoProducer.bonus else 0L
-        val profit = exitPrice?.let { it - total + bonus }
+        val profit = exitPrice?.let { it - totalWithPreSale + bonus }
 
         return TradeEconomics(
             purchasePrice = v.price,
             inspectionCosts = checks,
+            tuningCosts = tuning,
+            preSaleCosts = preSale,
             listingExtensionCost = LISTING_EXTENSION,
             plateRemovalCost = PLATE_REMOVAL,
-            totalKnownCosts = total,
+            totalKnownCosts = totalWithPreSale,
             contractEligible = eligible,
             contractMissing = missing,
             contractBonus = bonus,
@@ -76,7 +91,8 @@ object TradeEconomics {
             append("Экономика сделки\n")
             append("Цена входа: ").append(e.purchasePrice?.let(f) ?: "—").append(" ₽\n")
             append("Проверки: ").append(f(e.inspectionCosts)).append(" ₽\n")
-            append("Себестоимость сейчас: ").append(f(e.totalKnownCosts)).append(" ₽\n")
+            append("Тюнинг/подготовка: ").append(f(e.tuningCosts + e.preSaleCosts)).append(" ₽\n")
+            append("Себестоимость с размещением: ").append(f(e.totalKnownCosts)).append(" ₽\n")
             append("Контракт: ").append(if (e.contractEligible) "ПОДХОДИТ" else "НЕ ПОДТВЕРЖДЁН").append("\n")
             if (e.contractMissing.isNotEmpty()) append("Не хватает: ").append(e.contractMissing.joinToString(", ")).append("\n")
             append("Бонус: ").append(if (e.contractEligible) "+${f(e.contractBonus)}" else "—").append(" ₽\n")
