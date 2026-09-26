@@ -101,6 +101,12 @@ object LearningMemory {
         return if(n==0)null else sum/n
     }
 
+    fun recordActionOutcome(c: Context, v: VehicleSnapshot, action: String, afterSale: Long) {
+        val pref=p(c); val a=JSONArray(pref.getString("action_history","[]")); val normalized=ActionRoiEngine.normalize(action)
+        for(i in a.length()-1 downTo 0){ val o=a.optJSONObject(i)?:continue; if(ActionRoiEngine.normalize(o.optString("action"))!=normalized) continue; if(o.has("realizedDelta")) continue; val before=o.optLong("beforeSale",0L); if(before<=0) continue; o.put("realizedDelta",afterSale-before).put("outcomeTime",System.currentTimeMillis()); a.put(i,o); break }
+        pref.edit().putString("action_history",a.toString()).apply()
+    }
+
     fun reset(c: Context) {
         p(c).edit().clear().apply()
     }
