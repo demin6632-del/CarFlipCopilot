@@ -85,6 +85,16 @@ object LearningMemory {
         while(a.length()>500)a.remove(0)
         pref.edit().putString("action_history",a.toString()).apply()
     }
+    fun estimatedSale(c: Context, v: VehicleSnapshot, fallback: Long? = null): Long? {
+        val offers=CopilotState.buyerOffers(c,v.plate)
+        val nums=offers.mapNotNull{Regex("(\\d+)").find(it)?.groupValues?.get(1)?.toLongOrNull()}.filter{it>0}
+        return when {
+            nums.isNotEmpty() -> nums.average().toLong()
+            fallback!=null -> fallback
+            else -> v.price
+        }
+    }
+
     fun actionRoi(c: Context, v: VehicleSnapshot, action: String): Double? {
         val a=JSONArray(p(c).getString("action_history","[]")); var sum=0.0; var n=0
         for(i in 0 until a.length()){val o=a.optJSONObject(i)?:continue;if(o.optString("feature")==featureKey(v)&&o.optString("action").equals(action,true)){sum+=o.optDouble("roi");n++}}
