@@ -42,6 +42,19 @@ object DecisionPlanner {
             val after=sell?.let{(balance?:0L)+it}
             out += candidate("ПРОДАВАЙ","Закрой активную сделку","Продажа освобождает слот и возвращает деньги в оборот.",after,(garage?:0)-1,econ.expectedProfit,"Зависит от фактической цены продажи",null,"После продажи пересчитать бюджет и гараж")
         }
+        if(phase=="ПРОДАЖА"||openDeals>0) {
+            val roi = LearningMemory.actionRoiStats(c,v).filter { it.samples >= 1 && it.roi > 0 }
+            if(roi.isNotEmpty()) {
+                val best = roi.maxBy { it.roi }
+                out += candidate(
+                    "ПОДГОТОВЬ",
+                    "Перед продажей проверь окупаемость " + best.action.lowercase(),
+                    "По истории этой машины/номера медианный ROI действия: +" + fmt(best.roi) + " ₽ при затратах " + fmt(best.cost) + " ₽ и приросте предложения " + fmtSigned(best.priceDelta) + " ₽.",
+                    balance, garage, best.roi, "Исторические данные, N=" + best.samples, null,
+                    "Сравнить действие с текущим предложением и только затем применять"
+                )
+            }
+        }
         if(phase=="ПРОВЕРКА"||phase=="РЕМОНТ") {
             out += candidate(if(phase=="РЕМОНТ")"ЗАВЕРШИ" else "ПРОВЕРЯЙ",if(phase=="РЕМОНТ")"Заверши ремонт" else "Дождись проверки","Сначала закрываем неопределённость или обязательный этап текущей сделки.",balance,garage,econ.expectedProfit,"Есть незавершённый этап",null,"Пересчитать экономику после результата")
         }
@@ -65,6 +78,9 @@ object DecisionPlanner {
     }
 
     fun primary(c:android.content.Context,text:String,v:VehicleSnapshot,balance:Long?,garage:Int?):PlanCandidate=plan(c,text,v,balance,garage).first()
+
+    private fun fmt(n:Long):String = "%,d".format(n).replace(',', ' ')
+    private fun fmtSigned(n:Long):String = (if(n>=0) "+" else "") + fmt(n)
 
     private fun candidate(action:String,title:String,reason:String,balance:Long?,garage:Int?,profit:Long?,risk:String,blocked:String?,next:String)=PlanCandidate(action,title,reason,PlanForecast(balance,garage?.coerceIn(0,3),profit,risk,blocked,next),score(action,profit,risk,blocked))
 
