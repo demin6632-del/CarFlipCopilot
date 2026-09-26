@@ -112,10 +112,9 @@ class ScreenMonitorService:Service(){
    val plateKey=if(v.plate.isNotEmpty())v.plate else lastVehiclePlate
    if(plateRemoved&&plateKey.isNotEmpty()&&v.plate.isEmpty()){
     CopilotState.setPlate(this,plateKey,"СНЯТ")
-    if(expense!=null){
-     CopilotState.setPlateCost(this,plateKey,expense)
-     CopilotState.addEvent(this,"СЕБЕСТОИМОСТЬ НОМЕРА • "+plateKey+" • "+expense+" ₽ • зафиксирована после снятия")
-    }else CopilotState.addEvent(this,"НОМЕР • "+plateKey+" • снят • себестоимость пока не определена")
+    val cost=expense?:TradeEconomics.costs.plateRemoval
+    CopilotState.setPlateCost(this,plateKey,cost)
+    CopilotState.addEvent(this,"СЕБЕСТОИМОСТЬ НОМЕРА • "+plateKey+" • "+cost+" ₽ • "+if(expense!=null)"распознано после снятия" else "правило игры: снятие номера")
    }
    if(v.plate.isNotEmpty()){
     if(plateOffer!=null){
@@ -136,10 +135,9 @@ class ScreenMonitorService:Service(){
     when{
      plateRemoved -> {
       CopilotState.setPlate(this,v.plate,"СНЯТ")
-      if(expense!=null){
-       CopilotState.setPlateCost(this,v.plate,expense)
-       CopilotState.addEvent(this,"СЕБЕСТОИМОСТЬ НОМЕРА • "+v.plate+" • "+expense+" ₽ • зафиксирована по расходу снятия")
-      }else CopilotState.addEvent(this,"НОМЕР • "+v.plate+" • снят • себестоимость пока не определена")
+      val cost=expense?:TradeEconomics.costs.plateRemoval
+     CopilotState.setPlateCost(this,v.plate,cost)
+     CopilotState.addEvent(this,"СЕБЕСТОИМОСТЬ НОМЕРА • "+v.plate+" • "+cost+" ₽ • "+if(expense!=null)"распознано на экране" else "правило игры: снятие номера")
      }
      s.contains("хранилищ")||s.contains("хранении")->CopilotState.setPlate(this,v.plate,"ХРАНЕНИЕ")
      s.contains("аукцион")->CopilotState.setPlate(this,v.plate,"АУКЦИОН",sale)
