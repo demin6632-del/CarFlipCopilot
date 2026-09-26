@@ -19,11 +19,20 @@ data class SalePriceEstimate(
     val confidence: Int
 )
 
+data class ActionRoi(
+    val action: String,
+    val cost: Long,
+    val priceDelta: Long,
+    val roi: Long,
+    val samples: Int
+)
+
 object LearningMemory {
     private const val PREF = "copilot_learning"
     private const val HISTORY = "history"
     private const val WEIGHTS = "weights"
     private const val SITUATION = "situation"
+    private const val OFFERS = "offers"
 
     private fun p(c: Context) = c.getSharedPreferences(PREF, Context.MODE_PRIVATE)
 
@@ -113,6 +122,73 @@ object LearningMemory {
             else -> 55
         }
         return SalePriceEstimate(estimate, ratios.size, confidence)
+    }
+
+    fun recordOffer(c: Context, v: VehicleSnapshot, offer: Long) {
+        if (v.name.isBlank()) return
+        val pref = p(c)
+        val a = JSONArray(pref.getString(OFFERS, "[]"))
+        val state = stateKey(v)
+        val key = (v.plate.ifBlank { v.name } + "|" + offer + "|" + state)
+        for (i in 0 until a.length()) {
+            if (a.optJSONObject(i)?.optString("key") == key) return
+        }
+        a.put(JSONObject()
+            .put("key", key)
+            .put("name", v.name)
+            .put("plate", v.plate)
+            .put("offer", offer)
+            .put("state", state)
+            .put("hp", v.hp ?: 0)
+            .put("stage", v.stage ?: 0)
+            .put("paintedParts", v.paintedParts ?: -1)
+            .put("invested", v.invested ?: 0L)
+            .put("polish", v.polishApplied == true)
+            .put("time", System.currentTimeMillis()))
+        while (a.length() > 500) a.remove(0)
+        pref.edit().putString(OFFERS, a.toString()).apply()
+    }
+
+    private fun stateKey(v: VehicleSnapshot): String =
+        listOf(v.name, v.hp ?: -1, v.stage ?: -1, v.paintedParts ?: -1, v.polishApplied ?: false).joinToString("|")
+
+    fun actionRoi(c: Context, v: VehicleSnapshot, offer: Long): List<ActionRoi> {
+        val id = v.plate.ifBlank { v.name }
+        if (id.isBlank()) return emptyList()
+        val a = JSONArray(p(c).getString(OFFERS, "[]"))
+        val currentState = stateKey(v)
+        var previous: JSONObject? = null
+        for (i in a.length() - 1 downTo 0) {
+            val o = a.optJSONObject(i) ?: continue
+            if (o.optString("plate").ifBlank { o.optString("name") } != id) continue
+            if (o.optString("state") == currentState && o.optLong("offer") == offer) continue
+            previous = o
+            break
+        }
+        if (previous == null) return emptyList()
+
+        val oldOffer = previous.optLong("offer")
+        val oldHp = previous.optInt("hp", 0)
+        val oldStage = previous.optInt("stage", 0)
+        val oldPaint = previous.optInt("paintedParts", -1)
+        val oldInvested = previous.optLong("invested", 0L)
+        val oldPolish = previous.optBoolean("polish", false)
+
+        val result = mutableListOf<ActionRoi>()
+        if (v.stage != null && v.stage != oldStage) {
+            val action = if ((v.hp ?: 0) - oldHp >= 60) "ТУРБО" else "ЧИП"
+            val cost = (v.invested ?: 0L) - oldInvested
+            result += ActionRoi(action, cost.coerceAtLeast(0L), offer - oldOffer, offer - oldOffer - cost.coerceAtLeast(0L), 1)
+        }
+        if (v.polishApplied == true && !oldPolish) {
+            val cost = ((v.invested ?: 0L) - oldInvested).coerceAtLeast(0L)
+            result += ActionRoi("ПОЛИРОВКА", cost, offer - oldOffer, offer - oldOffer - cost, 1)
+        }
+        if (v.paintedParts != null && oldPaint >= 0 && v.paintedParts != oldPaint) {
+            val cost = ((v.invested ?: 0L) - oldInvested).coerceAtLeast(0L)
+            result += ActionRoi("ОКРАС", cost, offer - oldOffer, offer - oldOffer - cost, 1)
+        }
+        return result
     }
 
     fun stats(c: Context): LearningStats {
