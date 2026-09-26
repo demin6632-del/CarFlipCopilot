@@ -16,6 +16,11 @@ object OpportunityAnalyzer {
         val hasCar = v.name.isNotBlank() || price != null || hp != null || v.plate.isNotBlank()
         val learned = if (hasCar) LearningMemory.score(context, v) else 0
 
+
+        val offers = CopilotState.buyerOffers(context, v.plate)
+        if (offers.isNotEmpty()) {
+            return Opportunity("ТОРГ", "Есть история предложений", "По этой машине уже есть предложения покупателей. Сравни их с текущей ценой и расходами перед следующим действием.", 88)
+        }
         if (s.contains("награда") || s.contains("награду") || s.contains("бонус")) {
             return Opportunity("ПОЛУЧИ", "Есть награда/бонус", "Проверь условия и забери, если доступно.", 85)
         }
