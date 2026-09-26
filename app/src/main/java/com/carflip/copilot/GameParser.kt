@@ -73,7 +73,10 @@ object GameParser {
             else -> null
         }
     }
-    fun action(text:String):String? {
+    fun plateOffer(text:String):Long? = amount(text,listOf("номер","предложение за номер","за номер","plate"))
+    fun plateSale(text:String):Long? = amount(text,listOf("продал номер","продажа номера","номер продан","продан номер","plate sold"))
+    fun plateRemoved(text:String):Boolean { val x=text.lowercase(); return x.contains("снять номер")||x.contains("снятие номера")||x.contains("снял номер")||x.contains("remove plate") }
+        fun action(text:String):String? {
         val s=text.lowercase()
         return when {
             Regex("\\bчип\\b|chip").containsMatchIn(s) -> "ЧИП"
