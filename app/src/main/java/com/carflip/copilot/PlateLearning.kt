@@ -22,4 +22,7 @@ object PlateLearning {
   for(i in 0 until a.length()){val o=a.optJSONObject(i)?:continue;if(o.optString("plate")!=plate)continue;n++;net+=o.optLong("net");roi+=o.optDouble("roi")}
   return if(n==0)"нет истории" else "сделок: $n • суммарный результат: $net ₽ • средний ROI: "+String.format("%.1f",roi/n)+"%"
  }
+ fun historyCount(c:Context,plate:String):Int{val a=records(c);var n=0;for(i in 0 until a.length())if(a.optJSONObject(i)?.optString("plate")==plate)n++;return n}
+ fun averageRoi(c:Context,plate:String):Double?{val a=records(c);var n=0;var sum=0.0;for(i in 0 until a.length()){val o=a.optJSONObject(i)?:continue;if(o.optString("plate")!=plate)continue;n++;sum+=o.optDouble("roi",0.0)};return if(n==0)null else sum/n}
+ fun averageNet(c:Context,plate:String):Long?{val a=records(c);var n=0;var sum=0L;for(i in 0 until a.length()){val o=a.optJSONObject(i)?:continue;if(o.optString("plate")!=plate)continue;n++;sum+=o.optLong("net",0)};return if(n==0)null else sum/n}
 }
