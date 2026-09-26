@@ -111,10 +111,11 @@ class ScreenMonitorService:Service(){
    if(garage!=null)CopilotState.setGarage(this,garage)
    if(v.plate.isNotEmpty()){
     if(plateOffer!=null){
-     CopilotState.savePlateBid(this,v.plate,plateOffer,"","OCR")
+     val isNewBid=!CopilotState.hasPlateBid(this,v.plate,plateOffer)
+     if(isNewBid)CopilotState.savePlateBid(this,v.plate,plateOffer,"","OCR")
      val bestBid=CopilotState.plateBestBid(this,v.plate)
      CopilotState.savePlateAuction(this,v.plate,"LIVE",null,bestBid,null,0)
-     CopilotState.addEvent(this,"СТАВКА НОМЕРА • "+v.plate+" • "+plateOffer+" ₽ • лучшая "+(bestBid?:plateOffer)+" ₽")
+     if(isNewBid)CopilotState.addEvent(this,"СТАВКА НОМЕРА • "+v.plate+" • "+plateOffer+" ₽ • лучшая "+(bestBid?:plateOffer)+" ₽")
     }else if(plateSale!=null){
      CopilotState.recordPlateSale(this,v.plate,plateSale)
      CopilotState.savePlateAuction(this,v.plate,"SOLD",null,CopilotState.plateBestBid(this,v.plate),plateSale,0)
