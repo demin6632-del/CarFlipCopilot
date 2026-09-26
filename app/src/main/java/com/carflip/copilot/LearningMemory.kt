@@ -95,7 +95,7 @@ object LearningMemory {
         }
     }
 
-    fun actionRoi(c: Context, v: VehicleSnapshot, action: String): Double? {
+    fun actionSamples(c: Context, v: VehicleSnapshot, action: String): Int {\n        val a=JSONArray(p(c).getString("action_history","[]")); var n=0\n        for(i in 0 until a.length()){val o=a.optJSONObject(i)?:continue;if(o.optString("feature")==featureKey(v)&&o.optString("action").equals(action,true))n++}\n        return n\n    }\n\n    fun actionRoi(c: Context, v: VehicleSnapshot, action: String): Double? {
         val a=JSONArray(p(c).getString("action_history","[]")); var sum=0.0; var n=0
         for(i in 0 until a.length()){val o=a.optJSONObject(i)?:continue;if(o.optString("feature")==featureKey(v)&&o.optString("action").equals(action,true)){sum+=o.optDouble("roi");n++}}
         return if(n==0)null else sum/n
