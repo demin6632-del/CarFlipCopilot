@@ -45,7 +45,7 @@ object GameParser {
  private fun contextAmount(t:String,words:String):Long?{val re=Regex("(?i)(?:$words)[^\\d]{0,55}(\\d{1,3}(?:[ .]\\d{3}){1,2}|\\d{6,9})\\s*₽?");return re.find(norm(t))?.groupValues?.get(1)?.let(::num)}
  fun purchaseAmount(t:String)=contextAmount(t,"купил|покупка|покупаешь|покупаю")
  fun saleAmount(t:String)=contextAmount(t,"продал|продажа|продаёшь|продаешь|продаю|выручил|получил")
- fun expenseAmount(t:String)=contextAmount(t,"оплатил|списан|расход|осмотр|автотека|комисси|сняти[ея]")
+ fun expenseAmount(t:String)=contextAmount(t,"оплатил|списан|расход|осмотр|автотека|комисси|сняти[ея]|продлить объявление|объявление")
  fun price(t:String):Long?{val s=norm(t);val c=Regex("(?i)(?:цена|стоимость|предлагает|торг|продаёт|продает|купить)[^\\d]{0,30}(\\d{1,3}(?:[ .]\\d{3}){1,2}|\\d{6,9})").find(s);if(c!=null)return c.groupValues[1].let(::num);return Regex("(?<!\\d)(\\d{1,3}(?: \\d{3}){1,2})(?:\\s*₽)").find(s)?.groupValues?.get(1)?.let(::num)}
  fun exitPrice(t:String):Long? {
   val s=norm(t)
