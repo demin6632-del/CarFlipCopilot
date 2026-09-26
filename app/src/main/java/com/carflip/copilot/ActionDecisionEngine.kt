@@ -13,37 +13,36 @@ data class ActionOption(
 )
 
 object ActionDecisionEngine {
-    private val actions=listOf("ЧИП","ТУРБИНА","ПОЛИРОВКА","ОКРАСКА","РЕМОНТ","ДИАГНОСТИКА")
+    private val actions=listOf("ЧИП","ТУРБИНА","ПОЛИРОВКА","ОКРАСКА","РЕМОНТ","ДИАГНОСТИКА","НИЧЕГО НЕ ДЕЛАТЬ")
 
-    fun evaluate(c:Context,v:VehicleSnapshot):List<ActionOption>{
+    fun evaluate(c:Context,v:VehicleSnapshot):List<ActionOption> {
         return actions.map { action ->
-            val learned=LearningMemory.actionRoi(c,v,action)
-            val samples=LearningMemory.actionSamples(c,v,action)
-            val cost=knownCost(c,v,action)
-            val delta=knownDelta(c,v,action)
-            val roi=when {
-                learned!=null -> learned
-                cost!=null&&delta!=null&&cost>0 -> (delta-cost).toDouble()/cost*100.0
-                else -> null
+            if(action=="НИЧЕГО НЕ ДЕЛАТЬ") {
+                ActionOption(action,0L,0L,0.0,60,0,"Базовый сценарий: не тратить деньги и сохранить текущую маржу.")
+            } else {
+                val s=LearningMemory.actionSummary(c,v,action)
+                val delta=s.avgRealizedDelta ?: s.avgStateDelta ?: s.avgExpectedDelta
+                val roi=s.realizedRoi ?: s.expectedRoi
+                val reason=when {
+                    s.realizedSamples>0 -> "Факт: ${s.realizedSamples} завершённых результатов; учитывается средний реализованный эффект."
+                    s.avgStateDelta!=null -> "Есть realtime-эффект после действия; ждём продажу для окончательной калибровки."
+                    s.samples>0 -> "Есть история действия, но пока нет подтверждённого результата."
+                    else -> "Недостаточно данных: сначала нужно увидеть стоимость и эффект действия в игре."
+                }
+                ActionOption(action,s.avgCost,delta,roi,s.confidence,s.samples,reason)
             }
-            val confidence=when {
-                samples>=10 -> 90
-                samples>=5 -> 80
-                samples>=2 -> 68
-                learned!=null -> 55
-                else -> 25
-            }
-            ActionOption(action,cost,delta,roi,confidence,samples,
-                if(learned!=null) "Есть история по похожим машинам."
-                else if(cost!=null&&delta!=null) "Расчёт по известным стоимости и приросту."
-                else "Недостаточно данных: цену действия или эффект нужно увидеть в игре.")
         }
     }
 
-    private fun knownCost(c:Context,v:VehicleSnapshot,a:String):Long? {
-        val r=LearningMemory.actionRoi(c,v,a)
-        return if(r!=null) null else null
+    fun best(c:Context,v:VehicleSnapshot):ActionOption {
+        val options=evaluate(c,v)
+        return options.maxWithOrNull(compareBy<ActionOption>{ score(it) }.thenBy{ it.confidence }) ?: options.last()
     }
 
-    private fun knownDelta(c:Context,v:VehicleSnapshot,a:String):Long? = null
+    fun score(o:ActionOption):Double {
+        if(o.action=="НИЧЕГО НЕ ДЕЛАТЬ") return 0.0
+        val roi=o.roi ?: return -1.0
+        val confidenceFactor=(o.confidence.coerceIn(20,90)/90.0)
+        return roi*confidenceFactor
+    }
 }
