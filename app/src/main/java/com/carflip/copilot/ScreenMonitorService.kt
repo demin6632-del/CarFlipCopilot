@@ -95,7 +95,7 @@ class ScreenMonitorService:Service(){
    }
    if(v.price!=null) lastVehiclePrice=v.price
    if(v.plate.isNotEmpty()) lastVehiclePlate=v.plate
-   val event=GameParser.event(text);val purchase=GameParser.purchaseAmount(text);val sale=GameParser.saleAmount(text);val expense=GameParser.expenseAmount(text);val plateOffer=GameParser.plateOffer(text);val plateSale=GameParser.plateSale(text)
+   val event=GameParser.event(text);val purchase=GameParser.purchaseAmount(text);val sale=GameParser.saleAmount(text);val expense=GameParser.expenseAmount(text);val plateOffer=GameParser.plateOffer(text);val plateSale=GameParser.plateSale(text);val plateAuction=GameParser.plateAuction(text)
    val bal=GameParser.balance(text);val garage=GameParser.garage(text)
    if(bal!=null){
     if(lastBalance!=null&&bal!=lastBalance&&System.currentTimeMillis()-lastBalanceAt>2500){
@@ -110,6 +110,19 @@ class ScreenMonitorService:Service(){
    }
    if(garage!=null)CopilotState.setGarage(this,garage)
    if(v.plate.isNotEmpty()){
+    if(plateOffer!=null){
+     CopilotState.savePlateBid(this,v.plate,plateOffer,"","OCR")
+     val bestBid=CopilotState.plateBestBid(this,v.plate)
+     CopilotState.savePlateAuction(this,v.plate,"LIVE",null,bestBid,null,0)
+     CopilotState.addEvent(this,"СТАВКА НОМЕРА • "+v.plate+" • "+plateOffer+" ₽ • лучшая "+(bestBid?:plateOffer)+" ₽")
+    }else if(plateSale!=null){
+     CopilotState.recordPlateSale(this,v.plate,plateSale)
+     CopilotState.savePlateAuction(this,v.plate,"SOLD",null,CopilotState.plateBestBid(this,v.plate),plateSale,0)
+     CopilotState.addEvent(this,"НОМЕР • АУКЦИОН • ПРОДАН • "+v.plate+" • "+plateSale+" ₽")
+    }else if(plateAuction){
+     val current=CopilotState.plateAuction(this,v.plate)
+     if(current.optString("status","")!="LIVE"&&current.optString("status","")!="SOLD") CopilotState.savePlateAuction(this,v.plate,"OPEN",if(current.has("starting_price"))current.optLong("starting_price")else null,if(current.has("current_bid"))current.optLong("current_bid")else null,null,current.optLong("fees",0))
+    }
     val s=text.lowercase()
     when{
      s.contains("снять номер")||s.contains("снятие номера")||s.contains("снял номер")->CopilotState.setPlate(this,v.plate,"СНЯТ")
