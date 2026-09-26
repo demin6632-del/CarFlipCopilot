@@ -34,7 +34,7 @@ class LiveBridge(private val context: Context, private val onCommand: (String) -
             override fun onFailure(ws:WebSocket,t:Throwable,response:Response?){connected=false}
         })
     }
-    fun sendState(text:String,v:VehicleSnapshot,balance:Long,garage:Int,decision:String,opportunity:Opportunity){
+    fun sendState(text:String,v:VehicleSnapshot,balance:Long,garage:Int,decision:String,opportunity:DecisionSignal){
         if(!connected)return
         send(JSONObject().put("type","state").put("time",System.currentTimeMillis()).put("ocr",text).put("balance",balance).put("garage",garage).put("decision",decision)
             .put("action",opportunity.action).put("confidence",opportunity.confidence).put("title",opportunity.title).put("reason",opportunity.reason)
