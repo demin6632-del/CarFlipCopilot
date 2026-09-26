@@ -75,6 +75,9 @@ object GameParser {
     }
     fun plateOffer(text:String):Long? = amount(text,listOf("номер","предложение за номер","за номер","plate"))
     fun plateSale(text:String):Long? = amount(text,listOf("продал номер","продажа номера","номер продан","продан номер","plate sold"))
+    fun plateAuction(text:String):Boolean { val x=text.lowercase(); return (x.contains("аукцион")||x.contains("ставк")||x.contains("auction")) && (x.contains("номер")||x.contains("госномер")||x.contains("plate")) }
+    fun carAuction(text:String):Boolean { val x=text.lowercase(); return (x.contains("аукцион")||x.contains("ставк")||x.contains("auction")) && !(x.contains("номер")||x.contains("госномер")||x.contains("plate")) }
+
     fun plateRemoved(text:String):Boolean { val x=text.lowercase(); return x.contains("снять номер")||x.contains("снятие номера")||x.contains("снял номер")||x.contains("remove plate") }
         fun action(text:String):String? {
         val s=text.lowercase()
