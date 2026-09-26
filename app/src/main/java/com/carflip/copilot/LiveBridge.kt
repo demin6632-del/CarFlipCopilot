@@ -28,7 +28,7 @@ class LiveBridge(private val context: Context, private val onCommand: (String) -
         val req=Request.Builder().url(u).header("Authorization","Bearer "+token()).build()
         socket=client!!.newWebSocket(req,object:WebSocketListener(){
             override fun onOpen(ws:WebSocket,response:Response){connected=true; send(JSONObject().put("type","hello").put("device","android").put("app","CarFlipCopilot").toString())}
-            override fun onMessage(ws:WebSocket,text:String){try{val o=JSONObject(text);when(o.optString("type")){"command"->onCommand(o.optString("command"));"chat"->onChat(o.optString("message"))}}catch(_:Exception){}}
+            override fun onMessage(ws:WebSocket,text:String){try{val o=JSONObject(text);when(o.optString("type")){"command"->onCommand(o.optString("command"));"chat"->{if(o.optString("source","user")!="copilot")onChat(o.optString("message"))}}}catch(_:Exception){}}
             override fun onClosed(ws:WebSocket,code:Int,reason:String){connected=false}
             override fun onFailure(ws:WebSocket,t:Throwable,response:Response?){connected=false}
         })
