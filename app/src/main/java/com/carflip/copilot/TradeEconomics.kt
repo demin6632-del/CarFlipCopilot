@@ -44,11 +44,10 @@ object TradeEconomics {
 
     fun calculate(v: VehicleSnapshot, exitPrice: Long? = null): TradeEconomics {
         val checks = THICKNESS_GAUGE + AUTOTEKA
-        val tuning = if (v.invested != null && v.price != null) {
-            (v.invested - v.price).coerceAtLeast(0L)
-        } else 0L
-
         val preSale = if (v.polishApplied == true) POLISH_DETAILING else 0L
+        val tuning = if (v.invested != null && v.price != null) {
+            (v.invested - v.price - preSale).coerceAtLeast(0L)
+        } else 0L
 
         val missing = mutableListOf<String>()
         if (v.origin.isBlank()) missing += "происхождение"
@@ -64,7 +63,6 @@ object TradeEconomics {
 
         val baseVehicleCost = maxOf(v.price ?: 0L, v.invested ?: 0L)
         val total = baseVehicleCost + checks + LISTING_EXTENSION
-        val totalWithPreSale = total + preSale
         val bonus = if (eligible) kinoProducer.bonus else 0L
         val profit = exitPrice?.let { it - totalWithPreSale + bonus }
 
@@ -75,7 +73,7 @@ object TradeEconomics {
             preSaleCosts = preSale,
             listingExtensionCost = LISTING_EXTENSION,
             plateRemovalCost = PLATE_REMOVAL,
-            totalKnownCosts = totalWithPreSale,
+            totalKnownCosts = total,
             contractEligible = eligible,
             contractMissing = missing,
             contractBonus = bonus,
