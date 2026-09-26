@@ -2,6 +2,7 @@ package com.carflip.copilot
 
 import android.app.*
 import android.content.Intent
+import android.content.pm.ServiceInfo
 import android.graphics.*
 import android.hardware.display.DisplayManager
 import android.hardware.display.VirtualDisplay
@@ -43,7 +44,17 @@ class ScreenMonitorService : Service() {
         commandServer = CommandServer(this).also { it.start() }
         remotePoller = RemoteCommandPoller(this).also { it.start() }
         liveBridge = LiveBridge(this) { command -> handleCommand(command) }.also { it.start() }
-        startForeground(10, Notification.Builder(this, "copilot").setContentTitle("Перекуп Copilot").setContentText("Ожидание разрешения захвата экрана").setSmallIcon(android.R.drawable.ic_menu_view).build())
+        val notification = Notification.Builder(this, "copilot")
+            .setContentTitle("Перекуп Copilot")
+            .setContentText("Захват экрана и OCR активны")
+            .setSmallIcon(android.R.drawable.ic_menu_view)
+            .setOngoing(true)
+            .build()
+        if (Build.VERSION.SDK_INT >= 29) {
+            startForeground(10, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION)
+        } else {
+            startForeground(10, notification)
+        }
         showOverlay()
 
         val code = intent?.getIntExtra("resultCode", Activity.RESULT_CANCELED) ?: Activity.RESULT_CANCELED
@@ -55,6 +66,7 @@ class ScreenMonitorService : Service() {
             lastOcrError = "Разрешение MediaProjection не получено"
             showOverlayDiagnostics(lastOcrError)
             CopilotState.addEvent(this, "CAPTURE • разрешение захвата не получено")
+            stopSelf()
             return START_NOT_STICKY
         }
         try {
@@ -64,6 +76,7 @@ class ScreenMonitorService : Service() {
                 lastOcrError = "MediaProjection вернул null"
                 showOverlayDiagnostics(lastOcrError)
                 CopilotState.addEvent(this, "CAPTURE • MediaProjection=null")
+                stopSelf()
                 return START_NOT_STICKY
             }
             projection?.registerCallback(object : MediaProjection.Callback() {
@@ -86,6 +99,7 @@ class ScreenMonitorService : Service() {
             CopilotState.setMonitoring(this, false)
             CopilotState.addEvent(this, "CAPTURE • ошибка запуска • $lastOcrError")
             showOverlayDiagnostics("CAPTURE ERROR: $lastOcrError")
+            stopSelf()
         }
         return START_NOT_STICKY
     }
