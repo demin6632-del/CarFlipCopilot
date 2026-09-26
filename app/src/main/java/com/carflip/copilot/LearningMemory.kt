@@ -152,6 +152,32 @@ object LearningMemory {
     private fun stateKey(v: VehicleSnapshot): String =
         listOf(v.name, v.hp ?: -1, v.stage ?: -1, v.paintedParts ?: -1, v.polishApplied ?: false).joinToString("|")
 
+    private fun detectAction(old: JSONObject, current: VehicleSnapshot): String? {
+        val oldHp = old.optInt("hp", 0)
+        val oldStage = old.optInt("stage", 0)
+        val oldPaint = old.optInt("paintedParts", -1)
+        val oldPolish = old.optBoolean("polish", false)
+
+        val stageChanged = current.stage != null && current.stage != oldStage
+        val polishChanged = current.polishApplied == true && !oldPolish
+        val paintChanged = current.paintedParts != null && oldPaint >= 0 && current.paintedParts != oldPaint
+        if (listOf(stageChanged, polishChanged, paintChanged).count { it } != 1) return null
+
+        if (stageChanged) return if ((current.hp ?: 0) - oldHp >= 60) "ТУРБО" else "ЧИП"
+        if (polishChanged) return "ПОЛИРОВКА"
+        return "ОКРАС"
+    }
+
+    private fun snapshotFromOffer(o: JSONObject): VehicleSnapshot =
+        VehicleSnapshot(
+            name = o.optString("name"),
+            hp = o.optInt("hp", 0),
+            stage = o.optInt("stage", 0),
+            paintedParts = o.optInt("paintedParts", -1),
+            invested = o.optLong("invested", 0L),
+            polishApplied = o.optBoolean("polish", false)
+        )
+
     fun actionRoi(c: Context, v: VehicleSnapshot, offer: Long): List<ActionRoi> {
         val id = v.plate.ifBlank { v.name }
         if (id.isBlank()) return emptyList()
@@ -165,30 +191,49 @@ object LearningMemory {
             previous = o
             break
         }
-        if (previous == null) return emptyList()
+        val old = previous ?: return emptyList()
+        val action = detectAction(old, v) ?: return emptyList()
+        val cost = ((v.invested ?: 0L) - old.optLong("invested", 0L)).coerceAtLeast(0L)
+        val delta = offer - old.optLong("offer", 0L)
+        return listOf(ActionRoi(action, cost, delta, delta - cost, 1))
+    }
 
-        val oldOffer = previous.optLong("offer")
-        val oldHp = previous.optInt("hp", 0)
-        val oldStage = previous.optInt("stage", 0)
-        val oldPaint = previous.optInt("paintedParts", -1)
-        val oldInvested = previous.optLong("invested", 0L)
-        val oldPolish = previous.optBoolean("polish", false)
+    fun actionRoiStats(c: Context, v: VehicleSnapshot): List<ActionRoi> {
+        val id = v.plate.ifBlank { v.name }
+        if (id.isBlank()) return emptyList()
+        val a = JSONArray(p(c).getString(OFFERS, "[]"))
+        val rows = mutableListOf<ActionRoi>()
+        var previous: JSONObject? = null
 
-        val result = mutableListOf<ActionRoi>()
-        if (v.stage != null && v.stage != oldStage) {
-            val action = if ((v.hp ?: 0) - oldHp >= 60) "ТУРБО" else "ЧИП"
-            val cost = (v.invested ?: 0L) - oldInvested
-            result += ActionRoi(action, cost.coerceAtLeast(0L), offer - oldOffer, offer - oldOffer - cost.coerceAtLeast(0L), 1)
+        for (i in 0 until a.length()) {
+            val o = a.optJSONObject(i) ?: continue
+            if (o.optString("plate").ifBlank { o.optString("name") } != id) continue
+            if (previous != null && o.optString("state") != previous!!.optString("state")) {
+                val old = previous!!
+                val current = snapshotFromOffer(o)
+                val action = detectAction(old, current)
+                if (action != null) {
+                    val cost = (o.optLong("invested", 0L) - old.optLong("invested", 0L)).coerceAtLeast(0L)
+                    val delta = o.optLong("offer", 0L) - old.optLong("offer", 0L)
+                    rows += ActionRoi(action, cost, delta, delta - cost, 1)
+                }
+            }
+            previous = o
         }
-        if (v.polishApplied == true && !oldPolish) {
-            val cost = ((v.invested ?: 0L) - oldInvested).coerceAtLeast(0L)
-            result += ActionRoi("ПОЛИРОВКА", cost, offer - oldOffer, offer - oldOffer - cost, 1)
-        }
-        if (v.paintedParts != null && oldPaint >= 0 && v.paintedParts != oldPaint) {
-            val cost = ((v.invested ?: 0L) - oldInvested).coerceAtLeast(0L)
-            result += ActionRoi("ОКРАС", cost, offer - oldOffer, offer - oldOffer - cost, 1)
-        }
-        return result
+
+        return rows.groupBy { it.action }.map { (action, list) ->
+            fun median(values: List<Long>): Long {
+                val sorted = values.sorted()
+                return sorted[sorted.size / 2]
+            }
+            ActionRoi(
+                action = action,
+                cost = median(list.map { it.cost }),
+                priceDelta = median(list.map { it.priceDelta }),
+                roi = median(list.map { it.roi }),
+                samples = list.size
+            )
+        }.sortedBy { it.action }
     }
 
     fun stats(c: Context): LearningStats {
