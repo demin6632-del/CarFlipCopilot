@@ -33,6 +33,18 @@ fun saveAttachmentAnalysis(c:Context,name:String,json:String){
  addEvent(c,"ВЛОЖЕНИЕ • "+name+" • AI-анализ получен")
 }
 fun lastAttachmentAnalysis(c:Context)=p(c).getString("last_attachment_analysis","")?:""
+ fun saveForecast(c:Context,sale:Long?,profit:Long?,roi:Double?,confidence:Int?){
+  val o=JSONObject();sale?.let{o.put("sale_price",it)};profit?.let{o.put("expected_profit",it)};roi?.let{o.put("roi_percent",it)};confidence?.let{o.put("confidence",it)}
+  p(c).edit().putString("forecast",o.toString()).apply()
+ }
+ fun forecast(c:Context):String=p(c).getString("forecast","{}")?:"{}"
+ fun saveActionRoi(c:Context,action:String,cost:Long,delta:Long,reason:String=""){
+  append(c,"action_roi",JSONObject().put("key",action+"|"+cost+"|"+System.currentTimeMillis()/60000).put("action",action.take(120)).put("cost",cost).put("delta",delta).put("roi",roi(cost,delta)).put("reason",reason.take(400)).put("time",System.currentTimeMillis()))
+ }
+ fun actionRoi(c:Context):List<String>{val a=JSONArray(p(c).getString("action_roi","[]"));return(0 until a.length()).mapNotNull{val o=a.optJSONObject(it)?:return@mapNotNull null;"• "+o.optString("action")+" • "+o.optLong("cost")+" ₽ • ROI "+String.format("%.1f",o.optDouble("roi"))+"%"}.reversed()}
+ fun addBuyerOffer(c:Context,plate:String,name:String,condition:String,amount:Long,buyer:String="",notes:String=""){append(c,"buyer_offers",JSONObject().put("key",(plate+"|"+condition+"|"+amount+"|"+buyer).hashCode().toString()).put("plate",plate).put("name",name).put("condition",condition.take(300)).put("amount",amount).put("buyer",buyer.take(200)).put("notes",notes.take(500)).put("time",System.currentTimeMillis()))}
+ fun buyerOffers(c:Context,plate:String=""):List<String>{val a=JSONArray(p(c).getString("buyer_offers","[]"));return(0 until a.length()).mapNotNull{val o=a.optJSONObject(it)?:return@mapNotNull null;if(plate.isNotEmpty()&&o.optString("plate")!=plate)return@mapNotNull null;"• "+o.optString("condition")+" → "+o.optLong("amount")+" ₽"+(if(o.optString("buyer").isNotEmpty())" • "+o.optString("buyer") else "")}.reversed()}
+ fun roi(cost:Long,delta:Long):Double=if(cost<=0)0.0 else (delta-cost).toDouble()/cost.toDouble()*100.0
  fun events(c:Context):List<String>{val a=JSONArray(p(c).getString("events","[]"));return(0 until a.length()).mapNotNull{a.optJSONObject(it)?.optString("text")}.reversed()}
  fun addLedger(c:Context,type:String,amount:Long?,note:String){if(amount==null)return;append(c,"ledger",JSONObject().put("key",(type+"|"+amount+"|"+note).hashCode().toString()).put("type",type).put("amount",amount).put("note",note.take(500)).put("time",System.currentTimeMillis()))}
  fun ledger(c:Context):List<LedgerEvent>{val a=JSONArray(p(c).getString("ledger","[]"));return(0 until a.length()).map{val o=a.getJSONObject(it);LedgerEvent(o.optString("type"),o.optLong("amount"),o.optString("note"),o.optLong("time"))}.reversed()}
