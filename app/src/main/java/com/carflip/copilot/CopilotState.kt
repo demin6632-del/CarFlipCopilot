@@ -79,24 +79,3 @@ fun lastAttachmentAnalysis(c:Context)=p(c).getString("last_attachment_analysis",
  fun plates(c:Context):List<PlateRecord>{val a=JSONArray(p(c).getString("plates","[]"));return(0 until a.length()).map{val o=a.getJSONObject(it);PlateRecord(o.optString("plate"),o.optString("state"),if(o.has("value"))o.optLong("value")else null,o.optLong("updated"))}.reversed()}
  fun deals(c:Context):List<Deal>{val a=JSONArray(p(c).getString("deals","[]"));return(0 until a.length()).map{val o=a.getJSONObject(it);Deal(o.optString("id"),o.optString("name"),o.optString("plate"),if(o.has("buy"))o.optLong("buy")else null,if(o.has("sell"))o.optLong("sell")else null,o.optLong("fees"),o.optLong("opened"),if(o.has("closed"))o.optLong("closed")else null)}.reversed()}
 }
-object GameParser {
- private fun norm(s:String)=s.replace('\u00A0',' ').replace(Regex("[\\t\\r]+")," ")
- private fun num(s:String)=s.replace(" ","").replace("\u00A0","").replace("₽","").replace(",","").toLongOrNull()
- fun balance(t:String):Long?{val re=Regex("(?i)(?:баланс|счет|счёт|наличн|деньг|капитал|кошел)[^\\d]{0,35}(\\d{1,3}(?:[ .]\\d{3}){1,2}|\\d{6,9})");return norm(t).lines().asSequence().mapNotNull{re.find(it)?.groupValues?.getOrNull(1)?.let(::num)}.firstOrNull()}
- fun garage(t:String):Int?=Regex("(?i)(?:гараж|garage)\\s*[:\\-]?\\s*(\\d+)\\s*/\\s*(\\d+)").find(norm(t))?.groupValues?.get(1)?.toIntOrNull()
- private fun contextAmount(t:String,words:String):Long?{val re=Regex("(?i)(?:$words)[^\\d]{0,55}(\\d{1,3}(?:[ .]\\d{3}){1,2}|\\d{6,9})\\s*₽?");return re.find(norm(t))?.groupValues?.get(1)?.let(::num)}
- fun purchaseAmount(t:String)=contextAmount(t,"купил|покупка|покупаешь|покупаю")
- fun saleAmount(t:String)=contextAmount(t,"продал|продажа|продаёшь|продаешь|продаю|выручил|получил")
- fun expenseAmount(t:String)=contextAmount(t,"оплатил|списан|расход|осмотр|автотека|комисси|сняти[ея]")
- fun price(t:String):Long?{val s=norm(t);val c=Regex("(?i)(?:цена|стоимость|предлагает|торг|продаёт|продает|купить)[^\\d]{0,30}(\\d{1,3}(?:[ .]\\d{3}){1,2}|\\d{6,9})").find(s);if(c!=null)return c.groupValues[1].let(::num);return Regex("(?<!\\d)(\\d{1,3}(?: \\d{3}){1,2})(?:\\s*₽)").find(s)?.groupValues?.get(1)?.let(::num)}
- fun hp(t:String)=Regex("(?<!\\d)(\\d{2,4})\\s*(?:л\\.\\s*с\\.?|лс|hp)",RegexOption.IGNORE_CASE).find(norm(t))?.groupValues?.get(1)?.toIntOrNull()
- fun mileage(t:String)=Regex("(?<!\\d)(\\d{1,3}(?: \\d{3})+|\\d{5,7})\\s*(?:км|km)",RegexOption.IGNORE_CASE).find(norm(t))?.groupValues?.get(1)?.let(::num)
- fun owners(t:String)=Regex("(\\d+)\\s*(?:владельц|owner)",RegexOption.IGNORE_CASE).find(norm(t))?.groupValues?.get(1)?.toIntOrNull()
- fun plate(t:String)=Regex("\\b[А-ЯA-Z]\\d{3}[А-ЯA-Z]{2}\\s*\\d{2,3}\\b",RegexOption.IGNORE_CASE).find(norm(t))?.value?:""
- fun origin(t:String):String{val s=norm(t).lowercase();return when{Regex("\\busa\\b|сша|американ").containsMatchIn(s)->"USA";Regex("\\bchina\\b|китай").containsMatchIn(s)->"CHINA";Regex("\\bgermany\\b|герман").containsMatchIn(s)->"GERMANY";else->""}}
- fun paintedParts(t:String):Int?=Regex("(?i)(?:крашен(?:ых|ые)?|окрашен(?:ых|ые)?|painted)[^\\d]{0,20}(\\d+)").find(norm(t))?.groupValues?.get(1)?.toIntOrNull()
- fun name(t:String)=norm(t).lines().map{it.trim()}.firstOrNull{it.length in 3..80&&it.matches(Regex(".*[А-ЯA-Za-z].*"))&&!it.contains("₽")&&!it.contains("л.с")&&!it.contains("км",true)&&!it.contains("баланс",true)&&!it.contains("гараж",true)&&!it.contains("контракт",true)}?:""
- fun event(t:String):String?{val s=norm(t).lowercase();return when{purchaseAmount(t)!=null||Regex("\\bкупил\\b|покупка").containsMatchIn(s)->"ПОКУПКА";saleAmount(t)!=null||Regex("\\bпродал\\b|продажа").containsMatchIn(s)->"ПРОДАЖА";s.contains("аукцион")||s.contains("ставк")->"АУКЦИОН";expenseAmount(t)!=null||s.contains("комис")||s.contains("осмотр")||s.contains("автотек")||s.contains("расход")->"РАСХОД";else->null}}
- fun contract(t:String):String?=if(norm(t).contains("Кинопродюсер",true))"Кинопродюсер • USA • ≥300 л.с. • ≤2 500 000 ₽ • ≤99 крашеных • +200 000 ₽" else null
- fun decision(v:VehicleSnapshot)=when{v.price!=null&&v.price>2500000L->"НЕ ПОКУПАЙ";v.hp!=null&&v.hp<300->"НЕ ПОКУПАЙ";v.paintedParts!=null&&v.paintedParts>99->"НЕ ПОКУПАЙ";v.price!=null&&v.hp!=null&&v.price<=2500000L&&v.hp>=300&&v.origin=="USA"&&(v.paintedParts==null||v.paintedParts<=99)->"ПОКУПАЙ";v.price!=null||v.hp!=null||v.origin.isNotEmpty()->"ПРОВЕРЯЙ";else->"СМОТРЮ…"}
-}
