@@ -3,6 +3,7 @@ package com.carflip.copilot
 import android.app.*
 import android.content.Intent
 import android.graphics.*
+import android.hardware.display.DisplayManager
 import android.media.*
 import android.media.projection.MediaProjection
 import android.media.projection.MediaProjectionManager
@@ -41,36 +42,26 @@ class ScreenMonitorService : Service() {
         commandServer = CommandServer(this).also { it.start() }
         remotePoller = RemoteCommandPoller(this).also { it.start() }
         liveBridge = LiveBridge(this) { command -> handleCommand(command) }.also { it.start() }
-        startForeground(
-            10,
-            Notification.Builder(this, "copilot")
-                .setContentTitle("Перекуп Copilot")
-                .setContentText("Ожидание разрешения захвата экрана")
-                .setSmallIcon(android.R.drawable.ic_menu_view)
-                .build()
+        startForeground(10, Notification.Builder(this, "copilot").setContentTitle("Перекуп Copilot").setContentText("Ожидание разрешения захвата экрана").setSmallIcon(android.R.drawable.ic_menu_view).build())
         showOverlay()
 
         val code = intent?.getIntExtra("resultCode", Activity.RESULT_CANCELED) ?: Activity.RESULT_CANCELED
-        val data = if (Build.VERSION.SDK_INT >= 33) {
-            intent?.getParcelableExtra("data", Intent::class.java)
-        } else {
+        val data = if (Build.VERSION.SDK_INT >= 33) intent?.getParcelableExtra("data", Intent::class.java) else {
             @Suppress("DEPRECATION")
             intent?.getParcelableExtra<Intent>("data")
         }
-
         if (code != Activity.RESULT_OK || data == null) {
             lastOcrError = "Разрешение MediaProjection не получено"
-            showOverlayDiagnostics(lastOcrError!!)
+            showOverlayDiagnostics(lastOcrError)
             CopilotState.addEvent(this, "CAPTURE • разрешение захвата не получено")
             return START_NOT_STICKY
         }
-
         try {
             val manager = getSystemService(MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
             projection = manager.getMediaProjection(code, data)
             if (projection == null) {
                 lastOcrError = "MediaProjection вернул null"
-                showOverlayDiagnostics(lastOcrError!!)
+                showOverlayDiagnostics(lastOcrError)
                 CopilotState.addEvent(this, "CAPTURE • MediaProjection=null")
                 return START_NOT_STICKY
             }
@@ -80,7 +71,7 @@ class ScreenMonitorService : Service() {
                     CopilotState.setMonitoring(this@ScreenMonitorService, false)
                     lastOcrError = "Захват экрана остановлен Android"
                     CopilotState.addEvent(this@ScreenMonitorService, "CAPTURE • MediaProjection остановлен")
-                    showOverlayDiagnostics(lastOcrError!!)
+                    showOverlayDiagnostics(lastOcrError)
                 }
             }, Handler(Looper.getMainLooper()))
             startCapture()
@@ -118,17 +109,7 @@ class ScreenMonitorService : Service() {
             val root = org.json.JSONObject(json)
             val vehicle = root.optJSONObject("vehicle")
             val base = CopilotState.snapshot(this)
-            val snapshot = VehicleSnapshot(
-                vehicle?.optString("name")?.takeIf { it.isNotBlank() } ?: base.name,
-                vehicle?.takeIf { it.has("price") }?.optLong("price") ?: base.price,
-                vehicle?.takeIf { it.has("hp") }?.optInt("hp") ?: base.hp,
-                vehicle?.takeIf { it.has("mileage") }?.optLong("mileage") ?: base.mileage,
-                vehicle?.takeIf { it.has("owners") }?.optInt("owners") ?: base.owners,
-                vehicle?.optString("plate")?.takeIf { it.isNotBlank() } ?: base.plate,
-                vehicle?.optString("origin")?.takeIf { it.isNotBlank() } ?: base.origin,
-                vehicle?.takeIf { it.has("paintedParts") }?.optInt("paintedParts") ?: base.paintedParts,
-                base.raw
-            )
+            val snapshot = VehicleSnapshot(vehicle?.optString("name")?.takeIf { it.isNotBlank() } ?: base.name, vehicle?.takeIf { it.has("price") }?.optLong("price") ?: base.price, vehicle?.takeIf { it.has("hp") }?.optInt("hp") ?: base.hp, vehicle?.takeIf { it.has("mileage") }?.optLong("mileage") ?: base.mileage, vehicle?.takeIf { it.has("owners") }?.optInt("owners") ?: base.owners, vehicle?.optString("plate")?.takeIf { it.isNotBlank() } ?: base.plate, vehicle?.optString("origin")?.takeIf { it.isNotBlank() } ?: base.origin, vehicle?.takeIf { it.has("paintedParts") }?.optInt("paintedParts") ?: base.paintedParts, base.raw)
             CopilotState.setSnapshot(this, snapshot)
             CopilotState.addEvent(this, "AI • вложение обработано • $name")
         } catch (e: Exception) {
@@ -154,20 +135,11 @@ class ScreenMonitorService : Service() {
                 lastCapture = now
                 processImage(image)
             }, Handler(Looper.getMainLooper()))
-            virtualDisplay = projection?.createVirtualDisplay(
-                "CarFlipCopilot",
-                width,
-                height,
-                metrics.densityDpi,
-                DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR,
-                reader!!.surface,
-                null,
-                Handler(Looper.getMainLooper())
-            )
+            virtualDisplay = projection?.createVirtualDisplay("CarFlipCopilot", width, height, metrics.densityDpi, DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR, reader!!.surface, null, Handler(Looper.getMainLooper()))
             if (virtualDisplay == null) {
                 lastOcrError = "VirtualDisplay не создан"
                 CopilotState.addEvent(this, "CAPTURE • VirtualDisplay=null")
-                showOverlayDiagnostics(lastOcrError!!)
+                showOverlayDiagnostics(lastOcrError)
                 return
             }
             captureReady = true
@@ -191,28 +163,26 @@ class ScreenMonitorService : Service() {
             image.close()
             val cropped = if (width != image.width) Bitmap.createBitmap(bitmap, 0, 0, image.width, image.height) else bitmap
             if (cropped !== bitmap) bitmap.recycle()
-            recognizer.process(InputImage.fromBitmap(cropped, 0))
-                .addOnSuccessListener { result ->
-                    ocrSuccess++
-                    lastOcrAt = System.currentTimeMillis()
-                    lastOcrChars = result.text.length
-                    lastOcrPreview = result.text.replace(Regex("\\s+"), " ").trim().take(90)
-                    if (result.text.isNotBlank()) CopilotState.addEvent(this, "OCR • ${result.text.length} символов • $lastOcrPreview")
-                    val text = stableOcr.accept(result.text)
-                    if (text == null) {
-                        showOverlayDiagnostics("OCR получен • ждём стабильный кадр")
-                        try { cropped.recycle() } catch (_: Exception) {}
-                        return@addOnSuccessListener
-                    }
-                    ocrAccepted++
-                    updateState(text, cropped)
-                }
-                .addOnFailureListener { error ->
-                    lastOcrError = error.message ?: "неизвестная ошибка OCR"
-                    CopilotState.addEvent(this, "OCR • ошибка • $lastOcrError")
+            recognizer.process(InputImage.fromBitmap(cropped, 0)).addOnSuccessListener { result ->
+                ocrSuccess++
+                lastOcrAt = System.currentTimeMillis()
+                lastOcrChars = result.text.length
+                lastOcrPreview = result.text.replace(Regex("\\s+"), " ").trim().take(90)
+                if (result.text.isNotBlank()) CopilotState.addEvent(this, "OCR • ${result.text.length} символов • $lastOcrPreview")
+                val text = stableOcr.accept(result.text)
+                if (text == null) {
+                    showOverlayDiagnostics("OCR получен • ждём стабильный кадр")
                     try { cropped.recycle() } catch (_: Exception) {}
-                    showOverlayDiagnostics("OCR ERROR: $lastOcrError")
+                    return@addOnSuccessListener
                 }
+                ocrAccepted++
+                updateState(text, cropped)
+            }.addOnFailureListener { error ->
+                lastOcrError = error.message ?: "неизвестная ошибка OCR"
+                CopilotState.addEvent(this, "OCR • ошибка • $lastOcrError")
+                try { cropped.recycle() } catch (_: Exception) {}
+                showOverlayDiagnostics("OCR ERROR: $lastOcrError")
+            }
         } catch (error: Exception) {
             lastOcrError = error.message ?: "ошибка захвата"
             CopilotState.addEvent(this, "CAPTURE • ошибка • $lastOcrError")
@@ -221,10 +191,7 @@ class ScreenMonitorService : Service() {
     }
 
     private fun updateState(text: String, frame: Bitmap) {
-        val vehicle = VehicleSnapshot(
-            GameParser.name(text), GameParser.price(text), GameParser.hp(text), GameParser.mileage(text),
-            GameParser.owners(text), GameParser.plate(text), GameParser.origin(text), GameParser.paintedParts(text), text
-        )
+        val vehicle = VehicleSnapshot(GameParser.name(text), GameParser.price(text), GameParser.hp(text), GameParser.mileage(text), GameParser.owners(text), GameParser.plate(text), GameParser.origin(text), GameParser.paintedParts(text), text)
         val balance = GameParser.balance(text) ?: CopilotState.balance(this)
         val garage = GameParser.garage(text) ?: CopilotState.garage(this)
         CopilotState.setBalance(this, balance)
