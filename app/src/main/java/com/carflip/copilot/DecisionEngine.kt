@@ -10,7 +10,7 @@ object DecisionEngine {
         val f=CopilotState.dealForecast(c,v)
         val profit=if(f.has("expected_profit"))f.optLong("expected_profit")else 0L
         val roi=if(f.has("roi_percent"))f.optDouble("roi_percent")else 0.0
-        val options=ActionDecisionEngine.evaluate(c,v)\n        val plateValue=if(v.plate.isNotBlank())CopilotState.plateValue(c,v.plate) else null\n        val plateOffers=if(v.plate.isNotBlank())CopilotState.plateOffers(c,v.plate) else emptyList()
+        val options=ActionDecisionEngine.evaluate(c,v)\n        val plateValue=if(v.plate.isNotBlank())CopilotState.plateValue(c,v.plate) else null\n        val plateOffers=if(v.plate.isNotBlank())CopilotState.plateOffers(c,v.plate) else emptyList()\n        val plateAuction=GameParser.plateAuction(text)
         val best=ActionDecisionEngine.best(c,v)
         val candidates=mutableListOf<DecisionSignal>()
         candidates.add(DecisionSignal(opp.action,opp.title,opp.reason,opp.confidence.toDouble(),opp.confidence))
@@ -22,7 +22,7 @@ object DecisionEngine {
         }
         val baseline=options.firstOrNull{it.action=="НИЧЕГО НЕ ДЕЛАТЬ"}
         if(baseline!=null)candidates.add(DecisionSignal("НИЧЕГО НЕ ДЕЛАТЬ","Базовый сценарий",baseline.reason,42.0,baseline.confidence))
-        if(CopilotState.buyerOffers(c,v.plate).isNotEmpty())candidates.add(DecisionSignal("ТОРГ","Есть история предложений","Сравни сохранённые предложения с себестоимостью перед расходами.",82.0,82))\n        if(plateOffers.isNotEmpty()||plateValue!=null)candidates.add(DecisionSignal("ПРОДАТЬ НОМЕР","Номер можно продать отдельно", "Номер "+v.plate+" имеет отдельную историю/оценку: "+(plateValue?.let{it.toString()+" ₽"}?:plateOffers.firstOrNull()?:"нет суммы")+" . Сравни отдельную продажу номера с продажей машины с этим номером.",86.0,80))
+        if(CopilotState.buyerOffers(c,v.plate).isNotEmpty())candidates.add(DecisionSignal("ТОРГ","Есть история предложений","Сравни сохранённые предложения с себестоимостью перед расходами.",82.0,82))\n        if(plateOffers.isNotEmpty()||plateValue!=null)candidates.add(DecisionSignal(if(plateAuction)"АУКЦИОН НОМЕРА" else "ПРОДАТЬ НОМЕР",if(plateAuction)"Номер можно выставить на аукцион" else "Номер можно продать отдельно", "Машины на аукционе не учитываются: аукционная операция относится только к номеру "+v.plate+". История/оценка: "+(plateValue?.let{it.toString()+" ₽"}?:plateOffers.firstOrNull()?:"нет суммы")+".",86.0,80))
         return candidates.maxByOrNull{it.score}?:DecisionSignal("НАБЛЮДАЮ","Ищу возможность","Обновляю состояние игры в realtime.",40.0,40)
     }
 }
