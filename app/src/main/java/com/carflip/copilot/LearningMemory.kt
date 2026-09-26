@@ -161,7 +161,7 @@ object LearningMemory {
         for (i in a.length() - 1 downTo 0) {
             val o = a.optJSONObject(i) ?: continue
             if (o.optString("plate").ifBlank { o.optString("name") } != id) continue
-            if (o.optString("state") == currentState && o.optLong("offer") == offer) continue
+            if (o.optString("state") == currentState) continue
             previous = o
             break
         }
