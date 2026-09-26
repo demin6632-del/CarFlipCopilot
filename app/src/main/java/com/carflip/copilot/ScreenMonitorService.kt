@@ -95,7 +95,7 @@ class ScreenMonitorService:Service(){
    }
    if(v.price!=null) lastVehiclePrice=v.price
    if(v.plate.isNotEmpty()) lastVehiclePlate=v.plate
-   val event=GameParser.event(text);val purchase=GameParser.purchaseAmount(text);val sale=GameParser.saleAmount(text);val expense=GameParser.expenseAmount(text)
+   val event=GameParser.event(text);val purchase=GameParser.purchaseAmount(text);val sale=GameParser.saleAmount(text);val expense=GameParser.expenseAmount(text);val plateOffer=GameParser.plateOffer(text);val plateSale=GameParser.plateSale(text)
    val bal=GameParser.balance(text);val garage=GameParser.garage(text)
    if(bal!=null){
     if(lastBalance!=null&&bal!=lastBalance&&System.currentTimeMillis()-lastBalanceAt>2500){
@@ -157,7 +157,7 @@ class ScreenMonitorService:Service(){
    if(v.paintedParts!=null)out.append("\nКрашеных деталей: ").append(v.paintedParts)
    if(v.mileage!=null)out.append("\nПробег: ").append("%,d".format(v.mileage).replace(',',' ')).append(" км")
    if(v.owners!=null)out.append("\nВладельцев: ").append(v.owners)
-   if(v.plate.isNotEmpty())out.append("\nНомер: ").append(v.plate)
+   if(v.plate.isNotEmpty()){out.append("\nНомер: ").append(v.plate);val pv=CopilotState.plateValue(this,v.plate);if(pv!=null)out.append(" • отдельно ≈ ").append("%,d".format(pv).replace(',', ' ')).append(" ₽");val po=CopilotState.plateOffers(this,v.plate);if(po.isNotEmpty())out.append("\nПредложения за номер: ").append(po.first())}
    out.append("\n\nБаланс: ").append("%,d".format(CopilotState.balance(this)).replace(',',' ')).append(" ₽")
    out.append("\nГараж: ").append(CopilotState.garage(this)).append("/3")
    out.append("\n\nМониторинг: ВКЛ • обновление ~0,6 с")
