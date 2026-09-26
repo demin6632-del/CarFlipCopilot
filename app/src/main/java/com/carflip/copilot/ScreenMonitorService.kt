@@ -27,11 +27,11 @@ class ScreenMonitorService:Service(){
   commandServer=CommandServer(this);commandServer.start()
   remotePoller=RemoteCommandPoller(this);remotePoller.start()
   liveBridge=LiveBridge(this){cmd->when{
-   it.uppercase()== "REQUEST_FRAME" -> lastFrame?.let{liveBridge.sendFrame(it)}
-   it.uppercase()== "STATUS" -> sendLiveStatus()
-   it.uppercase()== "STOP" -> stopSelf()
-   it.startsWith("ATTACHMENT_ANALYSIS|") -> { val p=it.split("|",limit=3); if(p.size>=3) CopilotState.addEvent(this,"ВЛОЖЕНИЕ • "+p[1]+"\\n"+p[2]) }
-   it.startsWith("ATTACHMENT_ANALYSIS_ERROR|") -> CopilotState.addEvent(this,"ОШИБКА АНАЛИЗА ВЛОЖЕНИЯ • "+it.substringAfter("|"))
+   cmd.uppercase()== "REQUEST_FRAME" -> lastFrame?.let{liveBridge.sendFrame(it)}
+   cmd.uppercase()== "STATUS" -> sendLiveStatus()
+   cmd.uppercase()== "STOP" -> stopSelf()
+   cmd.startsWith("ATTACHMENT_ANALYSIS|") -> { val p=cmd.split("|",limit=3); if(p.size>=3) CopilotState.addEvent(this,"ВЛОЖЕНИЕ • "+p[1]+"\\n"+p[2]) }
+   cmd.startsWith("ATTACHMENT_ANALYSIS_ERROR|") -> CopilotState.addEvent(this,"ОШИБКА АНАЛИЗА ВЛОЖЕНИЯ • "+cmd.substringAfter("|"))
   }}
   liveBridge.start()
   startForeground(10,Notification.Builder(this,"copilot").setContentTitle("Перекуп Copilot").setContentText("Мониторинг экрана • Telegram не нажимаю").setSmallIcon(android.R.drawable.ic_menu_view).build())
