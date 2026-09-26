@@ -20,7 +20,7 @@ class ScreenMonitorService:Service(){
  private lateinit var liveBridge:LiveBridge
  private var lastFrame:Bitmap?=null
  private val stableOcr=StableOcr()
- private var projection:MediaProjection?=null;private var reader:ImageReader?=null;private var overlay:TextView?=null;private var lastCapture=0L;private var lastScreenKey="";private var lastVehiclePrice:Long?=null;private var lastVehiclePlate="";private var lastBalance:Long?=null;private var lastBalanceAt=0L
+ private var projection:MediaProjection?=null;private var reader:ImageReader?=null;private var overlay:TextView?=null;private var lastCapture=0L;private var lastScreenKey="";private var lastVehiclePrice:Long?=null;private var lastVehiclePlate="";private var lastAction="";private var lastActionAt=0L;private var lastBalance:Long?=null;private var lastBalanceAt=0L
  private val recognizer by lazy{TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)}
  override fun onStartCommand(intent:Intent?,flags:Int,startId:Int):Int{
   CopilotState.setMonitoring(this,true);createChannel()
@@ -82,12 +82,16 @@ class ScreenMonitorService:Service(){
   recognizer.process(InputImage.fromBitmap(cropped,0)).addOnSuccessListener{res->
    val rawText=res.text.trim();if(rawText.isEmpty())return@addOnSuccessListener
    val text=stableOcr.accept(rawText) ?: return@addOnSuccessListener
+   val detectedAction=GameParser.action(text)
+   if(detectedAction!=null){lastAction=detectedAction;lastActionAt=System.currentTimeMillis()}
    val v=VehicleSnapshot(GameParser.name(text),GameParser.price(text),GameParser.hp(text),GameParser.mileage(text),GameParser.owners(text),GameParser.plate(text),GameParser.origin(text),GameParser.paintedParts(text),text)
    if(v.price!=null && lastVehiclePrice!=null && v.price!=lastVehiclePrice){
     val deal=CopilotState.deals(this).firstOrNull{it.closed==null && ((v.plate.isNotEmpty() && it.plate==v.plate) || (v.plate.isEmpty() && it.name==v.name))}
     val plate=if(v.plate.isNotEmpty())v.plate else lastVehiclePlate
-    LearningMemory.recordStateChange(this,v,v.price,deal?.id?:"",plate)
-    CopilotState.addEvent(this,"СОСТОЯНИЕ • цена "+lastVehiclePrice+" → "+v.price+" ₽ • результат действия зафиксирован")
+    val action=if(lastAction.isNotEmpty() && System.currentTimeMillis()-lastActionAt<=3*60*1000L) lastAction else ""
+    LearningMemory.recordStateChange(this,v,v.price,deal?.id?:"",plate,action)
+    if(action.isNotEmpty()) CopilotState.addEvent(this,"СОСТОЯНИЕ • "+action+" • цена "+lastVehiclePrice+" → "+v.price+" ₽ • причинный результат зафиксирован")
+    else CopilotState.addEvent(this,"СОСТОЯНИЕ • цена "+lastVehiclePrice+" → "+v.price+" ₽ • действие не определено")
    }
    if(v.price!=null) lastVehiclePrice=v.price
    if(v.plate.isNotEmpty()) lastVehiclePlate=v.plate
