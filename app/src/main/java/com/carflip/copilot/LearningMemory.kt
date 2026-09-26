@@ -79,6 +79,18 @@ object LearningMemory {
         return LearningStats(samples, profitable, loss, if (samples == 0) 0 else sum / samples, accuracy)
     }
 
+    fun learnAction(c: Context, v: VehicleSnapshot, action: String, cost: Long, valueDelta: Long) {
+        val pref=p(c); val a=JSONArray(pref.getString("action_history","[]"))
+        a.put(JSONObject().put("feature",featureKey(v)).put("action",action.take(120)).put("cost",cost).put("delta",valueDelta).put("roi",if(cost>0)((valueDelta-cost).toDouble()/cost*100.0)else 0.0).put("time",System.currentTimeMillis()))
+        while(a.length()>500)a.remove(0)
+        pref.edit().putString("action_history",a.toString()).apply()
+    }
+    fun actionRoi(c: Context, v: VehicleSnapshot, action: String): Double? {
+        val a=JSONArray(p(c).getString("action_history","[]")); var sum=0.0; var n=0
+        for(i in 0 until a.length()){val o=a.optJSONObject(i)?:continue;if(o.optString("feature")==featureKey(v)&&o.optString("action").equals(action,true)){sum+=o.optDouble("roi");n++}}
+        return if(n==0)null else sum/n
+    }
+
     fun reset(c: Context) {
         p(c).edit().clear().apply()
     }
