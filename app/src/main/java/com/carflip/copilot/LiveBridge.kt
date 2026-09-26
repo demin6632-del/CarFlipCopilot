@@ -8,7 +8,7 @@ import org.json.JSONObject
 import java.io.ByteArrayOutputStream
 import java.util.concurrent.TimeUnit
 
-class LiveBridge(private val context: Context, private val onCommand: (String) -> Unit) {
+class LiveBridge(private val context: Context, private val onCommand: (String) -> Unit, private val onChat: (String) -> Unit = {}) {
     private val prefs=context.getSharedPreferences("live_bridge",Context.MODE_PRIVATE)
     private var client:OkHttpClient?=null
     private var socket:WebSocket?=null
@@ -28,7 +28,7 @@ class LiveBridge(private val context: Context, private val onCommand: (String) -
         val req=Request.Builder().url(u).header("Authorization","Bearer "+token()).build()
         socket=client!!.newWebSocket(req,object:WebSocketListener(){
             override fun onOpen(ws:WebSocket,response:Response){connected=true; send(JSONObject().put("type","hello").put("device","android").put("app","CarFlipCopilot").toString())}
-            override fun onMessage(ws:WebSocket,text:String){try{val o=JSONObject(text);if(o.optString("type")=="command")onCommand(o.optString("command"))}catch(_:Exception){}}
+            override fun onMessage(ws:WebSocket,text:String){try{val o=JSONObject(text);when(o.optString("type")){"command"->onCommand(o.optString("command"));"chat"->onChat(o.optString("message"))}}catch(_:Exception){}}
             override fun onClosed(ws:WebSocket,code:Int,reason:String){connected=false}
             override fun onFailure(ws:WebSocket,t:Throwable,response:Response?){connected=false}
         })
@@ -67,6 +67,7 @@ class LiveBridge(private val context: Context, private val onCommand: (String) -
         val b64=Base64.encodeToString(out.toByteArray(),Base64.NO_WRAP)
         send(JSONObject().put("type","frame").put("time",System.currentTimeMillis()).put("jpegBase64",b64).toString())
     }
+    fun sendChat(message:String,source:String="copilot"){if(!connected)return;send(JSONObject().put("type","chat").put("source",source).put("message",message).put("time",System.currentTimeMillis()).toString())}
     private fun send(s:String){socket?.send(s)}
     fun stop(){socket?.close(1000,"stop");socket=null;connected=false;client?.dispatcher?.executorService?.shutdown();client=null}
 }
