@@ -1,0 +1,87 @@
+package com.carflip.copilot
+
+data class ContractRules(
+    val name: String,
+    val origin: String,
+    val minHp: Int,
+    val maxPaintedParts: Int,
+    val maxPurchasePrice: Long,
+    val bonus: Long
+)
+
+data class TradeEconomics(
+    val purchasePrice: Long?,
+    val inspectionCosts: Long,
+    val listingExtensionCost: Long,
+    val plateRemovalCost: Long,
+    val totalKnownCosts: Long,
+    val contractEligible: Boolean,
+    val contractMissing: List<String>,
+    val contractBonus: Long,
+    val exitPrice: Long?,
+    val expectedProfit: Long?
+)
+
+object TradeEconomics {
+    const val THICKNESS_GAUGE = 3_000L
+    const val AUTOTEKA = 5_000L
+    const val LISTING_EXTENSION = 1_500L
+    const val PLATE_REMOVAL = 55_000L
+
+    val kinoProducer = ContractRules(
+        name = "Кинопродюсер",
+        origin = "USA",
+        minHp = 300,
+        maxPaintedParts = 99,
+        maxPurchasePrice = 2_500_000L,
+        bonus = 200_000L
+    )
+
+    fun calculate(v: VehicleSnapshot, exitPrice: Long? = null): TradeEconomics {
+        val checks = THICKNESS_GAUGE + AUTOTEKA
+        val missing = mutableListOf<String>()
+        if (v.origin.isBlank()) missing += "происхождение"
+        if (v.hp == null) missing += "мощность"
+        if (v.paintedParts == null) missing += "крашеные детали"
+        if (v.price == null) missing += "цена входа"
+
+        val eligible = missing.isEmpty() &&
+            v.origin == kinoProducer.origin &&
+            v.hp!! >= kinoProducer.minHp &&
+            v.paintedParts!! <= kinoProducer.maxPaintedParts &&
+            v.price!! <= kinoProducer.maxPurchasePrice
+
+        val total = (v.price ?: 0L) + checks
+        val bonus = if (eligible) kinoProducer.bonus else 0L
+        val profit = exitPrice?.let { it - total + bonus }
+
+        return TradeEconomics(
+            purchasePrice = v.price,
+            inspectionCosts = checks,
+            listingExtensionCost = LISTING_EXTENSION,
+            plateRemovalCost = PLATE_REMOVAL,
+            totalKnownCosts = total,
+            contractEligible = eligible,
+            contractMissing = missing,
+            contractBonus = bonus,
+            exitPrice = exitPrice,
+            expectedProfit = profit
+        )
+    }
+
+    fun summary(v: VehicleSnapshot, exitPrice: Long? = null): String {
+        val e = calculate(v, exitPrice)
+        val f = { n: Long -> "%,d".format(n).replace(',', ' ') }
+        return buildString {
+            append("Экономика сделки\n")
+            append("Цена входа: ").append(e.purchasePrice?.let(f) ?: "—").append(" ₽\n")
+            append("Проверки: ").append(f(e.inspectionCosts)).append(" ₽\n")
+            append("Себестоимость сейчас: ").append(f(e.totalKnownCosts)).append(" ₽\n")
+            append("Контракт: ").append(if (e.contractEligible) "ПОДХОДИТ" else "НЕ ПОДТВЕРЖДЁН").append("\n")
+            if (e.contractMissing.isNotEmpty()) append("Не хватает: ").append(e.contractMissing.joinToString(", ")).append("\n")
+            append("Бонус: ").append(if (e.contractEligible) "+${f(e.contractBonus)}" else "—").append(" ₽\n")
+            append("Выход: ").append(e.exitPrice?.let(f) ?: "—").append(" ₽\n")
+            append("Прибыль: ").append(e.expectedProfit?.let { (if (it >= 0) "+" else "") + f(it) } ?: "неизвестна").append(" ₽")
+        }
+    }
+}
