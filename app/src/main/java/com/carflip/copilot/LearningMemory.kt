@@ -150,6 +150,28 @@ object LearningMemory {
         if (changed) pref.edit().putString("action_history", a.toString()).apply()
     }
 
+    fun recordStateChange(c: Context, v: VehicleSnapshot, afterSale: Long, dealId: String = "", plate: String = "") {
+        val pref = p(c)
+        val a = JSONArray(pref.getString("action_history", "[]"))
+        val now = System.currentTimeMillis()
+        var changed = false
+        for (i in a.length() - 1 downTo 0) {
+            val o = a.optJSONObject(i) ?: continue
+            if (o.has("stateAfter")) continue
+            if (dealId.isNotEmpty() && o.optString("deal_id") != dealId) continue
+            if (plate.isNotEmpty() && o.optString("plate").isNotEmpty() && o.optString("plate") != plate) continue
+            if (now - o.optLong("time", 0L) > 10 * 60 * 1000L) continue
+            val before = o.optLong("beforeSale", 0L)
+            if (before <= 0L || before == afterSale) continue
+            o.put("stateAfter", afterSale)
+                .put("stateDelta", afterSale - before)
+                .put("stateChangeTime", now)
+            a.put(i, o)
+            changed = true
+        }
+        if (changed) pref.edit().putString("action_history", a.toString()).apply()
+    }
+
     fun recordAllActionOutcomes(c: Context, v: VehicleSnapshot, afterSale: Long, dealId: String = "", plate: String = "") {
         val pref = p(c)
         val a = JSONArray(pref.getString("action_history", "[]"))
