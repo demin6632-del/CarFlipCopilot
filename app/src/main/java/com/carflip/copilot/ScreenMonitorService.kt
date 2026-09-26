@@ -41,7 +41,7 @@ class ScreenMonitorService:Service(){
       val offers=o.optJSONArray("buyer_offers")?:org.json.JSONArray()
       for(i in 0 until offers.length()){val x=offers.optJSONObject(i)?:continue;val amount=x.optLong("amount",0);if(amount>0)CopilotState.addBuyerOffer(this,plate,carName,x.optString("condition",""),amount,x.optString("buyer",""),x.optString("notes",""))}
       val actions=o.optJSONArray("actions")?:org.json.JSONArray()
-      for(i in 0 until actions.length()){val x=actions.optJSONObject(i)?:continue;val cost=x.optLong("cost",0);val delta=x.optLong("expected_value_change",0);if(cost>0&&delta>0){CopilotState.saveActionRoi(this,x.optString("action",""),cost,delta,x.optString("reason",""));LearningMemory.learnAction(this,base,x.optString("action",""),cost,delta)}}
+      for(i in 0 until actions.length()){val x=actions.optJSONObject(i)?:continue;val cost=x.optLong("cost",0);val delta=x.optLong("expected_value_change",0);if(cost>0&&delta>0){val dealId=CopilotState.deals(this).firstOrNull{it.closed==null&&((base.plate.isNotEmpty()&&it.plate==base.plate)||(base.plate.isEmpty()&&it.name==base.name))}?.id?:""; CopilotState.saveActionRoi(this,x.optString("action",""),cost,delta,x.optString("reason",""),dealId,base.plate,base.price); LearningMemory.learnAction(this,base,x.optString("action",""),cost,delta)}}
       val sale=if(o.has("sale_price"))o.optLong("sale_price")else null; val profit=if(o.has("expected_profit"))o.optLong("expected_profit")else null
       val roi=if(o.has("roi_percent"))o.optDouble("roi_percent")else null; val conf=if(o.has("confidence"))o.optInt("confidence")else null
       if(sale!=null||profit!=null||roi!=null)CopilotState.saveForecast(this,sale,profit,roi,conf)
