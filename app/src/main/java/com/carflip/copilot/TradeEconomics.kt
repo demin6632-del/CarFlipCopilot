@@ -22,7 +22,7 @@ data class TradeCosts(
     val mandatoryChecks: Long get() = thicknessGauge + autotekа
 }
 
-data class TradeEconomics(
+data class TradeEconomicsResult(
     val purchasePrice: Long?,
     val checks: Long,
     val otherFees: Long,
@@ -43,7 +43,7 @@ object TradeEconomics {
         expectedSalePrice: Long? = null,
         includeContractBonus: Boolean = true,
         extraFees: Long = 0L
-    ): TradeEconomics {
+    ): TradeEconomicsResult {
         val missing = mutableListOf<String>()
         if (vehicle.price == null) missing += "цена покупки"
         if (vehicle.hp == null) missing += "мощность"
@@ -64,7 +64,7 @@ object TradeEconomics {
             expectedSalePrice - netCost + bonus
         } else null
 
-        return TradeEconomics(
+        return TradeEconomicsResult(
             purchasePrice = purchase,
             checks = checks,
             otherFees = extraFees,
@@ -77,7 +77,7 @@ object TradeEconomics {
         )
     }
 
-    fun summary(e: TradeEconomics): String {
+    fun summary(e: TradeEconomicsResult): String {
         val lines = mutableListOf<String>()
         e.purchasePrice?.let { lines += "Цена входа: ${money(it)} ₽" }
         lines += "Проверки: -${money(e.checks)} ₽"
