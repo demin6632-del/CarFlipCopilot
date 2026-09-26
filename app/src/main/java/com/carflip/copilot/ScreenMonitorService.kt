@@ -109,6 +109,14 @@ class ScreenMonitorService:Service(){
     CopilotState.setBalance(this,bal);lastBalance=bal;lastBalanceAt=System.currentTimeMillis()
    }
    if(garage!=null)CopilotState.setGarage(this,garage)
+   val plateKey=if(v.plate.isNotEmpty())v.plate else lastVehiclePlate
+   if(plateRemoved&&plateKey.isNotEmpty()&&v.plate.isEmpty()){
+    CopilotState.setPlate(this,plateKey,"СНЯТ")
+    if(expense!=null){
+     CopilotState.setPlateCost(this,plateKey,expense)
+     CopilotState.addEvent(this,"СЕБЕСТОИМОСТЬ НОМЕРА • "+plateKey+" • "+expense+" ₽ • зафиксирована после снятия")
+    }else CopilotState.addEvent(this,"НОМЕР • "+plateKey+" • снят • себестоимость пока не определена")
+   }
    if(v.plate.isNotEmpty()){
     if(plateOffer!=null){
      val isNewBid=!CopilotState.hasPlateBid(this,v.plate,plateOffer)
