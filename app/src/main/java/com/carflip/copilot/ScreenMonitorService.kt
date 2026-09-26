@@ -4,6 +4,7 @@ import android.app.*
 import android.content.Intent
 import android.graphics.*
 import android.hardware.display.DisplayManager
+import android.hardware.display.VirtualDisplay
 import android.media.*
 import android.media.projection.MediaProjection
 import android.media.projection.MediaProjectionManager
