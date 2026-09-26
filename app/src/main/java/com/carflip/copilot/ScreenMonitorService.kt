@@ -118,14 +118,19 @@ class ScreenMonitorService:Service(){
     GameParser.contract(text)?.let{CopilotState.addEvent(this,"КОНТРАК • "+it)}
    }
    val decision=GameParser.decision(v);CopilotState.setDecision(this,decision)
+   val forecast=CopilotState.dealForecast(this,v)
    val opportunity=OpportunityAnalyzer.analyze(this,text,v,bal?:CopilotState.balance(this),garage?:CopilotState.garage(this))
+   if(forecast.has("sale_price")&&forecast.optLong("sale_price",0)>0) CopilotState.saveForecast(this,forecast.optLong("sale_price"),if(forecast.has("expected_profit"))forecast.optLong("expected_profit")else null,if(forecast.has("roi_percent"))forecast.optDouble("roi_percent")else null,75)
    CopilotState.setDecision(this,opportunity.action)
    liveBridge.sendState(text,v,CopilotState.balance(this),CopilotState.garage(this),opportunity.action,opportunity)
    val oldFrame=lastFrame; lastFrame=null
    val maxW=720; val scaled=if(cropped.width>maxW)Bitmap.createScaledBitmap(cropped,maxW,(cropped.height*maxW/cropped.width),true) else cropped.copy(Bitmap.Config.ARGB_8888,false); if(oldFrame!=null&&oldFrame!==cropped)oldFrame.recycle(); lastFrame=scaled
    val out=StringBuilder("🚗 COPILOT • LIVE\\n").append(opportunity.action).append("  •  ").append(opportunity.confidence).append("%\\n").append(opportunity.title).append("\\n").append(opportunity.reason)
    if(v.name.isNotEmpty())out.append("\n").append(v.name)
-   if(v.price!=null)out.append("\nЦена: ").append("%,d".format(v.price).replace(',',' ')).append(" ₽")
+   if(v.price!=null)out.append("\nЦена: ").append("%,d".format(v.price).replace(',', ' ')).append(" ₽")
+   if(forecast.optLong("sale_price",0)>0)out.append("\nПрогноз продажи: ").append("%,d".format(forecast.optLong("sale_price")).replace(',', ' ')).append(" ₽")
+   if(forecast.has("expected_profit"))out.append("\nОжидаемая прибыль: ").append("%,d".format(forecast.optLong("expected_profit")).replace(',', ' ')).append(" ₽")
+   if(forecast.has("roi_percent")&&!forecast.isNull("roi_percent"))out.append("\nROI сделки: ").append(String.format("%.1f",forecast.optDouble("roi_percent"))).append("%")
    if(v.hp!=null)out.append("\nМощность: ").append(v.hp).append(" л.с.")
    if(v.origin.isNotEmpty())out.append("\nПроисхождение: ").append(v.origin)
    if(v.paintedParts!=null)out.append("\nКрашеных деталей: ").append(v.paintedParts)
