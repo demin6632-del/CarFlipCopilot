@@ -44,6 +44,22 @@ class LiveBridge(private val context: Context, private val onCommand: (String) -
                 .put("origin",v.origin).put("paintedParts",v.paintedParts))
         send(o.toString())
     }
+    fun sendGameState(state:GameState, opportunity:GameOpportunity){
+        if(!connected)return
+        val p=state.player
+        val o=JSONObject().put("type","game_state").put("time",System.currentTimeMillis())
+            .put("activeSection",state.activeSection).put("lastEvent",state.lastEvent)
+            .put("player",JSONObject().put("level",p.level).put("xp",p.xp).put("xpMax",p.xpMax)
+                .put("respect",p.respect).put("balance",p.balance).put("garageUsed",p.garageUsed).put("garageCapacity",p.garageCapacity)
+                .put("creditStatus",p.creditStatus).put("vip",p.vip))
+            .put("opportunity",JSONObject().put("action",opportunity.action).put("section",opportunity.section)
+                .put("title",opportunity.title).put("reason",opportunity.reason).put("expectedValue",opportunity.expectedValue)
+                .put("confidence",opportunity.confidence))
+            .put("vehicle",JSONObject().put("name",state.vehicle.name).put("price",state.vehicle.price)
+                .put("hp",state.vehicle.hp).put("mileage",state.vehicle.mileage).put("paintedParts",state.vehicle.paintedParts)
+                .put("stage",state.vehicle.stage).put("invested",state.vehicle.invested).put("polishApplied",state.vehicle.polishApplied))
+        send(o.toString())
+    }
     fun sendFrame(bitmap:Bitmap){
         if(!connected)return
         val out=ByteArrayOutputStream()
