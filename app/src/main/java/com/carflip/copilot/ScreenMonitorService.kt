@@ -40,6 +40,16 @@ class ScreenMonitorService:Service(){
    val opportunity=OpportunityAnalyzer.analyze(this,text,v,bal?:CopilotState.balance(this),garage?:CopilotState.garage(this));CopilotState.setDecision(this,opportunity.action);SituationEngine.observe(this,text,v,CopilotState.balance(this),CopilotState.garage(this));val observedExit=GameParser.exitPrice(text);val learnedExit=if(observedExit==null)LearningMemory.estimateSalePrice(this,v)else SalePriceEstimate(observedExit,0,100);val economics=TradeEconomics.calculate(v,learnedExit.price);liveBridge.sendState(text,v,CopilotState.balance(this),CopilotState.garage(this),opportunity.action,opportunity)
    val oldFrame=lastFrame;lastFrame=null;val maxW=720;val scaled=if(cropped.width>maxW)Bitmap.createScaledBitmap(cropped,maxW,cropped.height*maxW/cropped.width,true)else cropped.copy(Bitmap.Config.ARGB_8888,false);if(oldFrame!=null&&oldFrame!==cropped)oldFrame.recycle();lastFrame=scaled
    val out=StringBuilder("🚗 COPILOT • LIVE\n").append(opportunity.action).append(" • ").append(opportunity.confidence).append("%\n").append(opportunity.title).append("\n").append(opportunity.reason)
+   opportunity.forecast?.let{f->
+    out.append("\n\nПОСЛЕ ДЕЙСТВИЯ:")
+    f.balanceAfter?.let{out.append("\nБаланс: ").append(fmt(it)).append(" ₽")}
+    f.garageAfter?.let{out.append("\nГараж: ").append(it).append("/3")}
+    f.expectedProfit?.let{out.append("\nОжидаемый результат: ").append(if(it>=0) "+" else "").append(fmt(it)).append(" ₽")}
+    out.append("\nРиск: ").append(f.risk)
+    f.blocked?.let{out.append("\nОграничение: ").append(it)}
+    out.append("\nСледующий шаг: ").append(f.nextStep)
+   }
+   if(opportunity.alternatives.isNotEmpty())out.append("\n\nАЛЬТЕРНАТИВЫ:\n").append(opportunity.alternatives.joinToString("\n"){"• "+it})
    if(v.name.isNotEmpty())out.append("\n\n").append(v.name)
    if(v.price!=null)out.append("\nЦена входа: ").append(fmt(v.price)).append(" ₽")
    out.append("\nПроверки: ").append(fmt(economics.inspectionCosts)).append(" ₽")
