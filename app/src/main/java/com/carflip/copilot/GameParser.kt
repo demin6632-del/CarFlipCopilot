@@ -73,8 +73,8 @@ object GameParser {
             else -> null
         }
     }
-    fun plateOffer(text:String):Long? = amount(text,listOf("номер","предложение за номер","за номер","plate"))
-    fun plateSale(text:String):Long? = amount(text,listOf("продал номер","продажа номера","номер продан","продан номер","plate sold"))
+    fun plateOffer(text:String):Long? {\n        val x=text.lowercase()\n        val re=Regex("(?i)(?:предложение|ставка|цена)\\s*(?:за|на)?\\s*(?:гос)?номер[^0-9]{0,50}(\\d[\\d\\s.,]*)\\s*(?:₽|руб|rub)?")\n        val m=re.find(x) ?: Regex("(?i)(?:гос)?номер[^0-9]{0,30}(?:предложение|ставка|цена)[^0-9]{0,30}(\\d[\\d\\s.,]*)").find(x)\n        return m?.groupValues?.getOrNull(1)?.replace(Regex("[^0-9]"),"")?.toLongOrNull()?.takeIf{it>0}\n    }
+    fun plateSale(text:String):Long? {\n        val x=text.lowercase()\n        val re=Regex("(?i)(?:продал|продажа|продан|продано|sold)\\s+(?:гос)?номер[^0-9]{0,50}(\\d[\\d\\s.,]*)\\s*(?:₽|руб|rub)?")\n        val m=re.find(x) ?: Regex("(?i)(?:гос)?номер[^0-9]{0,25}(?:продан|продано|продал)[^0-9]{0,30}(\\d[\\d\\s.,]*)").find(x)\n        return m?.groupValues?.getOrNull(1)?.replace(Regex("[^0-9]"),"")?.toLongOrNull()?.takeIf{it>0}\n    }
     fun plateAuction(text:String):Boolean { val x=text.lowercase(); return (x.contains("аукцион")||x.contains("ставк")||x.contains("auction")) && (x.contains("номер")||x.contains("госномер")||x.contains("plate")) }
     fun carAuction(text:String):Boolean { val x=text.lowercase(); return (x.contains("аукцион")||x.contains("ставк")||x.contains("auction")) && !(x.contains("номер")||x.contains("госномер")||x.contains("plate")) }
 
