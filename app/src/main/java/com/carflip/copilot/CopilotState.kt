@@ -27,6 +27,12 @@ object CopilotState {
  fun setSnapshot(c:Context,v:VehicleSnapshot){val o=JSONObject().put("name",v.name).put("plate",v.plate).put("origin",v.origin).put("raw",v.raw.take(8000)).put("updatedAt",v.updatedAt);v.price?.let{o.put("price",it)};v.hp?.let{o.put("hp",it)};v.mileage?.let{o.put("mileage",it)};v.owners?.let{o.put("owners",it)};v.paintedParts?.let{o.put("paintedParts",it)};p(c).edit().putString("vehicle",o.toString()).apply()}
  private fun append(c:Context,keyName:String,obj:JSONObject,max:Int=200){val pref=p(c);val a=JSONArray(pref.getString(keyName,"[]"));val key=obj.optString("key");if(key.isNotEmpty())for(i in 0 until a.length())if(a.optJSONObject(i)?.optString("key")==key)return;a.put(obj);while(a.length()>max)a.remove(0);pref.edit().putString(keyName,a.toString()).apply()}
  fun addEvent(c:Context,text:String){append(c,"events",JSONObject().put("key",text.hashCode().toString()+"|"+System.currentTimeMillis()/5000).put("text",text.take(900)).put("time",System.currentTimeMillis()))}
+fun saveAttachmentAnalysis(c:Context,name:String,json:String){
+ val compact=json.replace("\\n"," ").take(5000)
+ p(c).edit().putString("last_attachment_analysis",name+"|"+compact).apply()
+ addEvent(c,"ВЛОЖЕНИЕ • "+name+" • AI-анализ получен")
+}
+fun lastAttachmentAnalysis(c:Context)=p(c).getString("last_attachment_analysis","")?:""
  fun events(c:Context):List<String>{val a=JSONArray(p(c).getString("events","[]"));return(0 until a.length()).mapNotNull{a.optJSONObject(it)?.optString("text")}.reversed()}
  fun addLedger(c:Context,type:String,amount:Long?,note:String){if(amount==null)return;append(c,"ledger",JSONObject().put("key",(type+"|"+amount+"|"+note).hashCode().toString()).put("type",type).put("amount",amount).put("note",note.take(500)).put("time",System.currentTimeMillis()))}
  fun ledger(c:Context):List<LedgerEvent>{val a=JSONArray(p(c).getString("ledger","[]"));return(0 until a.length()).map{val o=a.getJSONObject(it);LedgerEvent(o.optString("type"),o.optLong("amount"),o.optString("note"),o.optLong("time"))}.reversed()}
