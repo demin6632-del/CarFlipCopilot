@@ -29,15 +29,25 @@ object DecisionEngine {
             val bestBid=CopilotState.plateBestBid(c,v.plate)
             val hasAuction=GameParser.plateAuction(text)||status=="OPEN"||status=="LIVE"
             val sold=plateSold(status)
+            val historyCount=PlateLearning.historyCount(c,v.plate)
+            val historicalRoi=PlateLearning.averageRoi(c,v.plate)
+            val historicalNet=PlateLearning.averageNet(c,v.plate)
+            val cost=CopilotState.plateCost(c,v.plate)
             if(sold){
                 candidates.add(DecisionSignal("НОМЕР ПРОДАН","Аукцион номера завершён","Номер "+v.plate+" уже зафиксирован как проданный отдельно.",96.0,96))
             }else if(hasAuction&&bestBid!=null){
-                candidates.add(DecisionSignal("ЖДАТЬ СТАВКУ","Аукцион номера активен","Текущая лучшая ставка за номер "+bestBid+" ₽. Машина на аукционе не рассматривается.",90.0,88))
+                val projectedNet=if(cost!=null)bestBid-cost-auction.optLong("fees",0)else null
+                val projectedRoi=if(cost!=null&&cost>0)projectedNet!!.toDouble()/cost*100.0 else null
+                val historyText=if(historyCount>0)" История: $historyCount сделок, средний ROI "+String.format("%.1f",historicalRoi?:0.0)+"%, средний чистый результат "+(historicalNet?:0)+" ₽." else " Истории по этому номеру пока нет."
+                val economicText=if(projectedRoi!=null)" Текущий ROI при этой ставке: "+String.format("%.1f",projectedRoi)+"%; чистый результат: "+projectedNet+" ₽." else " Себестоимость номера ещё не подтверждена."
+                val score=if(projectedRoi!=null)(65.0+projectedRoi.coerceIn(-20.0,25.0)).coerceIn(40.0,92.0)else 72.0
+                candidates.add(DecisionSignal(if(projectedRoi!=null&&projectedRoi<0)"НЕ ПОВЫШАТЬ СТАВКУ" else "ЖДАТЬ СТАВКУ","Аукцион номера активен","Лучшая ставка: "+bestBid+" ₽."+economicText+historyText+" Машина на аукционе не рассматривается.",score,if(projectedRoi!=null)85 else 78))
             }else if(hasAuction){
                 candidates.add(DecisionSignal("АУКЦИОН НОМЕРА","Аукцион доступен","Выставлять можно только номер "+v.plate+"; автомобиль в аукционное решение не включается.",86.0,82))
             }else if(bestBid!=null||CopilotState.plateValue(c,v.plate)!=null){
                 val value=bestBid?:CopilotState.plateValue(c,v.plate)!!
-                candidates.add(DecisionSignal("ПРОДАТЬ НОМЕР","Есть отдельная ценность номера","Наблюдаемая цена/ставка номера: "+value+" ₽. Номер учитывается отдельно от сделки автомобиля.",84.0,80))
+                val historyText=if(historyCount>0)" История: "+historyCount+" сделок, средний ROI "+String.format("%.1f",historicalRoi?:0.0)+"%." else ""
+                candidates.add(DecisionSignal("ПРОДАТЬ НОМЕР","Есть отдельная ценность номера","Наблюдаемая цена/ставка номера: "+value+" ₽."+historyText+" Номер учитывается отдельно от сделки автомобиля.",84.0,80))
             }
         }
         return candidates.maxByOrNull{it.score}?:DecisionSignal("НАБЛЮДАЮ","Ищу возможность","Обновляю состояние игры в realtime.",40.0,40)
