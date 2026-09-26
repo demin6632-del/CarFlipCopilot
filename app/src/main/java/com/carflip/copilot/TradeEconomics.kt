@@ -64,7 +64,7 @@ object TradeEconomics {
         val baseVehicleCost = maxOf(v.price ?: 0L, v.invested ?: 0L)
         val total = baseVehicleCost + checks + LISTING_EXTENSION
         val bonus = if (eligible) kinoProducer.bonus else 0L
-        val profit = exitPrice?.let { it - totalWithPreSale + bonus }
+        val profit = exitPrice?.let { it - total + bonus }
 
         return TradeEconomics(
             purchasePrice = v.price,
