@@ -95,7 +95,7 @@ class ScreenMonitorService:Service(){
    }
    if(v.price!=null) lastVehiclePrice=v.price
    if(v.plate.isNotEmpty()) lastVehiclePlate=v.plate
-   val event=GameParser.event(text);val purchase=GameParser.purchaseAmount(text);val sale=GameParser.saleAmount(text);val expense=GameParser.expenseAmount(text);val plateOffer=GameParser.plateOffer(text);val plateSale=GameParser.plateSale(text);val plateAuction=GameParser.plateAuction(text)
+   val event=GameParser.event(text);val purchase=GameParser.purchaseAmount(text);val sale=GameParser.saleAmount(text);val expense=GameParser.expenseAmount(text);val plateOffer=GameParser.plateOffer(text);val plateSale=GameParser.plateSale(text);val plateAuction=GameParser.plateAuction(text);val plateRemoved=GameParser.plateRemoved(text)
    val bal=GameParser.balance(text);val garage=GameParser.garage(text)
    if(bal!=null){
     if(lastBalance!=null&&bal!=lastBalance&&System.currentTimeMillis()-lastBalanceAt>2500){
@@ -126,7 +126,13 @@ class ScreenMonitorService:Service(){
     }
     val s=text.lowercase()
     when{
-     s.contains("снять номер")||s.contains("снятие номера")||s.contains("снял номер")->CopilotState.setPlate(this,v.plate,"СНЯТ")
+     plateRemoved -> {
+      CopilotState.setPlate(this,v.plate,"СНЯТ")
+      if(expense!=null){
+       CopilotState.setPlateCost(this,v.plate,expense)
+       CopilotState.addEvent(this,"СЕБЕСТОИМОСТЬ НОМЕРА • "+v.plate+" • "+expense+" ₽ • зафиксирована по расходу снятия")
+      }else CopilotState.addEvent(this,"НОМЕР • "+v.plate+" • снят • себестоимость пока не определена")
+     }
      s.contains("хранилищ")||s.contains("хранении")->CopilotState.setPlate(this,v.plate,"ХРАНЕНИЕ")
      s.contains("аукцион")->CopilotState.setPlate(this,v.plate,"АУКЦИОН",sale)
      s.contains("продан")&&s.contains("номер")->CopilotState.setPlate(this,v.plate,"ПРОДАН",sale)
