@@ -1,17 +1,79 @@
 const http=require("http");
 const crypto=require("crypto");
+const fs=require("fs");
+const path=require("path");
+
 const clients=new Set();
 const token=process.env.COPILOT_TOKEN||"";
+const openaiKey=process.env.OPENAI_API_KEY||"";
+const model=process.env.OPENAI_MODEL||"gpt-5.6-luna";
+const uploadDir=process.env.UPLOAD_DIR||path.join(process.cwd(),"uploads");
+fs.mkdirSync(uploadDir,{recursive:true});
 let latest=null;
 const uploads=new Map();
+
 function auth(req){return !token||req.headers.authorization==="Bearer "+token}
+function safeName(s){return String(s||"attachment").replace(/[^a-zA-Z0-9._-]/g,"_").slice(0,120)}
+function json(res,status,obj){res.writeHead(status,{"content-type":"application/json"});res.end(JSON.stringify(obj))}
+function broadcast(obj,except){
+ try{
+  const data=frame(obj);
+  for(const c of clients)if(c!==except)c.write(data);
+ }catch{}
+}
+function frame(obj){
+ const p=Buffer.from(JSON.stringify(obj));
+ if(p.length<126)return Buffer.concat([Buffer.from([129,p.length]),p]);
+ if(p.length<65536){const h=Buffer.alloc(4);h[0]=129;h[1]=126;h.writeUInt16BE(p.length,2);return Buffer.concat([h,p])}
+ throw new Error("websocket message too large");
+}
+
+async function analyzeAttachment(u){
+ if(!openaiKey)return;
+ try{
+  const bytes=fs.readFileSync(u.file);
+  const b64=bytes.toString("base64");
+  let content;
+  if((u.mime||"").startsWith("image/")){
+   content=[{type:"input_text",text:
+     "Ты — CarFlipCopilot. Проанализируй изображение как часть текущей игры про перекуп автомобилей. "+
+     "Определи, что видно на экране/фото: машину, цену, состояние, пробег, владельцев, повреждения, тюнинг, торг, объявления, баланс, расходы, результаты действий и другие игровые события. "+
+     "Свяжи вывод с текущим состоянием игры ниже. Верни кратко: 1) что обнаружено; 2) какие данные извлечены; 3) что изменилось; 4) влияние на ожидаемую прибыль/ROI; 5) какое следующее действие стоит проверить. Не выдумывай отсутствующие данные.\n\nТекущее состояние: "+
+     JSON.stringify(latest||{})},{type:"input_image",image_url:"data:"+u.mime+";base64,"+b64}];
+  }else{
+   content=[{type:"input_text",text:
+     "Проанализируй вложение для CarFlipCopilot. Если это текстовый/документный файл, извлеки полезные данные о машине, покупке, продаже, ремонте, тюнинге, торге, расходах и ROI. Если формат не позволяет извлечь содержимое, честно укажи это. Сопоставь с текущим состоянием игры и не выдумывай данные. Текущее состояние: "+
+     JSON.stringify(latest||{})+"\nФайл: "+u.name+" ("+u.mime+")"}];
+  }
+  const body={model,input:[{role:"user",content}]};
+  const r=await fetch("https://api.openai.com/v1/responses",{method:"POST",headers:{"Authorization":"Bearer "+openaiKey,"Content-Type":"application/json"},body:JSON.stringify(body)});
+  const data=await r.json();
+  if(!r.ok)throw new Error(JSON.stringify(data));
+  const text=data.output_text||data.output?.flatMap(x=>x.content||[]).map(x=>x.text||"").join("\n")||"";
+  u.analysis=text;
+  u.analyzedAt=Date.now();
+  broadcast({type:"attachment_analysis",id:u.id,name:u.name,mime:u.mime,analysis:text,time:u.analyzedAt});
+ }catch(e){
+  u.analysisError=String(e.message||e);
+  broadcast({type:"attachment_analysis_error",id:u.id,error:u.analysisError});
+ }
+}
+
 const server=http.createServer((req,res)=>{
- if(!auth(req)){res.writeHead(401);return res.end("unauthorized")}
- if(req.url==="/health"){res.writeHead(200,{"content-type":"application/json"});return res.end(JSON.stringify({ok:true,clients:clients.size,uploads:uploads.size}))}
- if(req.url==="/state"){res.writeHead(200,{"content-type":"application/json"});return res.end(JSON.stringify(latest||{}))}
- if(req.url==="/attachments"){res.writeHead(200,{"content-type":"application/json"});return res.end(JSON.stringify([...uploads.values()]))}
+ if(!auth(req))return json(res,401,{error:"unauthorized"});
+ if(req.url==="/health")return json(res,200,{ok:true,clients:clients.size,uploads:uploads.size,ai:!!openaiKey});
+ if(req.url==="/state")return json(res,200,latest||{});
+ if(req.url==="/attachments")return json(res,200,[...uploads.values()].map(({file,...x})=>x));
+ const m=req.url.match(/^\/attachments\/([^/]+)$/);
+ if(m&&req.method==="GET"){
+  const u=uploads.get(m[1]);if(!u)return json(res,404,{error:"not_found"});
+  if(!u.file||!fs.existsSync(u.file))return json(res,404,{error:"file_not_available"});
+  res.writeHead(200,{"content-type":u.mime||"application/octet-stream","content-disposition":"attachment; filename=\""+safeName(u.name)+"\""});
+  return fs.createReadStream(u.file).pipe(res);
+ }
  res.writeHead(404);res.end("not found");
 });
+
 server.on("upgrade",(req,socket)=>{
  if(req.url!=="/ws"||!auth(req)){socket.destroy();return}
  const key=req.headers["sec-websocket-key"];
@@ -29,19 +91,31 @@ server.on("upgrade",(req,socket)=>{
    if(masked){const m=socket._buf.subarray(off-4,off);for(let i=0;i<payload.length;i++)payload[i]^=m[i%4]}
    socket._buf=socket._buf.subarray(off+len);
    if((b1&15)===8){clients.delete(socket);socket.end();return}
-   if((b1&15)===1){try{
+   if((b1&15)!==1)continue;
+   try{
     const msg=JSON.parse(payload.toString());
     if(msg.type==="state")latest=msg;
-    if(msg.type==="attachment_start")uploads.set(msg.id,{id:msg.id,name:msg.name,mime:msg.mime,size:msg.size,time:msg.time,chunks:0,complete:false});
-    if(msg.type==="attachment_chunk"){const u=uploads.get(msg.id);if(u)u.chunks++}
-    if(msg.type==="attachment_end"){const u=uploads.get(msg.id);if(u)u.complete=true}
+    if(msg.type==="attachment_start"){
+      const file=path.join(uploadDir,crypto.randomUUID()+"_"+safeName(msg.name));
+      uploads.set(msg.id,{id:msg.id,name:msg.name,mime:msg.mime,size:msg.size,time:msg.time,chunks:0,complete:false,file});
+      fs.writeFileSync(file,Buffer.alloc(0));
+    }
+    if(msg.type==="attachment_chunk"){
+      const u=uploads.get(msg.id);
+      if(u&&u.chunks<2000){
+       const chunk=Buffer.from(msg.data||"","base64");
+       if(fs.statSync(u.file).size+chunk.length<=50*1024*1024)fs.appendFileSync(u.file,chunk);
+       u.chunks++;
+      }
+    }
+    if(msg.type==="attachment_end"){
+      const u=uploads.get(msg.id);if(u){u.complete=true;broadcast({type:"attachment_received",id:u.id,name:u.name,mime:u.mime,size:u.size,time:Date.now()},socket);analyzeAttachment(u)}
+    }
     broadcast(msg,socket);
-   }catch{}}
+   }catch{}
   }
  });
  socket.on("close",()=>clients.delete(socket));
 });
-function frame(obj){const p=Buffer.from(JSON.stringify(obj));if(p.length>=126&&p.length<65536){const h=Buffer.alloc(4);h[0]=129;h[1]=126;h.writeUInt16BE(p.length,2);return Buffer.concat([h,p])}if(p.length<126)return Buffer.concat([Buffer.from([129,p.length]),p]);throw new Error("frame too large")}
-function broadcast(obj,except){let data;try{data=frame(obj)}catch{return}for(const c of clients)if(c!==except)c.write(data)}
 setInterval(()=>broadcast({type:"heartbeat",time:Date.now()}),15000);
 server.listen(process.env.PORT||8080,"0.0.0.0");
