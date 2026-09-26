@@ -71,12 +71,18 @@ class MainActivity:AppCompatActivity(){
    val a=CopilotState.plateAuction(this,v.plate)
    val best=CopilotState.plateBestBid(this,v.plate)
    val bids=CopilotState.plateBids(this,v.plate)
-   val roi=CopilotState.plateAuctionRoi(this,v.plate)
+   val roi=CopilotState.plateRoi(this,v.plate)
+   val margin=CopilotState.plateAuctionMarginPercent(this,v.plate)
+   val cost=CopilotState.plateCost(this,v.plate)
+   val net=CopilotState.plateNetResult(this,v.plate)
    "🔖 НОМЕР / АУКЦИОН\nНомер: "+v.plate+"\nСтатус: "+a.optString("status","нет данных")+
     (if(a.has("starting_price"))"\nСтарт: "+fmt(a.optLong("starting_price"))+" ₽" else "")+
     (if(best!=null)"\nЛучшая ставка: "+fmt(best)+" ₽ • ставок: "+bids.size else "\nСтавок: 0")+
     (if(a.has("final_price"))"\nФинальная цена: "+fmt(a.optLong("final_price"))+" ₽" else "")+
-    (if(roi!=null)"\nМаржа от старта: "+String.format("%.1f",roi)+"%" else "\nМаржа от старта: нет данных")+
+    (if(cost!=null)"\nСебестоимость номера: "+fmt(cost)+" ₽" else "\nСебестоимость номера: нет данных")+\
+    (if(net!=null)"\nЧистый результат: "+fmt(net)+" ₽" else "\nЧистый результат: нет данных")+\
+    (if(roi!=null)"\nROI номера: "+String.format("%.1f",roi)+"%" else "\nROI номера: нет данных")+\
+    (if(margin!=null)"\nМаржа от старта: "+String.format("%.1f",margin)+"%" else "")+
     "\nПравило: на аукционе продаются только номера; машина не выставляется."
   }
   val actionSummary=if(v.name.isEmpty()) emptyList() else ActionRoiEngine.summary(this,v)
