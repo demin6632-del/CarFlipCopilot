@@ -24,6 +24,7 @@ class ScreenMonitorService:Service(){
  private var chatReceiver:BroadcastReceiver?=null
  private val recognizer by lazy{TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)}
  override fun onStartCommand(intent:Intent?,flags:Int,startId:Int):Int{
+  if(intent?.action=="CHAT_FILE" && ::liveBridge.isInitialized){val uri=intent.getStringExtra("uri")?:"";val name=intent.getStringExtra("name")?:"файл";if(uri.isNotBlank()){liveBridge.sendChat("Пользователь отправил файл: "+name+" | URI: "+uri,"user")}return START_STICKY}
   if(intent?.action=="CHAT" && ::liveBridge.isInitialized){
    val msg=intent.getStringExtra("message")?:""
    if(msg.isNotBlank()){ChatMemory.add(this,"user",msg);val answer=CopilotChatEngine.reply(this,msg);ChatMemory.add(this,"copilot",answer);sendBroadcast(Intent(ChatBus.ACTION).setPackage(packageName).putExtra("source","copilot").putExtra("message",answer));liveBridge.sendChat(answer)}
