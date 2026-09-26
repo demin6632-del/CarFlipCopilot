@@ -67,3 +67,62 @@ object GameParser {
  fun contract(t:String):String?=if(norm(t).contains("Кинопродюсер",true))"Кинопродюсер • USA • ≥300 л.с. • ≤2 500 000 ₽ • ≤99 крашеных • +200 000 ₽" else null
  fun decision(v:VehicleSnapshot)=when{v.price!=null&&v.price>2500000L->"НЕ ПОКУПАЙ";v.hp!=null&&v.hp<300->"НЕ ПОКУПАЙ";v.paintedParts!=null&&v.paintedParts>99->"НЕ ПОКУПАЙ";v.price!=null&&v.hp!=null&&v.price<=2500000L&&v.hp>=300&&v.origin=="USA"&&(v.paintedParts==null||v.paintedParts<=99)->"ПОКУПАЙ";v.price!=null||v.hp!=null||v.origin.isNotEmpty()->"ПРОВЕРЯЙ";else->"СМОТРЮ…"}
 }
+
+
+data class PlayerState(
+    val level:Int?=null,val xp:Int?=null,val xpMax:Int?=null,val respect:Int?=null,
+    val balance:Long?=null,val garageUsed:Int?=null,val garageCapacity:Int?=null,
+    val creditStatus:String?=null,val vip:String?=null
+)
+data class GameSectionState(val section:String,val seen:Int=0,val lastSeenAt:Long=System.currentTimeMillis())
+data class GameState(
+    val player:PlayerState=PlayerState(),val vehicle:VehicleSnapshot=VehicleSnapshot(),
+    val activeSection:String="",val activeOperation:String?=null,
+    val sections:List<GameSectionState> = emptyList(),val lastEvent:String?=null,
+    val updatedAt:Long=System.currentTimeMillis()
+)
+data class GameOpportunity(
+    val action:String,val section:String,val title:String,val reason:String,
+    val expectedValue:Long?=null,val confidence:Int=0
+)
+
+object WholeGameParser {
+ fun level(t:String):Int?=Regex("(?i)(?:уровень|level)\\s*[:№-]?\\s*(\\d+)").find(t)?.groupValues?.get(1)?.toIntOrNull()
+ fun xp(t:String):Pair<Int,Int?>? { val m=Regex("(?i)(?:xp|опыт)\\s*[:]?\\s*(\\d+)\\s*/\\s*(\\d+)").find(t)?:return null;return Pair(m.groupValues[1].toIntOrNull()?:return null,m.groupValues[2].toIntOrNull()) }
+ fun respect(t:String):Int?=Regex("(?i)(?:уважение|respect)\\s*[:]?\\s*(\\d+)").find(t)?.groupValues?.get(1)?.toIntOrNull()
+ fun section(t:String):String { val s=t.lowercase();return when {
+  s.contains("рынок авто")->"РЫНОК АВТО";s.contains("автосалон")->"АВТОСАЛОН";s.contains("аукцион номеров")->"АУКЦИОН НОМЕРОВ"
+  s.contains("импорт с таможни")||s.contains("таможн")->"ТАМОЖНЯ";s.contains("бизнес")->"БИЗНЕСЫ";s.contains("работа")->"РАБОТА"
+  s.contains("клан")->"КЛАНЫ";s.contains("пари")||s.contains("ставк")->"ПАРИ";s.contains("уличн")&&s.contains("гон")->"УЛИЧНЫЕ ГОНКИ"
+  s.contains("гаражная находка")->"ГАРАЖНАЯ НАХОДКА";s.contains("сходка")||s.contains("тц")->"СХОДКА У ТЦ"
+  s.contains("реферал")->"РЕФЕРАЛЫ";s.contains("частн")&&s.contains("авторын")->"ЧАСТНЫЕ АВТОРЫНКИ"
+  s.contains("финансов")->"ФИНАНСОВЫЙ СЕКТОР";s.contains("гараж")->"ГАРАЖ";s.contains("профиль")->"ПРОФИЛЬ";else->"ДРУГОЕ" } }
+}
+object WholeGameState {
+ private const val PREF="whole_game_state"
+ private fun p(c:Context)=c.getSharedPreferences(PREF,Context.MODE_PRIVATE)
+ fun update(c:Context,text:String,v:VehicleSnapshot,balance:Long,garage:Int,event:String?){
+  val old=read(c);val xp=WholeGameParser.xp(text);val lvl=WholeGameParser.level(text);val respect=WholeGameParser.respect(text);val section=WholeGameParser.section(text)
+  val player=PlayerState(lvl?:old.player.level,xp?.first?:old.player.xp,xp?.second?:old.player.xpMax,respect?:old.player.respect,balance,garage,old.player.creditStatus,old.player.vip)
+  val o=JSONObject().put("level",player.level).put("xp",player.xp).put("xpMax",player.xpMax).put("respect",player.respect).put("balance",balance).put("garageUsed",garage)
+    .put("section",section).put("lastEvent",event).put("updatedAt",System.currentTimeMillis())
+  p(c).edit().putString("state",o.toString()).apply()
+  if(section!="ДРУГОЕ"&&section!=old.activeSection)CopilotState.addEvent(c,"ЗОНА • $section")
+ }
+ fun read(c:Context):GameState { val o=JSONObject(p(c).getString("state","{}")?: "{}");val old=PlayerState(
+  if(o.has("level"))o.optInt("level")else null,if(o.has("xp"))o.optInt("xp")else null,if(o.has("xpMax"))o.optInt("xpMax")else null,
+  if(o.has("respect"))o.optInt("respect")else null,if(o.has("balance"))o.optLong("balance")else null,
+  if(o.has("garageUsed"))o.optInt("garageUsed")else null,null,null,null)
+  return GameState(old,CopilotState.snapshot(c),o.optString("section"),null,emptyList(),o.optString("lastEvent").ifBlank{null},o.optLong("updatedAt")) }
+}
+object WholeGameOpportunityEngine {
+ private val knownSections=setOf("АВТОСАЛОН","АУКЦИОН НОМЕРОВ","ТАМОЖНЯ","БИЗНЕСЫ","РАБОТА","КЛАНЫ","ПАРИ","УЛИЧНЫЕ ГОНКИ","ГАРАЖНАЯ НАХОДКА","СХОДКА У ТЦ","РЕФЕРАЛЫ","ЧАСТНЫЕ АВТОРЫНКИ","ФИНАНСОВЫЙ СЕКТОР")
+ fun analyze(c:Context,text:String,v:VehicleSnapshot,balance:Long,garage:Int):GameOpportunity {
+  val section=WholeGameParser.section(text)
+  if(section=="ПРОФИЛЬ")return GameOpportunity("ИЗУЧАЙ",section,"Профиль","Собираю уровень, XP, уважение и ограничения",null,90)
+  if(section=="РЫНОК АВТО"&&v.price!=null)return GameOpportunity(GameParser.decision(v),section,"Сделка","Проверяю цену входа, состояние и выход",null,75)
+  if(section=="ГАРАЖ")return GameOpportunity("ПРОВЕРЯЙ АКТИВЫ",section,"Гараж","Учитываю занятый капитал и свободные слоты",null,80)
+  if(section in knownSections)return GameOpportunity("СОБИРАЙ ДАННЫЕ",section,"Изучаем $section","Фиксирую операции, стоимость, награды и результат; пока данных недостаточно",null,35)
+  return GameOpportunity("СОБИРАЙ ДАННЫЕ",section,"Новая игровая зона","Фиксирую экран и доступные операции",null,25)
+ }
+}
