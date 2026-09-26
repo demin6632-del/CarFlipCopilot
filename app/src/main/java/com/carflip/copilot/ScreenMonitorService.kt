@@ -119,7 +119,7 @@ class ScreenMonitorService:Service(){
    }
    val decision=GameParser.decision(v);CopilotState.setDecision(this,decision)
    val forecast=CopilotState.dealForecast(this,v)
-   val opportunity=OpportunityAnalyzer.analyze(this,text,v,bal?:CopilotState.balance(this),garage?:CopilotState.garage(this))
+   val opportunity=DecisionEngine.decide(this,text,v,bal?:CopilotState.balance(this),garage?:CopilotState.garage(this))
    if(forecast.has("sale_price")&&forecast.optLong("sale_price",0)>0) CopilotState.saveForecast(this,forecast.optLong("sale_price"),if(forecast.has("expected_profit"))forecast.optLong("expected_profit")else null,if(forecast.has("roi_percent"))forecast.optDouble("roi_percent")else null,75)
    CopilotState.setDecision(this,opportunity.action)
    liveBridge.sendState(text,v,CopilotState.balance(this),CopilotState.garage(this),opportunity.action,opportunity)
@@ -151,7 +151,7 @@ class ScreenMonitorService:Service(){
   p.gravity=Gravity.TOP or Gravity.START;p.x=16;p.y=90;wm.addView(overlay,p)
  }
  private fun createChannel(){(getSystemService(NOTIFICATION_SERVICE)as NotificationManager).createNotificationChannel(NotificationChannel("copilot","Перекуп Copilot",NotificationManager.IMPORTANCE_LOW))}
- private fun sendLiveStatus(){val v=CopilotState.snapshot(this);val o=OpportunityAnalyzer.analyze(this,v.raw,v,CopilotState.balance(this),CopilotState.garage(this));liveBridge.sendState(v.raw,v,CopilotState.balance(this),CopilotState.garage(this),o.action,o)}
+ private fun sendLiveStatus(){val v=CopilotState.snapshot(this);val o=DecisionEngine.decide(this,v.raw,v,CopilotState.balance(this),CopilotState.garage(this));liveBridge.sendState(v.raw,v,CopilotState.balance(this),CopilotState.garage(this),o.action,o)}
  override fun onDestroy(){CopilotState.setMonitoring(this,false);if(::commandServer.isInitialized)commandServer.stop();if(::remotePoller.isInitialized)remotePoller.stop();if(::liveBridge.isInitialized)liveBridge.stop();lastFrame?.recycle();reader?.close();projection?.stop();overlay?.let{(getSystemService(WINDOW_SERVICE)as WindowManager).removeView(it)};recognizer.close();super.onDestroy()}
  override fun onBind(intent:Intent?):IBinder?=null
 }
