@@ -10,7 +10,10 @@ object DecisionEngine {
         val f=CopilotState.dealForecast(c,v)
         val profit=if(f.has("expected_profit"))f.optLong("expected_profit")else 0L
         val roi=if(f.has("roi_percent"))f.optDouble("roi_percent")else 0.0
-        val options=ActionDecisionEngine.evaluate(c,v)\n        val plateValue=if(v.plate.isNotBlank())CopilotState.plateValue(c,v.plate) else null\n        val plateOffers=if(v.plate.isNotBlank())CopilotState.plateOffers(c,v.plate) else emptyList()\n        val plateAuction=GameParser.plateAuction(text)
+        val options=ActionDecisionEngine.evaluate(c,v)
+        val plateValue=if(v.plate.isNotBlank())CopilotState.plateValue(c,v.plate) else null
+        val plateOffers=if(v.plate.isNotBlank())CopilotState.plateOffers(c,v.plate) else emptyList()
+        val plateAuction=GameParser.plateAuction(text)
         val best=ActionDecisionEngine.best(c,v)
         val candidates=mutableListOf<DecisionSignal>()
         candidates.add(DecisionSignal(opp.action,opp.title,opp.reason,opp.confidence.toDouble(),opp.confidence))
