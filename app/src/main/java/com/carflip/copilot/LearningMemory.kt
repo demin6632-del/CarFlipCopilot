@@ -150,7 +150,7 @@ object LearningMemory {
         if (changed) pref.edit().putString("action_history", a.toString()).apply()
     }
 
-    fun recordStateChange(c: Context, v: VehicleSnapshot, afterSale: Long, dealId: String = "", plate: String = "") {
+    fun recordStateChange(c: Context, v: VehicleSnapshot, afterSale: Long, dealId: String = "", plate: String = "", action: String = "") {
         val pref = p(c)
         val a = JSONArray(pref.getString("action_history", "[]"))
         val now = System.currentTimeMillis()
@@ -158,6 +158,7 @@ object LearningMemory {
         for (i in a.length() - 1 downTo 0) {
             val o = a.optJSONObject(i) ?: continue
             if (o.has("stateAfter")) continue
+            if (action.isNotEmpty() && ActionRoiEngine.normalize(o.optString("action")) != ActionRoiEngine.normalize(action)) continue
             if (dealId.isNotEmpty() && o.optString("deal_id") != dealId) continue
             if (plate.isNotEmpty() && o.optString("plate").isNotEmpty() && o.optString("plate") != plate) continue
             if (now - o.optLong("time", 0L) > 10 * 60 * 1000L) continue
@@ -170,6 +171,56 @@ object LearningMemory {
             changed = true
         }
         if (changed) pref.edit().putString("action_history", a.toString()).apply()
+    }
+
+    fun pendingAction(c: Context, v: VehicleSnapshot, action: String, dealId: String = "", plate: String = ""): Boolean {
+        val a = JSONArray(p(c).getString("action_history", "[]"))
+        val normalized = ActionRoiEngine.normalize(action)
+        val now = System.currentTimeMillis()
+        for (i in a.length() - 1 downTo 0) {
+            val o = a.optJSONObject(i) ?: continue
+            if (ActionRoiEngine.normalize(o.optString("action")) != normalized) continue
+            if (o.has("stateAfter")) continue
+            if (dealId.isNotEmpty() && o.optString("deal_id") != dealId) continue
+            if (plate.isNotEmpty() && o.optString("plate").isNotEmpty() && o.optString("plate") != plate) continue
+            if (now - o.optLong("time", 0L) <= 3 * 60 * 1000L && o.optLong("beforeSale", 0L) > 0L) return true
+        }
+        return false
+    }
+
+    data class ActionLearningSummary(
+        val action: String,
+        val samples: Int,
+        val realizedSamples: Int,
+        val avgCost: Long?,
+        val avgExpectedDelta: Long?,
+        val avgStateDelta: Long?,
+        val avgRealizedDelta: Long?,
+        val realizedRoi: Double?,
+        val expectedRoi: Double?,
+        val confidence: Int
+    )
+
+    fun actionSummary(c: Context, v: VehicleSnapshot, action: String): ActionLearningSummary {
+        val a = JSONArray(p(c).getString("action_history", "[]"))
+        val normalized = ActionRoiEngine.normalize(action)
+        val costs=mutableListOf<Long>(); val expected=mutableListOf<Long>(); val state=mutableListOf<Long>(); val realized=mutableListOf<Long>()
+        for(i in 0 until a.length()){
+            val o=a.optJSONObject(i)?:continue
+            if(o.optString("feature")!=featureKey(v))continue
+            if(ActionRoiEngine.normalize(o.optString("action"))!=normalized)continue
+            o.optLong("cost",0L).takeIf{it>0}?.let{costs+=it}
+            o.optLong("delta",0L).takeIf{it!=0L}?.let{expected+=it}
+            if(o.has("stateDelta")) state+=o.optLong("stateDelta")
+            if(o.has("realizedDelta")) realized+=o.optLong("realizedDelta")
+        }
+        val avg: (List<Long>)->Long? = { xs -> if(xs.isEmpty())null else xs.average().toLong() }
+        val cst=avg(costs); val exp=avg(expected); val st=avg(state); val real=avg(realized)
+        val rRoi=if(cst!=null&&cst>0&&real!=null)(real-cst).toDouble()/cst*100.0 else null
+        val eRoi=if(cst!=null&&cst>0&&exp!=null)(exp-cst).toDouble()/cst*100.0 else null
+        val n=costs.size
+        val confidence=when{realized.size>=10->90;realized.size>=5->82;realized.size>=2->70;n>=5->58;n>=2->48;n>=1->38;else->20}
+        return ActionLearningSummary(normalized,n,realized.size,cst,avg(expected),st,real,rRoi,eRoi,confidence)
     }
 
     fun recordAllActionOutcomes(c: Context, v: VehicleSnapshot, afterSale: Long, dealId: String = "", plate: String = "") {
