@@ -30,7 +30,25 @@ class ScreenMonitorService:Service(){
    cmd.uppercase()== "REQUEST_FRAME" -> lastFrame?.let{liveBridge.sendFrame(it)}
    cmd.uppercase()== "STATUS" -> sendLiveStatus()
    cmd.uppercase()== "STOP" -> stopSelf()
-   cmd.startsWith("ATTACHMENT_ANALYSIS|") -> { val p=cmd.split("|",limit=3); if(p.size>=3) CopilotState.addEvent(this,"ВЛОЖЕНИЕ • "+p[1]+"\\n"+p[2]) }
+   cmd.startsWith("ATTACHMENT_ANALYSIS|") -> {
+    val p=cmd.split("|",limit=3)
+    if(p.size>=3){
+     val name=p[1]; val json=p[2]; CopilotState.saveAttachmentAnalysis(this,name,json)
+     try{
+      val o=org.json.JSONObject(json); val base=CopilotState.snapshot(this); val vehicle=o.optJSONObject("vehicle")
+      val plate=vehicle?.optString("plate")?.takeIf{it.isNotBlank()}?:base.plate
+      val carName=vehicle?.optString("name")?.takeIf{it.isNotBlank()}?:base.name
+      val offers=o.optJSONArray("buyer_offers")?:org.json.JSONArray()
+      for(i in 0 until offers.length()){val x=offers.optJSONObject(i)?:continue;val amount=x.optLong("amount",0);if(amount>0)CopilotState.addBuyerOffer(this,plate,carName,x.optString("condition",""),amount,x.optString("buyer",""),x.optString("notes",""))}
+      val actions=o.optJSONArray("actions")?:org.json.JSONArray()
+      for(i in 0 until actions.length()){val x=actions.optJSONObject(i)?:continue;val cost=x.optLong("cost",0);val delta=x.optLong("expected_value_change",0);if(cost>0&&delta>0){CopilotState.saveActionRoi(this,x.optString("action",""),cost,delta,x.optString("reason",""));LearningMemory.learnAction(this,base,x.optString("action",""),cost,delta)}}
+      val sale=if(o.has("sale_price"))o.optLong("sale_price")else null; val profit=if(o.has("expected_profit"))o.optLong("expected_profit")else null
+      val roi=if(o.has("roi_percent"))o.optDouble("roi_percent")else null; val conf=if(o.has("confidence"))o.optInt("confidence")else null
+      if(sale!=null||profit!=null||roi!=null)CopilotState.saveForecast(this,sale,profit,roi,conf)
+      CopilotState.addEvent(this,"AI • "+name+" • прогноз/ROI/предложения сохранены")
+     }catch(e:Exception){CopilotState.addEvent(this,"AI • ошибка структуры: "+e.message)}
+    }
+   }
    cmd.startsWith("ATTACHMENT_ANALYSIS_ERROR|") -> CopilotState.addEvent(this,"ОШИБКА АНАЛИЗА ВЛОЖЕНИЯ • "+cmd.substringAfter("|"))
   }}
   liveBridge.start()
