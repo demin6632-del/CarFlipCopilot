@@ -1,7 +1,7 @@
 package com.carflip.copilot
 
 import android.app.*
-import android.content.*
+import android.content.Intent
 import android.graphics.*
 import android.media.*
 import android.media.projection.MediaProjection
@@ -14,34 +14,207 @@ import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.text.TextRecognition
 import com.google.mlkit.vision.text.latin.TextRecognizerOptions
 
-class ScreenMonitorService:Service(){
- private lateinit var commandServer:CommandServer
- private lateinit var remotePoller:RemoteCommandPoller
- private lateinit var liveBridge:LiveBridge
- private var lastFrame:Bitmap?=null
- private val stableOcr=StableOcr()
- private var projection:MediaProjection?=null;private var reader:ImageReader?=null;private var overlay:TextView?=null;private var lastCapture=0L;private var lastScreenKey="";private var lastVehiclePrice:Long?=null;private var lastVehiclePlate="";private var lastAction="";private var lastActionAt=0L;private var lastBalance:Long?=null;private var lastBalanceAt=0L
- private val recognizer by lazy{TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)}
- override fun onStartCommand(intent:Intent?,flags:Int,startId:Int):Int{
-  CopilotState.setMonitoring(this,true);createChannel();commandServer=CommandServer(this);commandServer.start();remotePoller=RemoteCommandPoller(this);remotePoller.start()
-  liveBridge=LiveBridge(this){cmd->when{
-   cmd.uppercase()=="REQUEST_FRAME"->lastFrame?.let{liveBridge.sendFrame(it)}
-   cmd.uppercase()=="STATUS"->sendLiveStatus()
-   cmd.uppercase()=="STOP"->stopSelf()
-   cmd.startsWith("ATTACHMENT_ANALYSIS|")->handleAttachment(cmd)
-   cmd.startsWith("ATTACHMENT_ANALYSIS_ERROR|")->CopilotState.addEvent(this,"ОШИБКА АНАЛИЗА ВЛОЖЕНИЯ • "+cmd.substringAfter("|"))
-  }};liveBridge.start();startForeground(10,Notification.Builder(this,"copilot").setContentTitle("Перекуп Copilot").setContentText("Мониторинг экрана • Telegram не нажимаю").setSmallIcon(android.R.drawable.ic_menu_view).build())
-  val code=intent?.getIntExtra("resultCode",-1)?:-1
-  @Suppress("DEPRECATION") val data=if(Build.VERSION.SDK_INT>=33)intent?.getParcelableExtra("data",Intent::class.java)else intent?.getParcelableExtra("data")
-  if(code!=-1&&data!=null){projection=(getSystemService(MEDIA_PROJECTION_SERVICE)as MediaProjectionManager).getMediaProjection(code,data);capture()};showOverlay();return START_NOT_STICKY
- }
- private fun handleAttachment(cmd:String){try{val p=cmd.split("|",limit=3);if(p.size<3)return;val name=p[1];val json=p[2];CopilotState.saveAttachmentAnalysis(this,name,json);val o=org.json.JSONObject(json);val base=CopilotState.snapshot(this);val vehicle=o.optJSONObject("vehicle");val plate=vehicle?.optString("plate")?.takeIf{it.isNotBlank()}?:base.plate;val carName=vehicle?.optString("name")?.takeIf{it.isNotBlank()}?:base.name;val offers=o.optJSONArray("buyer_offers")?:org.json.JSONArray();for(i in 0 until offers.length()){val x=offers.optJSONObject(i)?:continue;val amount=x.optLong("amount",0);if(amount>0)CopilotState.addBuyerOffer(this,plate,carName,x.optString("condition",""),amount,x.optString("buyer",""),x.optString("notes",""))};val actions=o.optJSONArray("actions")?:org.json.JSONArray();for(i in 0 until actions.length()){val x=actions.optJSONObject(i)?:continue;val cost=x.optLong("cost",0);val delta=x.optLong("expected_value_change",0);if(cost>0&&delta>0){val dealId=CopilotState.deals(this).firstOrNull{it.closed==null&&((base.plate.isNotEmpty()&&it.plate==base.plate)||(base.plate.isEmpty()&&it.name==base.name))}?.id?:"";CopilotState.saveActionRoi(this,x.optString("action",""),cost,delta,x.optString("reason",""),dealId,base.plate,base.price);LearningMemory.learnAction(this,base,x.optString("action",""),cost,delta,base.price,dealId,base.plate)}};val sale=if(o.has("sale_price"))o.optLong("sale_price")else null;val profit=if(o.has("expected_profit"))o.optLong("expected_profit")else null;val roi=if(o.has("roi_percent"))o.optDouble("roi_percent")else null;val conf=if(o.has("confidence"))o.optInt("confidence")else null;if(sale!=null||profit!=null||roi!=null)CopilotState.saveForecast(this,sale,profit,roi,conf);CopilotState.addEvent(this,"AI • "+name+" • прогноз/ROI/предложения сохранены")}catch(e:Exception){CopilotState.addEvent(this,"AI • ошибка структуры: "+e.message)}}
- private fun capture(){if(reader!=null)return;val dm=resources.displayMetrics;val w=dm.widthPixels;val h=dm.heightPixels;reader=ImageReader.newInstance(w,h,PixelFormat.RGBA_8888,2);projection?.createVirtualDisplay("CarFlipCopilot",w,h,dm.densityDpi,0,reader!!.surface,null,Handler(Looper.getMainLooper()));reader?.setOnImageAvailableListener({r->{val now=System.currentTimeMillis();if(now-lastCapture<600){r.acquireLatestImage()?.close();return@setOnImageAvailableListener};val im=r.acquireLatestImage()?:return@setOnImageAvailableListener;lastCapture=now;ocr(im)}},Handler(Looper.getMainLooper()))}
- private fun ocr(im:Image){val plane=im.planes[0];val pixelStride=plane.pixelStride;val rowStride=plane.rowStride;val rowPadding=rowStride-pixelStride*im.width;val paddedWidth=im.width+rowPadding/pixelStride;val bitmap=Bitmap.createBitmap(paddedWidth,im.height,Bitmap.Config.ARGB_8888);bitmap.copyPixelsFromBuffer(plane.buffer);im.close();val cropped=if(paddedWidth!=im.width)Bitmap.createBitmap(bitmap,0,0,im.width,im.height)else bitmap;if(cropped!==bitmap)bitmap.recycle();recognizer.process(InputImage.fromBitmap(cropped,0)).addOnSuccessListener{res->{val rawText=res.text.trim();if(rawText.isEmpty())return@addOnSuccessListener;val text=stableOcr.accept(rawText)?:return@addOnSuccessListener;val detectedAction=GameParser.action(text);if(detectedAction!=null){lastAction=detectedAction;lastActionAt=System.currentTimeMillis()};val v=VehicleSnapshot(GameParser.name(text),GameParser.price(text),GameParser.hp(text),GameParser.mileage(text),GameParser.owners(text),GameParser.plate(text),GameParser.origin(text),GameParser.paintedParts(text),text);if(v.price!=null&&lastVehiclePrice!=null&&v.price!=lastVehiclePrice){val deal=CopilotState.deals(this).firstOrNull{it.closed==null&&((v.plate.isNotEmpty()&&it.plate==v.plate)||(v.plate.isEmpty()&&it.name==v.name))};val plate=if(v.plate.isNotEmpty())v.plate else lastVehiclePlate;val action=if(lastAction.isNotEmpty()&&System.currentTimeMillis()-lastActionAt<=3*60*1000L)lastAction else "";LearningMemory.recordStateChange(this,v,v.price,deal?.id?:"",plate,action);if(action.isNotEmpty())CopilotState.addEvent(this,"СОСТОЯНИЕ • "+action+" • цена "+lastVehiclePrice+" → "+v.price+" ₽ • причинный результат зафиксирован")};if(v.price!=null)lastVehiclePrice=v.price;if(v.plate.isNotEmpty())lastVehiclePlate=v.plate;val purchase=GameParser.purchaseAmount(text);val sale=GameParser.saleAmount(text);val expense=GameParser.expenseAmount(text);val plateOffer=GameParser.plateOffer(text);val plateSale=GameParser.plateSale(text);val plateAuction=GameParser.plateAuction(text);val plateRemoved=GameParser.plateRemoved(text);val bal=GameParser.balance(text);val garage=GameParser.garage(text);if(bal!=null){if(lastBalance!=null&&bal!=lastBalance&&System.currentTimeMillis()-lastBalanceAt>2500){val delta=bal-lastBalance!!;if(purchase!=null)CopilotState.recordPurchase(this,v,purchase)else if(sale!=null)CopilotState.recordSale(this,v,sale)else if(expense!=null)CopilotState.addFee(this,expense,"Распознано на экране")else CopilotState.addLedger(this,"ИЗМЕНЕНИЕ БАЛАНСА",delta,"Безопасно: тип операции не определён");val sign=if(delta>=0)"+" else "";CopilotState.addEvent(this,"БАЛАНС • "+sign+delta+" ₽ → "+bal+" ₽")};CopilotState.setBalance(this,bal);lastBalance=bal;lastBalanceAt=System.currentTimeMillis()};if(garage!=null)CopilotState.setGarage(this,garage);val plateKey=if(v.plate.isNotEmpty())v.plate else lastVehiclePlate;if(plateRemoved&&plateKey.isNotEmpty()&&v.plate.isEmpty()){CopilotState.setPlate(this,plateKey,"СНЯТ");val cost=expense?:TradeEconomics.costs.plateRemoval;CopilotState.setPlateCost(this,plateKey,cost);CopilotState.addEvent(this,"СЕБЕСТОИМОСТЬ НОМЕРА • "+plateKey+" • "+cost+" ₽")};if(v.plate.isNotEmpty()){if(plateOffer!=null){val isNewBid=!CopilotState.hasPlateBid(this,v.plate,plateOffer);if(isNewBid)CopilotState.savePlateBid(this,v.plate,plateOffer,"","OCR");val bestBid=CopilotState.plateBestBid(this,v.plate);CopilotState.savePlateAuction(this,v.plate,"LIVE",null,bestBid,null,0);if(isNewBid)CopilotState.addEvent(this,"СТАВКА НОМЕРА • "+v.plate+" • "+plateOffer+" ₽")}else if(plateSale!=null){CopilotState.recordPlateSale(this,v.plate,plateSale);CopilotState.savePlateAuction(this,v.plate,"SOLD",null,CopilotState.plateBestBid(this,v.plate),plateSale,0);PlateLearning.recordSale(this,v.plate);CopilotState.addEvent(this,"НОМЕР • ПРОДАН • "+v.plate+" • "+plateSale+" ₽ • "+PlateLearning.summary(this,v.plate))}else if(plateAuction){val current=CopilotState.plateAuction(this,v.plate);if(current.optString("status","")!="LIVE"&&current.optString("status","")!="SOLD")CopilotState.savePlateAuction(this,v.plate,"OPEN",null,null,null,current.optLong("fees",0))}};val key=listOf(text.hashCode(),bal,garage,purchase,sale,expense,v.name,v.price,v.hp,v.mileage,v.owners,v.plate,v.origin,v.paintedParts).joinToString("|");if(key!=lastScreenKey){lastScreenKey=key;CopilotState.setSnapshot(this,v)};val opportunity=DecisionEngine.decide(this,text,v,bal?:CopilotState.balance(this),garage?:CopilotState.garage(this));CopilotState.setDecision(this,opportunity.action);liveBridge.sendState(text,v,CopilotState.balance(this),CopilotState.garage(this),opportunity.action,opportunity);val oldFrame=lastFrame;lastFrame=null;val maxW=720;val scaled=if(cropped.width>maxW)Bitmap.createScaledBitmap(cropped,maxW,cropped.height*maxW/cropped.width,true)else cropped.copy(Bitmap.Config.ARGB_8888,false);if(oldFrame!=null&&oldFrame!==cropped)oldFrame.recycle();lastFrame=scaled;showOverlayText(opportunity,v);}}).addOnFailureListener{} }
- private fun showOverlayText(o:Opportunity,v:VehicleSnapshot){overlay?.text="🚗 COPILOT • LIVE\n"+o.action+" • "+o.confidence+"%\n"+o.title+"\n"+o.reason}
- override fun onDestroy(){CopilotState.setMonitoring(this,false);projection?.stop();reader?.close();recognizer.close();lastFrame?.recycle();super.onDestroy()}
- override fun onBind(intent:Intent?):IBinder?=null
- private fun createChannel(){if(Build.VERSION.SDK_INT>=26){val nm=getSystemService(NOTIFICATION_SERVICE)as NotificationManager;nm.createNotificationChannel(NotificationChannel("copilot","Copilot",NotificationManager.IMPORTANCE_LOW))}}
- private fun showOverlay(){if(Settings.canDrawOverlays(this)){overlay=TextView(this);overlay?.text="🚗 COPILOT • LIVE";overlay?.setTextColor(Color.WHITE);overlay?.setBackgroundColor(0xAA111111.toInt());val wm=getSystemService(WINDOW_SERVICE)as WindowManager;val type=if(Build.VERSION.SDK_INT>=26)WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY else WindowManager.LayoutParams.TYPE_PHONE;val lp=WindowManager.LayoutParams(WindowManager.LayoutParams.WRAP_CONTENT,WindowManager.LayoutParams.WRAP_CONTENT,type,WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,PixelFormat.TRANSLUCENT);wm.addView(overlay,lp)}}
- private fun sendLiveStatus(){CopilotState.addEvent(this,"LIVE • запрос статуса")}
+class ScreenMonitorService : Service() {
+    private lateinit var commandServer: CommandServer
+    private lateinit var remotePoller: RemoteCommandPoller
+    private lateinit var liveBridge: LiveBridge
+    private var projection: MediaProjection? = null
+    private var reader: ImageReader? = null
+    private var overlay: TextView? = null
+    private var lastFrame: Bitmap? = null
+    private var lastCapture = 0L
+    private val stableOcr = StableOcr()
+    private val recognizer by lazy { TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS) }
+
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        CopilotState.setMonitoring(this, true)
+        createChannel()
+        commandServer = CommandServer(this).also { it.start() }
+        remotePoller = RemoteCommandPoller(this).also { it.start() }
+        liveBridge = LiveBridge(this) { command -> handleCommand(command) }.also { it.start() }
+        startForeground(
+            10,
+            Notification.Builder(this, "copilot")
+                .setContentTitle("Перекуп Copilot")
+                .setContentText("Realtime мониторинг игры")
+                .setSmallIcon(android.R.drawable.ic_menu_view)
+                .build()
+        )
+        @Suppress("DEPRECATION")
+        val data = intent?.getParcelableExtra<Intent>("data")
+        val code = intent?.getIntExtra("resultCode", -1) ?: -1
+        if (code != -1 && data != null) {
+            val manager = getSystemService(MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
+            projection = manager.getMediaProjection(code, data)
+            startCapture()
+        }
+        showOverlay()
+        return START_NOT_STICKY
+    }
+
+    private fun handleCommand(command: String) {
+        when {
+            command.equals("REQUEST_FRAME", true) -> lastFrame?.let { liveBridge.sendFrame(it) }
+            command.equals("STATUS", true) -> CopilotState.addEvent(this, "LIVE • статус запрошен")
+            command.equals("STOP", true) -> stopSelf()
+            command.startsWith("ATTACHMENT_ANALYSIS|") -> saveAttachmentAnalysis(command)
+            command.startsWith("ATTACHMENT_ANALYSIS_ERROR|") ->
+                CopilotState.addEvent(this, "AI • ошибка вложения • " + command.substringAfter('|'))
+        }
+    }
+
+    private fun saveAttachmentAnalysis(command: String) {
+        try {
+            val parts = command.split("|", limit = 3)
+            if (parts.size < 3) return
+            val name = parts[1]
+            val json = parts[2]
+            CopilotState.saveAttachmentAnalysis(this, name, json)
+            val root = org.json.JSONObject(json)
+            val vehicle = root.optJSONObject("vehicle")
+            val base = CopilotState.snapshot(this)
+            val snapshot = VehicleSnapshot(
+                vehicle?.optString("name")?.takeIf { it.isNotBlank() } ?: base.name,
+                vehicle?.takeIf { it.has("price") }?.optLong("price") ?: base.price,
+                vehicle?.takeIf { it.has("hp") }?.optInt("hp") ?: base.hp,
+                vehicle?.takeIf { it.has("mileage") }?.optLong("mileage") ?: base.mileage,
+                vehicle?.takeIf { it.has("owners") }?.optInt("owners") ?: base.owners,
+                vehicle?.optString("plate")?.takeIf { it.isNotBlank() } ?: base.plate,
+                vehicle?.optString("origin")?.takeIf { it.isNotBlank() } ?: base.origin,
+                vehicle?.takeIf { it.has("paintedParts") }?.optInt("paintedParts") ?: base.paintedParts,
+                base.raw
+            )
+            CopilotState.setSnapshot(this, snapshot)
+            CopilotState.addEvent(this, "AI • вложение обработано • $name")
+        } catch (e: Exception) {
+            CopilotState.addEvent(this, "AI • ошибка структуры вложения • ${e.message}")
+        }
+    }
+
+    private fun startCapture() {
+        if (reader != null || projection == null) return
+        val metrics = resources.displayMetrics
+        val width = metrics.widthPixels
+        val height = metrics.heightPixels
+        reader = ImageReader.newInstance(width, height, PixelFormat.RGBA_8888, 2)
+        projection?.createVirtualDisplay(
+            "CarFlipCopilot",
+            width,
+            height,
+            metrics.densityDpi,
+            0,
+            reader!!.surface,
+            null,
+            Handler(Looper.getMainLooper())
+        )
+        reader?.setOnImageAvailableListener({ source ->
+            val now = System.currentTimeMillis()
+            if (now - lastCapture < 700L) {
+                source.acquireLatestImage()?.close()
+                return@setOnImageAvailableListener
+            }
+            val image = source.acquireLatestImage() ?: return@setOnImageAvailableListener
+            lastCapture = now
+            processImage(image)
+        }, Handler(Looper.getMainLooper()))
+    }
+
+    private fun processImage(image: Image) {
+        try {
+            val plane = image.planes[0]
+            val rowPadding = plane.rowStride - plane.pixelStride * image.width
+            val width = image.width + rowPadding / plane.pixelStride
+            val bitmap = Bitmap.createBitmap(width, image.height, Bitmap.Config.ARGB_8888)
+            bitmap.copyPixelsFromBuffer(plane.buffer)
+            image.close()
+            val cropped = if (width != image.width) Bitmap.createBitmap(bitmap, 0, 0, image.width, image.height) else bitmap
+            if (cropped !== bitmap) bitmap.recycle()
+            recognizer.process(InputImage.fromBitmap(cropped, 0))
+                .addOnSuccessListener { result ->
+                    val text = stableOcr.accept(result.text) ?: return@addOnSuccessListener
+                    updateState(text, cropped)
+                }
+                .addOnFailureListener { image.closeIfNeeded() }
+        } catch (_: Exception) {
+            try { image.close() } catch (_: Exception) {}
+        }
+    }
+
+    private fun updateState(text: String, frame: Bitmap) {
+        val vehicle = VehicleSnapshot(
+            GameParser.name(text),
+            GameParser.price(text),
+            GameParser.hp(text),
+            GameParser.mileage(text),
+            GameParser.owners(text),
+            GameParser.plate(text),
+            GameParser.origin(text),
+            GameParser.paintedParts(text),
+            text
+        )
+        val balance = GameParser.balance(text) ?: CopilotState.balance(this)
+        val garage = GameParser.garage(text) ?: CopilotState.garage(this)
+        CopilotState.setBalance(this, balance)
+        CopilotState.setGarage(this, garage)
+        CopilotState.setSnapshot(this, vehicle)
+        val opportunity = DecisionEngine.decide(this, text, vehicle, balance, garage)
+        CopilotState.setDecision(this, opportunity.action)
+        liveBridge.sendState(text, vehicle, balance, garage, opportunity.action, opportunity)
+        val old = lastFrame
+        lastFrame = if (frame.width > 720) {
+            Bitmap.createScaledBitmap(frame, 720, frame.height * 720 / frame.width, true)
+        } else {
+            frame.copy(Bitmap.Config.ARGB_8888, false)
+        }
+        if (old != null && old !== frame) old.recycle()
+        showOverlayText(opportunity)
+    }
+
+    private fun showOverlayText(opportunity: Opportunity) {
+        overlay?.text = "🚗 COPILOT • LIVE\n${opportunity.action} • ${opportunity.confidence}%\n${opportunity.title}\n${opportunity.reason}"
+    }
+
+    private fun showOverlay() {
+        if (!Settings.canDrawOverlays(this)) return
+        overlay = TextView(this).apply {
+            text = "🚗 COPILOT • LIVE"
+            setTextColor(Color.WHITE)
+            setBackgroundColor(0xAA111111.toInt())
+        }
+        val manager = getSystemService(WINDOW_SERVICE) as WindowManager
+        val type = if (Build.VERSION.SDK_INT >= 26) WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY else WindowManager.LayoutParams.TYPE_PHONE
+        val params = WindowManager.LayoutParams(
+            WindowManager.LayoutParams.WRAP_CONTENT,
+            WindowManager.LayoutParams.WRAP_CONTENT,
+            type,
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
+            PixelFormat.TRANSLUCENT
+        )
+        manager.addView(overlay, params)
+    }
+
+    private fun createChannel() {
+        if (Build.VERSION.SDK_INT >= 26) {
+            val manager = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
+            manager.createNotificationChannel(NotificationChannel("copilot", "Copilot", NotificationManager.IMPORTANCE_LOW))
+        }
+    }
+
+    override fun onDestroy() {
+        CopilotState.setMonitoring(this, false)
+        try { commandServer.stop() } catch (_: Exception) {}
+        try { remotePoller.stop() } catch (_: Exception) {}
+        try { liveBridge.stop() } catch (_: Exception) {}
+        projection?.stop()
+        reader?.close()
+        recognizer.close()
+        lastFrame?.recycle()
+        super.onDestroy()
+    }
+
+    override fun onBind(intent: Intent?): IBinder? = null
+
+    private fun Image.closeIfNeeded() {
+        try { close() } catch (_: Exception) {}
+    }
 }
