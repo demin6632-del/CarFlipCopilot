@@ -79,10 +79,11 @@ class MainActivity:AppCompatActivity(){
     (if(a.has("starting_price"))"\nСтарт: "+fmt(a.optLong("starting_price"))+" ₽" else "")+
     (if(best!=null)"\nЛучшая ставка: "+fmt(best)+" ₽ • ставок: "+bids.size else "\nСтавок: 0")+
     (if(a.has("final_price"))"\nФинальная цена: "+fmt(a.optLong("final_price"))+" ₽" else "")+
-    (if(cost!=null)"\nСебестоимость номера: "+fmt(cost)+" ₽" else "\nСебестоимость номера: нет данных")+\
-    (if(net!=null)"\nЧистый результат: "+fmt(net)+" ₽" else "\nЧистый результат: нет данных")+\
-    (if(roi!=null)"\nROI номера: "+String.format("%.1f",roi)+"%" else "\nROI номера: нет данных")+\
+    (if(cost!=null)"\nСебестоимость номера: "+fmt(cost)+" ₽" else "\nСебестоимость номера: нет данных")+
+    (if(net!=null)"\nЧистый результат: "+fmt(net)+" ₽" else "\nЧистый результат: нет данных")+
+    (if(roi!=null)"\nROI номера: "+String.format("%.1f",roi)+"%" else "\nROI номера: нет данных")+
     (if(margin!=null)"\nМаржа от старта: "+String.format("%.1f",margin)+"%" else "")+
+    "\nКомиссии: "+fmt(a.optLong("fees",0))+" ₽"+
     "\nПравило: на аукционе продаются только номера; машина не выставляется."
   }
   val actionSummary=if(v.name.isEmpty()) emptyList() else ActionRoiEngine.summary(this,v)
