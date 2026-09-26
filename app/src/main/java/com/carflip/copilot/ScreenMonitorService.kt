@@ -24,6 +24,11 @@ class ScreenMonitorService:Service(){
  private var chatReceiver:BroadcastReceiver?=null
  private val recognizer by lazy{TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)}
  override fun onStartCommand(intent:Intent?,flags:Int,startId:Int):Int{
+  if(intent?.action=="CHAT" && ::liveBridge.isInitialized){
+   val msg=intent.getStringExtra("message")?:""
+   if(msg.isNotBlank()){ChatMemory.add(this,"user",msg);val answer=CopilotChatEngine.reply(this,msg);ChatMemory.add(this,"copilot",answer);sendBroadcast(Intent(ChatBus.ACTION).setPackage(packageName).putExtra("source","copilot").putExtra("message",answer));liveBridge.sendChat(answer)}
+   return START_STICKY
+  }
   CopilotState.setMonitoring(this,true);createChannel();commandServer=CommandServer(this);commandServer.start();remotePoller=RemoteCommandPoller(this);remotePoller.start()
   chatReceiver=object:BroadcastReceiver(){override fun onReceive(c:Context,i:Intent){val msg=i.getStringExtra("message")?:"";if(msg.isBlank())return;ChatMemory.add(this@ScreenMonitorService,"user",msg);val answer=CopilotChatEngine.reply(this@ScreenMonitorService,msg);ChatMemory.add(this@ScreenMonitorService,"copilot",answer);sendBroadcast(Intent(ChatBus.ACTION).setPackage(packageName).putExtra("source","copilot").putExtra("message",answer));liveBridge.sendChat(answer)}};registerReceiver(chatReceiver,IntentFilter(ChatBus.ACTION),Context.RECEIVER_NOT_EXPORTED);liveBridge=LiveBridge(this,{cmd->when(cmd.uppercase()){"REQUEST_FRAME"->lastFrame?.let{liveBridge.sendFrame(it)};"STATUS"->sendLiveStatus();"STOP"->stopSelf()}},{msg->ChatMemory.add(this,"user",msg);val answer=CopilotChatEngine.reply(this,msg);ChatMemory.add(this,"copilot",answer);sendBroadcast(Intent(ChatBus.ACTION).setPackage(packageName).putExtra("source","copilot").putExtra("message",answer));liveBridge.sendChat(answer)});liveBridge.start()
   startForeground(10,Notification.Builder(this,"copilot").setContentTitle("Перекуп Copilot").setContentText("Мониторинг экрана • Telegram не нажимаю").setSmallIcon(android.R.drawable.ic_menu_view).build())
