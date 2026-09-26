@@ -23,6 +23,7 @@ object LearningMemory {
     private const val PREF = "copilot_learning"
     private const val HISTORY = "history"
     private const val WEIGHTS = "weights"
+    private const val SITUATION = "situation"
 
     private fun p(c: Context) = c.getSharedPreferences(PREF, Context.MODE_PRIVATE)
 
@@ -41,6 +42,17 @@ object LearningMemory {
             else -> "2.5m+"
         }
         return "$origin|$hpBand|$priceBand"
+    }
+
+    fun setCurrentSituation(c: Context, signature: String) {
+        p(c).edit().putString(SITUATION, signature).apply()
+    }
+
+    fun situationScore(c: Context): Int {
+        val key = p(c).getString(SITUATION, "") ?: ""
+        if (key.isBlank()) return 0
+        val weights = JSONObject(p(c).getString(WEIGHTS, "{}"))
+        return (weights.optDouble("SITUATION:" + key, 0.0) * 20.0).roundToInt()
     }
 
     fun learn(c: Context, v: VehicleSnapshot, profit: Long, purchasePrice: Long? = v.price, salePrice: Long? = null) {
@@ -64,6 +76,12 @@ object LearningMemory {
         }
         // Online learning: the weight moves toward the latest observed result.
         weights.put(key, (old * 0.85 + reward * 0.15).coerceIn(-1.0, 1.0))
+        val situation = pref.getString(SITUATION, "") ?: ""
+        if (situation.isNotBlank()) {
+            val skey = "SITUATION:" + situation
+            val sold = weights.optDouble(skey, 0.0)
+            weights.put(skey, (sold * 0.85 + reward * 0.15).coerceIn(-1.0, 1.0))
+        }
         pref.edit().putString(HISTORY, history.toString()).putString(WEIGHTS, weights.toString()).apply()
     }
 
