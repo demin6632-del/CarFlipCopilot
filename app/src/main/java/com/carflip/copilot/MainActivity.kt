@@ -66,7 +66,7 @@ class MainActivity:AppCompatActivity(){
   val ledger=CopilotState.ledger(this).take(10).joinToString("\n"){e->"• "+e.type+": "+fmt(e.amount?:0)+" ₽ "+e.note}
   val plates=CopilotState.plates(this).take(10).joinToString("\n"){x->"• "+x.plate+" — "+x.state+(x.value?.let{" • "+fmt(it)+" ₽"}?:"")}
   tabs.text="РАЗДЕЛЫ\nОбзор • Сделки • Расходы • Номера • События\n\nСделки:\n"+(if(deals.isEmpty())"пока нет" else deals)+"\n\nНомера:\n"+(if(plates.isEmpty())"пока нет" else plates)+"\n\nПоследние расходы/операции:\n"+(if(ledger.isEmpty())"пока нет" else ledger)
-  attachments.text="📎 Вложения: фото/скриншоты • видео • документы/файлы\nМожно выбрать материал здесь или отправить его в CarFlipCopilot через «Поделиться»."
+  val offers=CopilotState.buyerOffers(this,v.plate).take(5)\n  attachments.text="📎 Вложения: фото/скриншоты • видео • документы/файлы\nМожно выбрать материал здесь или отправить его в CarFlipCopilot через «Поделиться».\n\n💰 Предложения покупателей:\n"+(if(offers.isEmpty())"пока нет" else offers.joinToString("\\n"))
   history.text="\nСобытия:\n"+(CopilotState.events(this).take(12).joinToString("\n"){"• "+it}.ifEmpty{"пока пусто"})
  }
  private fun showBridgeDialog(){
