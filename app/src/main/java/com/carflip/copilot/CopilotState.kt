@@ -4,7 +4,7 @@ import android.content.Context
 import org.json.JSONArray
 import org.json.JSONObject
 
-data class VehicleSnapshot(val name:String="",val price:Long?=null,val hp:Int?=null,val mileage:Long?=null,val owners:Int?=null,val plate:String="",val origin:String="",val paintedParts:Int?=null,val stage:Int?=null,val invested:Long?=null,val raw:String="",val updatedAt:Long=System.currentTimeMillis())
+data class VehicleSnapshot(val name:String="",val price:Long?=null,val hp:Int?=null,val mileage:Long?=null,val owners:Int?=null,val plate:String="",val origin:String="",val paintedParts:Int?=null,val stage:Int?=null,val invested:Long?=null,val polishApplied:Boolean?=null,val raw:String="",val updatedAt:Long=System.currentTimeMillis())
 data class LedgerEvent(val type:String,val amount:Long?=null,val note:String="",val time:Long=System.currentTimeMillis())
 data class Deal(val id:String,val name:String,val plate:String,val buy:Long?,val sell:Long?,val fees:Long,val opened:Long,val closed:Long?)
 data class PlateRecord(val plate:String,val state:String,val value:Long?,val updated:Long)
@@ -22,9 +22,9 @@ object CopilotState {
  fun setMonitoring(c:Context,v:Boolean)=p(c).edit().putBoolean("monitoring",v).apply()
  fun snapshot(c:Context):VehicleSnapshot{
   val s=p(c).getString("vehicle","")?:"";if(s.isEmpty())return VehicleSnapshot()
-  return try{val o=JSONObject(s);VehicleSnapshot(o.optString("name"),if(o.has("price"))o.optLong("price")else null,if(o.has("hp"))o.optInt("hp")else null,if(o.has("mileage"))o.optLong("mileage")else null,if(o.has("owners"))o.optInt("owners")else null,o.optString("plate"),o.optString("origin"),if(o.has("paintedParts"))o.optInt("paintedParts")else null,if(o.has("stage"))o.optInt("stage")else null,if(o.has("invested"))o.optLong("invested")else null,o.optString("raw"),o.optLong("updatedAt"))}catch(_:Exception){VehicleSnapshot()}
+  return try{val o=JSONObject(s);VehicleSnapshot(o.optString("name"),if(o.has("price"))o.optLong("price")else null,if(o.has("hp"))o.optInt("hp")else null,if(o.has("mileage"))o.optLong("mileage")else null,if(o.has("owners"))o.optInt("owners")else null,o.optString("plate"),o.optString("origin"),if(o.has("paintedParts"))o.optInt("paintedParts")else null,if(o.has("stage"))o.optInt("stage")else null,if(o.has("invested"))o.optLong("invested")else null,if(o.has("polishApplied"))o.optBoolean("polishApplied")else null,o.optString("raw"),o.optLong("updatedAt"))}catch(_:Exception){VehicleSnapshot()}
  }
- fun setSnapshot(c:Context,v:VehicleSnapshot){val o=JSONObject().put("name",v.name).put("plate",v.plate).put("origin",v.origin).put("raw",v.raw.take(8000)).put("updatedAt",v.updatedAt);v.price?.let{o.put("price",it)};v.hp?.let{o.put("hp",it)};v.mileage?.let{o.put("mileage",it)};v.owners?.let{o.put("owners",it)};v.paintedParts?.let{o.put("paintedParts",it)};v.stage?.let{o.put("stage",it)};v.invested?.let{o.put("invested",it)};p(c).edit().putString("vehicle",o.toString()).apply()}
+ fun setSnapshot(c:Context,v:VehicleSnapshot){val o=JSONObject().put("name",v.name).put("plate",v.plate).put("origin",v.origin).put("raw",v.raw.take(8000)).put("updatedAt",v.updatedAt);v.price?.let{o.put("price",it)};v.hp?.let{o.put("hp",it)};v.mileage?.let{o.put("mileage",it)};v.owners?.let{o.put("owners",it)};v.paintedParts?.let{o.put("paintedParts",it)};v.stage?.let{o.put("stage",it)};v.invested?.let{o.put("invested",it)};v.polishApplied?.let{o.put("polishApplied",it)};p(c).edit().putString("vehicle",o.toString()).apply()}
  private fun append(c:Context,keyName:String,obj:JSONObject,max:Int=200){val pref=p(c);val a=JSONArray(pref.getString(keyName,"[]"));val key=obj.optString("key");if(key.isNotEmpty())for(i in 0 until a.length())if(a.optJSONObject(i)?.optString("key")==key)return;a.put(obj);while(a.length()>max)a.remove(0);pref.edit().putString(keyName,a.toString()).apply()}
  fun addEvent(c:Context,text:String){append(c,"events",JSONObject().put("key",text.hashCode().toString()+"|"+System.currentTimeMillis()/5000).put("text",text.take(900)).put("time",System.currentTimeMillis()))}
  fun events(c:Context):List<String>{val a=JSONArray(p(c).getString("events","[]"));return(0 until a.length()).mapNotNull{a.optJSONObject(it)?.optString("text")}.reversed()}
@@ -57,7 +57,7 @@ object GameParser {
   return null
  }
  fun hp(t:String)=Regex("(?<!\\d)(\\d{2,4})\\s*(?:л\\.\\s*с\\.?|лс|hp)",RegexOption.IGNORE_CASE).find(norm(t))?.groupValues?.get(1)?.toIntOrNull()\n fun stage(t:String)=Regex("(?i)\\bStage\\s*(\\d+)").find(norm(t))?.groupValues?.get(1)?.toIntOrNull()\n fun invested(t:String)=Regex("(?i)(?:вложено в проект|вложено)[^\\d]{0,20}(\\d{1,3}(?:[ .]\\d{3}){1,2}|\\d{6,9})").find(norm(t))?.groupValues?.get(1)?.let(::num)
- fun mileage(t:String)=Regex("(?<!\\d)(\\d{1,3}(?: \\d{3})+|\\d{5,7})\\s*(?:км|km)",RegexOption.IGNORE_CASE).find(norm(t))?.groupValues?.get(1)?.let(::num)
+ fun polishApplied(t:String):Boolean?{val s=norm(t).lowercase();return if(s.contains("полировка нанесена: да")) true else if(s.contains("полировка нанесена: нет")) false else null}\n fun mileage(t:String)=Regex("(?<!\\d)(\\d{1,3}(?: \\d{3})+|\\d{5,7})\\s*(?:км|km)",RegexOption.IGNORE_CASE).find(norm(t))?.groupValues?.get(1)?.let(::num)
  fun owners(t:String)=Regex("(\\d+)\\s*(?:владельц|owner)",RegexOption.IGNORE_CASE).find(norm(t))?.groupValues?.get(1)?.toIntOrNull()
  fun plate(t:String)=Regex("\\b[А-ЯA-Z]\\d{3}[А-ЯA-Z]{2}\\s*\\d{2,3}\\b",RegexOption.IGNORE_CASE).find(norm(t))?.value?:""
  fun origin(t:String):String{val s=norm(t).lowercase();return when{Regex("\\busa\\b|сша|американ").containsMatchIn(s)->"USA";Regex("\\bchina\\b|китай").containsMatchIn(s)->"CHINA";Regex("\\bgermany\\b|герман").containsMatchIn(s)->"GERMANY";else->""}}
