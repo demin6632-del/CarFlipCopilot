@@ -13,6 +13,12 @@ data class LearningStats(
     val accuracy: Int
 )
 
+data class SalePriceEstimate(
+    val price: Long?,
+    val samples: Int,
+    val confidence: Int
+)
+
 object LearningMemory {
     private const val PREF = "copilot_learning"
     private const val HISTORY = "history"
@@ -37,12 +43,14 @@ object LearningMemory {
         return "$origin|$hpBand|$priceBand"
     }
 
-    fun learn(c: Context, v: VehicleSnapshot, profit: Long) {
+    fun learn(c: Context, v: VehicleSnapshot, profit: Long, purchasePrice: Long? = v.price, salePrice: Long? = null) {
         val pref = p(c)
         val history = JSONArray(pref.getString(HISTORY, "[]"))
         history.put(JSONObject()
             .put("feature", featureKey(v))
             .put("profit", profit)
+            .put("purchasePrice", purchasePrice ?: 0L)
+            .put("salePrice", salePrice ?: 0L)
             .put("time", System.currentTimeMillis()))
         while (history.length() > 500) history.remove(0)
 
@@ -62,6 +70,31 @@ object LearningMemory {
     fun score(c: Context, v: VehicleSnapshot): Int {
         val w = JSONObject(p(c).getString(WEIGHTS, "{}")).optDouble(featureKey(v), 0.0)
         return (w * 12.0).roundToInt()
+    }
+
+    fun estimateSalePrice(c: Context, v: VehicleSnapshot): SalePriceEstimate {
+        val purchase = v.price ?: return SalePriceEstimate(null, 0, 0)
+        val key = featureKey(v)
+        val a = JSONArray(p(c).getString(HISTORY, "[]"))
+        val ratios = mutableListOf<Double>()
+        for (i in 0 until a.length()) {
+            val o = a.optJSONObject(i) ?: continue
+            if (o.optString("feature") != key) continue
+            val buy = o.optLong("purchasePrice", 0L)
+            val sell = o.optLong("salePrice", 0L)
+            if (buy > 0L && sell > 0L) ratios += sell.toDouble() / buy.toDouble()
+        }
+        if (ratios.isEmpty()) return SalePriceEstimate(null, 0, 0)
+        ratios.sort()
+        val median = ratios[ratios.size / 2]
+        val estimate = (purchase * median).toLong()
+        val confidence = when {
+            ratios.size >= 20 -> 90
+            ratios.size >= 10 -> 80
+            ratios.size >= 5 -> 70
+            else -> 55
+        }
+        return SalePriceEstimate(estimate, ratios.size, confidence)
     }
 
     fun stats(c: Context): LearningStats {
