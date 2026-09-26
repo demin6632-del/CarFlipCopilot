@@ -60,6 +60,16 @@ class ScreenMonitorService:Service(){
    out.append("\nЦена продажи: ").append(learnedExit.price?.let{fmt(it)}?:"—").append(" ₽")
    if(learnedExit.price!=null)out.append(if(observedExit!=null)" • предложение покупателя" else " • оценка по истории ("+learnedExit.samples+" сделок, "+learnedExit.confidence+"% доверие)")
    if(observedExit!=null){LearningMemory.actionRoi(this,v,observedExit).forEach{r->out.append("\nROI ").append(r.action).append(": Δ цены ").append(if(r.priceDelta>=0)"+" else "").append(fmt(r.priceDelta)).append(" ₽, затраты ").append(fmt(r.cost)).append(" ₽ → ").append(if(r.roi>=0)"+" else "").append(fmt(r.roi)).append(" ₽")}}
+   val roiStats=LearningMemory.actionRoiStats(this,v)
+   if(roiStats.isNotEmpty()){out.append("\n\nИСТОРИЯ ROI:")
+    roiStats.forEach{r->
+     out.append("\n").append(r.action).append(" • N=").append(r.samples)
+       .append(" • Δ предложения ").append(if(r.priceDelta>=0)"+" else "").append(fmt(r.priceDelta)).append(" ₽")
+       .append(" • затраты ").append(fmt(r.cost)).append(" ₽")
+       .append(" • ROI ").append(if(r.roi>=0)"+" else "").append(fmt(r.roi)).append(" ₽")
+       .append(if(r.samples<3)" • данных мало" else if(r.roi>0)" • обычно окупается" else " • обычно не окупается"))
+    }
+   }
    out.append("\nОжидаемая прибыль: ").append(economics.expectedProfit?.let{(if(it>=0) "+" else "")+fmt(it)}?:"—").append(" ₽")
    if(v.hp!=null)out.append("\nМощность: ").append(v.hp).append(" л.с.")
    if(v.stage!=null)out.append("\nStage: ").append(v.stage)
