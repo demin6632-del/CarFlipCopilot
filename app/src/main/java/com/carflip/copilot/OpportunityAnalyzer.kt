@@ -28,6 +28,6 @@ object OpportunityAnalyzer {
    if(v.price!=null||v.hp!=null||v.origin.isNotBlank()||v.paintedParts!=null) return Opportunity("ПРОВЕРЯЙ","Недостаточно данных",e.contractMissing.joinToString(prefix="Не подтверждено: ").ifBlank{"Досмотри карточку автомобиля перед покупкой."},(72+learned).coerceIn(50,95))
   }
   return Opportunity("НАБЛЮДАЮ","Ищу возможность","Слежу за экраном и обновляю сигнал при изменении ситуации.",40)
- private fun fmt(v:Long)="%,d".format(v).replace(',',' ')
  }
+ private fun fmt(v:Long)="%,d".format(v).replace(',',' ')
 }
