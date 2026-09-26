@@ -170,7 +170,20 @@ class ScreenMonitorService:Service(){
    if(v.paintedParts!=null)out.append("\nКрашеных деталей: ").append(v.paintedParts)
    if(v.mileage!=null)out.append("\nПробег: ").append("%,d".format(v.mileage).replace(',',' ')).append(" км")
    if(v.owners!=null)out.append("\nВладельцев: ").append(v.owners)
-   if(v.plate.isNotEmpty()){out.append("\nНомер: ").append(v.plate);val pv=CopilotState.plateValue(this,v.plate);if(pv!=null)out.append(" • отдельно ≈ ").append("%,d".format(pv).replace(',', ' ')).append(" ₽");val po=CopilotState.plateOffers(this,v.plate);if(po.isNotEmpty())out.append("\nПредложения за номер: ").append(po.first())}
+   if(v.plate.isNotEmpty()){
+    out.append("\n\n🔖 НОМЕР • ").append(v.plate)
+    val auction=CopilotState.plateAuction(this,v.plate)
+    val bestBid=CopilotState.plateBestBid(this,v.plate)
+    val bids=CopilotState.plateBids(this,v.plate)
+    out.append("\nАукцион: ").append(auction.optString("status","нет данных"))
+    if(auction.has("starting_price"))out.append(" • старт ").append("%,d".format(auction.optLong("starting_price")).replace(',',' ')).append(" ₽")
+    if(bestBid!=null)out.append("\nЛучшая ставка: ").append("%,d".format(bestBid).replace(',',' ')).append(" ₽ • ставок ").append(bids.size)
+    if(auction.has("final_price"))out.append("\nФинальная цена: ").append("%,d".format(auction.optLong("final_price")).replace(',',' ')).append(" ₽")
+    val ar=CopilotState.plateAuctionRoi(this,v.plate)
+    if(ar!=null)out.append("\nМаржа аукциона от старта: ").append(String.format("%.1f",ar)).append("%")
+    val po=CopilotState.plateOffers(this,v.plate)
+    if(po.isNotEmpty())out.append("\nИстория отдельной продажи: ").append(po.first())
+   }
    out.append("\n\nБаланс: ").append("%,d".format(CopilotState.balance(this)).replace(',',' ')).append(" ₽")
    out.append("\nГараж: ").append(CopilotState.garage(this)).append("/3")
    out.append("\n\nМониторинг: ВКЛ • обновление ~0,6 с")
