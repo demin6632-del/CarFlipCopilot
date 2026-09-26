@@ -40,12 +40,8 @@ object LearningMemory {
     fun learn(c: Context, v: VehicleSnapshot, profit: Long) {
         val pref = p(c)
         val history = JSONArray(pref.getString(HISTORY, "[]"))
-        history.put(JSONObject()
-            .put("feature", featureKey(v))
-            .put("profit", profit)
-            .put("time", System.currentTimeMillis()))
+        history.put(JSONObject().put("feature", featureKey(v)).put("profit", profit).put("time", System.currentTimeMillis()))
         while (history.length() > 500) history.remove(0)
-
         val weights = JSONObject(pref.getString(WEIGHTS, "{}"))
         val key = featureKey(v)
         val old = weights.optDouble(key, 0.0)
@@ -54,7 +50,6 @@ object LearningMemory {
             profit < 0 -> -1.0
             else -> 0.0
         }
-        // Online learning: the weight moves toward the latest observed result.
         weights.put(key, (old * 0.85 + reward * 0.15).coerceIn(-1.0, 1.0))
         pref.edit().putString(HISTORY, history.toString()).putString(WEIGHTS, weights.toString()).apply()
     }
@@ -79,32 +74,100 @@ object LearningMemory {
         return LearningStats(samples, profitable, loss, if (samples == 0) 0 else sum / samples, accuracy)
     }
 
-    fun learnAction(c: Context, v: VehicleSnapshot, action: String, cost: Long, valueDelta: Long) {
-        val pref=p(c); val a=JSONArray(pref.getString("action_history","[]"))
-        a.put(JSONObject().put("feature",featureKey(v)).put("action",action.take(120)).put("cost",cost).put("delta",valueDelta).put("roi",if(cost>0)((valueDelta-cost).toDouble()/cost*100.0)else 0.0).put("time",System.currentTimeMillis()))
-        while(a.length()>500)a.remove(0)
-        pref.edit().putString("action_history",a.toString()).apply()
+    fun learnAction(c: Context, v: VehicleSnapshot, action: String, cost: Long, valueDelta: Long, beforeSale: Long? = null, dealId: String = "", plate: String = "") {
+        val pref = p(c)
+        val a = JSONArray(pref.getString("action_history", "[]"))
+        val normalized = ActionRoiEngine.normalize(action)
+        a.put(JSONObject()
+            .put("feature", featureKey(v))
+            .put("action", normalized)
+            .put("cost", cost)
+            .put("delta", valueDelta)
+            .put("roi", if (cost > 0) ((valueDelta - cost).toDouble() / cost * 100.0) else 0.0)
+            .put("beforeSale", beforeSale ?: JSONObject.NULL)
+            .put("deal_id", dealId)
+            .put("plate", plate)
+            .put("time", System.currentTimeMillis()))
+        while (a.length() > 500) a.remove(0)
+        pref.edit().putString("action_history", a.toString()).apply()
     }
+
     fun estimatedSale(c: Context, v: VehicleSnapshot, fallback: Long? = null): Long? {
-        val offers=CopilotState.buyerOffers(c,v.plate)
-        val nums=offers.mapNotNull{Regex("(\\d+)").find(it)?.groupValues?.get(1)?.toLongOrNull()}.filter{it>0}
+        val offers = CopilotState.buyerOffers(c, v.plate)
+        val nums = offers.mapNotNull { Regex("(\\d+)").find(it)?.groupValues?.get(1)?.toLongOrNull() }.filter { it > 0 }
         return when {
             nums.isNotEmpty() -> nums.average().toLong()
-            fallback!=null -> fallback
+            fallback != null -> fallback
             else -> v.price
         }
     }
 
-    fun actionSamples(c: Context, v: VehicleSnapshot, action: String): Int {\n        val a=JSONArray(p(c).getString("action_history","[]")); var n=0\n        for(i in 0 until a.length()){val o=a.optJSONObject(i)?:continue;if(o.optString("feature")==featureKey(v)&&ActionRoiEngine.normalize(o.optString("action")).equals(ActionRoiEngine.normalize(action),true))n++}\n        return n\n    }\n\n    fun actionRoi(c: Context, v: VehicleSnapshot, action: String): Double? {
-        val a=JSONArray(p(c).getString("action_history","[]")); var sum=0.0; var n=0
-        for(i in 0 until a.length()){val o=a.optJSONObject(i)?:continue;if(o.optString("feature")==featureKey(v)&&o.optString("action").equals(action,true)){sum+=o.optDouble("roi");n++}}
-        return if(n==0)null else sum/n
+    fun actionSamples(c: Context, v: VehicleSnapshot, action: String): Int {
+        val a = JSONArray(p(c).getString("action_history", "[]"))
+        var n = 0
+        val normalized = ActionRoiEngine.normalize(action)
+        for (i in 0 until a.length()) {
+            val o = a.optJSONObject(i) ?: continue
+            if (o.optString("feature") == featureKey(v) && ActionRoiEngine.normalize(o.optString("action")) == normalized) n++
+        }
+        return n
     }
 
-    fun recordActionOutcome(c: Context, v: VehicleSnapshot, action: String, afterSale: Long) {
-        val pref=p(c); val a=JSONArray(pref.getString("action_history","[]")); val normalized=ActionRoiEngine.normalize(action)
-        for(i in a.length()-1 downTo 0){ val o=a.optJSONObject(i)?:continue; if(ActionRoiEngine.normalize(o.optString("action"))!=normalized) continue; if(o.has("realizedDelta")) continue; val before=o.optLong("beforeSale",0L); if(before<=0) continue; o.put("realizedDelta",afterSale-before).put("outcomeTime",System.currentTimeMillis()); a.put(i,o); break }
-        pref.edit().putString("action_history",a.toString()).apply()
+    fun actionRoi(c: Context, v: VehicleSnapshot, action: String): Double? {
+        val a = JSONArray(p(c).getString("action_history", "[]"))
+        var sum = 0.0
+        var n = 0
+        val normalized = ActionRoiEngine.normalize(action)
+        for (i in 0 until a.length()) {
+            val o = a.optJSONObject(i) ?: continue
+            if (o.optString("feature") == featureKey(v) && ActionRoiEngine.normalize(o.optString("action")) == normalized) {
+                sum += o.optDouble("roi")
+                n++
+            }
+        }
+        return if (n == 0) null else sum / n
+    }
+
+    fun recordActionOutcome(c: Context, v: VehicleSnapshot, action: String, afterSale: Long, dealId: String = "", plate: String = "") {
+        val pref = p(c)
+        val a = JSONArray(pref.getString("action_history", "[]"))
+        val normalized = ActionRoiEngine.normalize(action)
+        var changed = false
+        for (i in a.length() - 1 downTo 0) {
+            val o = a.optJSONObject(i) ?: continue
+            if (ActionRoiEngine.normalize(o.optString("action")) != normalized) continue
+            if (o.has("realizedDelta")) continue
+            if (dealId.isNotEmpty() && o.optString("deal_id") != dealId) continue
+            if (plate.isNotEmpty() && o.optString("plate").isNotEmpty() && o.optString("plate") != plate) continue
+            val before = o.optLong("beforeSale", 0L)
+            if (before <= 0L) continue
+            o.put("realizedDelta", afterSale - before)
+                .put("afterSale", afterSale)
+                .put("outcomeTime", System.currentTimeMillis())
+            a.put(i, o)
+            changed = true
+        }
+        if (changed) pref.edit().putString("action_history", a.toString()).apply()
+    }
+
+    fun recordAllActionOutcomes(c: Context, v: VehicleSnapshot, afterSale: Long, dealId: String = "", plate: String = "") {
+        val pref = p(c)
+        val a = JSONArray(pref.getString("action_history", "[]"))
+        var changed = false
+        for (i in 0 until a.length()) {
+            val o = a.optJSONObject(i) ?: continue
+            if (o.has("realizedDelta")) continue
+            if (dealId.isNotEmpty() && o.optString("deal_id") != dealId) continue
+            if (plate.isNotEmpty() && o.optString("plate").isNotEmpty() && o.optString("plate") != plate) continue
+            val before = o.optLong("beforeSale", 0L)
+            if (before <= 0L) continue
+            o.put("realizedDelta", afterSale - before)
+                .put("afterSale", afterSale)
+                .put("outcomeTime", System.currentTimeMillis())
+            a.put(i, o)
+            changed = true
+        }
+        if (changed) pref.edit().putString("action_history", a.toString()).apply()
     }
 
     fun reset(c: Context) {
