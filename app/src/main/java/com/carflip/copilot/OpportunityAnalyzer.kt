@@ -1,75 +1,25 @@
 package com.carflip.copilot
 
-data class Opportunity(
-    val action: String,
-    val title: String,
-    val reason: String,
-    val confidence: Int = 0
-)
+data class Opportunity(val action:String,val title:String,val reason:String,val confidence:Int=0)
 
 object OpportunityAnalyzer {
-    fun analyze(context: android.content.Context, text: String, v: VehicleSnapshot, balance: Long?, garage: Int?): Opportunity {
-        val s = text.lowercase()
-        val price = v.price
-        val hp = v.hp
-        val painted = v.paintedParts
-        val hasCar = v.name.isNotBlank() || price != null || hp != null || v.plate.isNotBlank()
-        val learned = if (hasCar) LearningMemory.score(context, v) else 0
-        val economics = TradeEconomics.calculate(v)
-
-        if (s.contains("награда") || s.contains("награду")) {
-            return Opportunity("ПОЛУЧИ", "Есть награда", "Проверь условия и забери, если доступно.", 85)
-        }
-        if (s.contains("контракт") || s.contains("заказ")) {
-            return Opportunity("ПРОВЕРЬ", "Новый контракт", "Сравню требования контракта с автомобилем и экономикой сделки.", 80)
-        }
-        if (s.contains("аукцион") || s.contains("ставк")) {
-            if (v.plate.isNotBlank()) return Opportunity("АУКЦИОН", "Проверь номер", "Стартовая цена не считается фактической продажей номера.", 80)
-            return Opportunity("ПРОВЕРЬ", "Аукцион", "Проверяю цену входа и возможную прибыль.", 70)
-        }
-        if (s.contains("продать") || s.contains("продаж") || s.contains("выставить")) {
-            return Opportunity("ПРОДАВАЙ", "Есть возможность продажи", "Потенциальная прибыль считается только от фактического предложения/продажи.", 82)
-        }
-        if (s.contains("осмотр") || s.contains("автотека") || s.contains("толщиномер")) {
-            return Opportunity("ПРОВЕРЬ", "Проверка автомобиля", "Проверки добавляют расходы и могут изменить решение о покупке.", 78)
-        }
-        if (hasCar) {
-            if (price != null && balance != null && price > balance) {
-                return Opportunity("НЕ ПОКУПАЙ", "Не хватает денег", "Цена выше доступного баланса.", 98)
-            }
-            if (garage != null && garage >= 3) {
-                return Opportunity("НЕ ПОКУПАЙ", "Гараж заполнен", "Сначала освободи место или продай машину.", 98)
-            }
-            if (price != null && price > TradeEconomics.contract.maxCarPrice) {
-                return Opportunity("НЕ ПОКУПАЙ", "Выше лимита контракта", "Цена превышает лимит 2 500 000 ₽ текущего контракта.", 99)
-            }
-            if (hp != null && hp < TradeEconomics.contract.minHp) {
-                return Opportunity("НЕ ПОКУПАЙ", "Не подходит по мощности", "Текущий контракт требует минимум 300 л.с.", 99)
-            }
-            if (painted != null && painted > TradeEconomics.contract.maxPaintedParts) {
-                return Opportunity("НЕ ПОКУПАЙ", "Слишком много окраса", "Текущий контракт допускает максимум 99 окрашенных деталей.", 99)
-            }
-            if (v.origin.isNotBlank() && v.origin != TradeEconomics.contract.origin) {
-                return Opportunity("НЕ ПОКУПАЙ", "Не тот регион", "Текущий контракт требует автомобиль происхождения USA.", 97)
-            }
-
-            // A BUY signal is emitted only when every contract field is confirmed.
-            // Missing origin/painted parts remain a CHECK, never a guessed approval.
-            if (economics.contractEligible) {
-                return Opportunity(
-                    "ПОКУПАЙ",
-                    "Кандидат под контракт",
-                    "USA + минимум 300 л.с. + цена до 2,5 млн + подтверждённый окрас ≤99. " +
-                        "Проверки: 8 000 ₽. Цена выхода пока неизвестна.",
-                    (96 + learned).coerceIn(70, 99)
-                )
-            }
-            if (price != null || hp != null || v.origin.isNotBlank() || painted != null) {
-                val missing = economics.missing.filter { it != "цена выхода" }
-                val detail = if (missing.isEmpty()) "Контрактные условия не подтверждены." else "Не хватает: ${missing.joinToString(", ")}."
-                return Opportunity("ПРОВЕРЯЙ", "Недостаточно данных", "$detail Цена выхода не выдумывается.", (72 + learned).coerceIn(50, 95))
-            }
-        }
-        return Opportunity("НАБЛЮДАЮ", "Ищу возможность", "Слежу за экраном и обновляю сигнал при изменении ситуации.", 40)
-    }
+ fun analyze(context:android.content.Context,text:String,v:VehicleSnapshot,balance:Long?,garage:Int?):Opportunity {
+  val s=text.lowercase(); val hasCar=v.name.isNotBlank()||v.price!=null||v.hp!=null||v.plate.isNotBlank(); val learned=if(hasCar) LearningMemory.score(context,v) else 0
+  val e=TradeEconomics.calculate(v)
+  if(s.contains("награда")||s.contains("награду")||s.contains("бонус")) return Opportunity("ПОЛУЧИ","Есть награда/бонус","Проверь условия и забери, если доступно.",85)
+  if(s.contains("контракт")||s.contains("заказ")) return Opportunity("ПРОВЕРЬ","Новый контракт",TradeEconomics.summary(v),80)
+  if(s.contains("аукцион")||s.contains("ставк")) return if(v.plate.isNotBlank()) Opportunity("АУКЦИОН","Проверь номер","Есть аукционная активность. Стартовую цену не считаю фактической продажей.",80) else Opportunity("ПРОВЕРЬ","Аукцион",TradeEconomics.summary(v),70)
+  if(s.contains("продать")||s.contains("продаж")||s.contains("выставить")) return Opportunity("ПРОДАВАЙ","Есть возможность продажи","Цена выхода должна быть подтверждена экраном; без неё прибыль не оцениваю.",82)
+  if(s.contains("осмотр")||s.contains("автотека")||s.contains("толщиномер")) return Opportunity("ПРОВЕРЬ","Проверка автомобиля","Проверка может изменить себестоимость и решение о покупке.",78)
+  if(hasCar){
+   if(v.price!=null&&balance!=null&&v.price>balance) return Opportunity("НЕ ПОКУПАЙ","Не хватает денег","Цена входа выше доступного баланса.",98)
+   if(garage!=null&&garage>=3) return Opportunity("НЕ ПОКУПАЙ","Гараж заполнен","Сначала освободи место или продай машину.",98)
+   if(v.price!=null&&v.price>TradeEconomics.kinoProducer.maxPurchasePrice) return Opportunity("НЕ ПОКУПАЙ","Цена выше лимита","Цена входа превышает лимит контракта 2 500 000 ₽.",99)
+   if(v.hp!=null&&v.hp<TradeEconomics.kinoProducer.minHp) return Opportunity("НЕ ПОКУПАЙ","Не подходит по мощности","Контракт требует минимум 300 л.с.",99)
+   if(v.paintedParts!=null&&v.paintedParts>TradeEconomics.kinoProducer.maxPaintedParts) return Opportunity("НЕ ПОКУПАЙ","Слишком много окраса","Контракт допускает максимум 99 крашеных деталей.",99)
+   if(e.contractEligible) return Opportunity("ПОКУПАЙ","Кандидат под контракт","USA + ≥300 л.с. + ≤2,5 млн ₽ + ≤99 крашеных. Проверки: 8 000 ₽. Бонус: +200 000 ₽.",(96+learned).coerceIn(70,99))
+   if(v.price!=null||v.hp!=null||v.origin.isNotBlank()||v.paintedParts!=null) return Opportunity("ПРОВЕРЯЙ","Недостаточно данных",e.contractMissing.joinToString(prefix="Не подтверждено: ").ifBlank{"Досмотри карточку автомобиля перед покупкой."},(72+learned).coerceIn(50,95))
+  }
+  return Opportunity("НАБЛЮДАЮ","Ищу возможность","Слежу за экраном и обновляю сигнал при изменении ситуации.",40)
+ }
 }
