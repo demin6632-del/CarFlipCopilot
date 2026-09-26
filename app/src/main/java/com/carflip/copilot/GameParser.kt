@@ -20,11 +20,12 @@ object GameParser {
 
     fun price(text: String): Long? = amount(text, listOf(
         "цена", "стоимость", "купить", "покупка", "price",
-        "вложено в авто", "вложено в машину", "вложено", "инвестировано"
+        "вложено в авто", "вложено в машину", "вложено в проект", "вложено в проекте",
+        "вложено", "инвестировано"
     ))
 
     fun purchaseAmount(text: String): Long? = amount(text, listOf(
-        "покуп", "купил", "купить", "цена покупки", "buy", "вложено в авто"
+        "покуп", "купил", "купить", "цена покупки", "buy", "вложено в авто", "вложено в проект"
     ))
 
     fun saleAmount(text: String): Long? = amount(text, listOf(
@@ -59,15 +60,18 @@ object GameParser {
 
     fun plate(text: String): String {
         val normalized = text
+            .uppercase()
             .replace('О', 'O').replace('А', 'A').replace('В', 'B').replace('Е', 'E')
             .replace('К', 'K').replace('М', 'M').replace('Н', 'H').replace('Р', 'P')
             .replace('С', 'C').replace('Т', 'T').replace('У', 'Y').replace('Х', 'X')
+            .replace(Regex("[|¦]"), "I")
+        val compact = normalized.replace(Regex("[^A-Z0-9]"), "")
         val patterns = listOf(
-            Regex("\\b[A-Z]\\s*\\d{3}\\s*[A-Z]{2}\\s*\\d{2,3}\\b", RegexOption.IGNORE_CASE),
-            Regex("\\b[A-Z]\\d{3}[A-Z]{2}\\s*\\d{2,3}\\b", RegexOption.IGNORE_CASE)
+            Regex("[A-Z]\\d{3}[A-Z]{2}\\d{2,3}"),
+            Regex("[A-Z]\\d{3}[A-Z]{2}\\d{2}")
         )
-        val m = patterns.asSequence().mapNotNull { it.find(normalized) }.firstOrNull()
-        return m?.value?.replace(Regex("\\s+"), "")?.uppercase() ?: ""
+        val m = patterns.asSequence().mapNotNull { it.find(compact) }.firstOrNull()
+        return m?.value ?: ""
     }
 
     fun origin(text: String): String {
