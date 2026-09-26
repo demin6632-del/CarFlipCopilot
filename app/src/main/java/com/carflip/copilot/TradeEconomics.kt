@@ -51,7 +51,7 @@ object TradeEconomics {
             v.paintedParts!! <= kinoProducer.maxPaintedParts &&
             v.price!! <= kinoProducer.maxPurchasePrice
 
-        val total = (v.price ?: 0L) + checks
+        val total = (v.price ?: 0L) + checks + LISTING_EXTENSION
         val bonus = if (eligible) kinoProducer.bonus else 0L
         val profit = exitPrice?.let { it - total + bonus }
 
