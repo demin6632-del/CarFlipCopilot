@@ -12,5 +12,6 @@
             </intent-filter>
         </activity>
         <service android:name=".ScreenMonitorService" android:exported="false" android:foregroundServiceType="mediaProjection"/>
+        <service android:name=".ScreenMonitorServiceV2" android:exported="false" android:foregroundServiceType="mediaProjection"/>
     </application>
 </manifest>
