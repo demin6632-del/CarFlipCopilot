@@ -97,6 +97,14 @@ object GameParser {
         plateSaleEvent(text)?.let { sale ->
             return "ПРОДАЖА_НОМЕРА • ${sale.plate} • выплата=${sale.payout} ₽ • комиссия=${sale.commission} ₽${sale.commissionPercent?.let { " (${it}%)" } ?: ""}${sale.gross?.let { " • до комиссии=${it} ₽" } ?: ""}"
         }
+        if (plateAuctionNoBids(text)) {
+            val p = plate(text)
+            return if (p.isBlank()) {
+                "АУКЦИОН_НОМЕРА_БЕЗ_СТАВОК • номер возвращён на склад • продажа=0 ₽"
+            } else {
+                "АУКЦИОН_НОМЕРА_БЕЗ_СТАВОК • $p • возвращён на склад • продажа=0 ₽"
+            }
+        }
         val s = text.lowercase()
         return when {
             s.contains("продан") || s.contains("продажа") || s.contains("продал") || s.contains("sold") -> "ПРОДАЖА"
@@ -199,6 +207,15 @@ object GameParser {
             if (pct in 0.0..99.999) (payout / (1.0 - pct / 100.0)).toLong() else null
         }
         return PlateSaleEvent(plateValue, payout, commission, commissionPercent, gross)
+    }
+
+    fun plateAuctionNoBids(text: String): Boolean {
+        val x = text.lowercase().replace('ё', 'е')
+        val auction = x.contains("торги") || x.contains("аукцион") || x.contains("auction") || x.contains("bidding")
+        val noBids = x.contains("без ставок") || x.contains("нет ставок") || x.contains("no bids") || x.contains("no bid")
+        val returned = x.contains("возвращен") || x.contains("возвращен на склад") || x.contains("вернул") || x.contains("returned") || x.contains("storage")
+        val plateContext = x.contains("номер") || x.contains("госномер") || x.contains("plate")
+        return auction && noBids && returned && plateContext
     }
 
     fun plateAuction(text: String): Boolean {
