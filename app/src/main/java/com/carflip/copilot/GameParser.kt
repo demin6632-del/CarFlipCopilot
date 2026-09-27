@@ -177,6 +177,19 @@ object GameParser {
         return rules.firstOrNull { it.first.containsMatchIn(s) }?.second
     }
 
+    /** Price of the car explicitly offered without its plate. Never falls back to a normal sale price. */
+    fun carWithoutPlateSale(text: String): Long? {
+        val lines = text.lines().filter { line ->
+            val s = line.lowercase()
+            (s.contains("без номера") || s.contains("без госномер") || s.contains("without plate") || s.contains("without number")) &&
+                (s.contains("прод") || s.contains("цена") || s.contains("предлож"))
+        }
+        for (line in lines) {
+            numberAfter(line, listOf("продаж", "цена", "предлож", "получ"))?.let { return it }
+        }
+        return null
+    }
+
     fun plateOffer(text: String): Long? {
         val x = text.lowercase()
         val re = Regex("(?i)(?:предложение|ставка|цена)\\s*(?:за|на)?\\s*(?:гос)?номер[^0-9]{0,50}(\\d[\\d\\s.,]*)\\s*(?:₽|руб|rub)?")
