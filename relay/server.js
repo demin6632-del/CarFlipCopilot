@@ -15,6 +15,10 @@ const uploads=new Map();
 let latestFrame=null;
 let aiBusy=false;
 let pendingFrame=null;
+let lastAiError="";
+let lastAiStatus="";
+let lastFrameAt=0;
+let lastAiAt=0;
 const aiHistory=[];
 
 const liveDecisionSchema={
@@ -37,6 +41,7 @@ const liveDecisionSchema={
 
 function auth(req){return !token||req.headers.authorization==="Bearer "+token}
 function log(){console.log(new Date().toISOString(),...arguments)}
+function setAiStatus(message){lastAiStatus=String(message||"");broadcast({type:"ai_status",message:lastAiStatus});}
 
 function safeName(s){return String(s||"attachment").replace(/[^a-zA-Z0-9._-]/g,"_").slice(0,120)}
 function json(res,status,obj){res.writeHead(status,{"content-type":"application/json"});res.end(JSON.stringify(obj))}
@@ -91,14 +96,16 @@ function extractVideoFrames(file){
 }
 async function analyzeLiveFrame(){
  if(!openaiKey){
+  lastAiError="OPENAI_API_KEY missing";
   log("AI SKIP: OPENAI_API_KEY missing build="+BUILD_ID);
-  broadcast({type:"ai_status",message:"Ошибка relay: OPENAI_API_KEY не настроен на сервере"});
+  setAiStatus("Ошибка relay: OPENAI_API_KEY не настроен на сервере");
   return;
  }
  if(aiBusy||!latestFrame)return;
  aiBusy=true;
  const frame=latestFrame; latestFrame=null;
  log("AI START build="+BUILD_ID+" frameBytes="+Buffer.byteLength(frame||"","base64")+" clients="+clients.size);
+ lastAiAt=Date.now();
  broadcast({type:"ai_status",message:"ChatGPT анализирует экран игры…"});
  try{
   const state=latest||{};
@@ -126,7 +133,7 @@ async function analyzeLiveFrame(){
    text:{format:{type:"json_schema",name:"carflip_live_decision",strict:true,schema:liveDecisionSchema}}
   };
   log("AI REQUEST model="+model);
-  broadcast({type:"ai_status",message:"Запрос к ChatGPT отправлен • model="+model});
+  setAiStatus("Запрос к ChatGPT отправлен • model="+model);
   const controller=new AbortController();
   const timeout=setTimeout(()=>controller.abort(),30000);
   let r;
@@ -150,8 +157,9 @@ async function analyzeLiveFrame(){
   if(aiHistory.length>30)aiHistory.shift();
   broadcast({type:"ai_decision",decision:parsed,time:Date.now()});
  }catch(e){
-  log("AI ERROR",String(e.message||e));
-  broadcast({type:"ai_status",message:"Ошибка ChatGPT: "+String(e.message||e).slice(0,240)});
+  lastAiError=String(e.message||e);
+  log("AI ERROR",lastAiError);
+  setAiStatus("Ошибка ChatGPT: "+lastAiError.slice(0,240));
  }finally{
   aiBusy=false;
   if(latestFrame)analyzeLiveFrame();
@@ -202,7 +210,7 @@ async function analyzeAttachment(u){
 
 const server=http.createServer((req,res)=>{
  if(!auth(req))return json(res,401,{error:"unauthorized"});
- if(req.url==="/health")return json(res,200,{ok:true,build:BUILD_ID,model,clients:clients.size,uploads:uploads.size,ai:!!openaiKey});
+ if(req.url==="/health")return json(res,200,{ok:true,build:BUILD_ID,model,clients:clients.size,uploads:uploads.size,ai:!!openaiKey,lastFrameAt,lastAiAt,lastAiStatus,lastAiError:lastAiError?lastAiError.slice(0,500):""});
  if(req.url==="/state")return json(res,200,latest||{});
  if(req.url==="/attachments")return json(res,200,[...uploads.values()].map(({file,...x})=>x));
  const m=req.url.match(/^\/attachments\/([^/]+)$/);
@@ -240,7 +248,7 @@ server.on("upgrade",(req,socket)=>{
    try{
     const msg=JSON.parse(payload.toString());
     if(msg.type==="state"){latest=msg;log("STATE balance="+msg.balance+" garage="+msg.garage+" ocr="+String(msg.ocr||"").length);}
-    if(msg.type==="frame"){latestFrame=msg.jpegBase64||null;log("FRAME received bytes="+Buffer.byteLength(latestFrame||"","base64"));broadcast({type:"ai_status",message:"Кадр получен relay • запускаю анализ"});}
+    if(msg.type==="frame"){latestFrame=msg.jpegBase64||null;lastFrameAt=Date.now();log("FRAME received bytes="+Buffer.byteLength(latestFrame||"","base64"));setAiStatus("Кадр получен relay • запускаю анализ");}
     if(msg.type==="frame")setImmediate(analyzeLiveFrame);
     if(msg.type==="attachment_start"){
       const file=path.join(uploadDir,crypto.randomUUID()+"_"+safeName(msg.name));
