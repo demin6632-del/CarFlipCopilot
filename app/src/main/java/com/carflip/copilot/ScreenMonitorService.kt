@@ -36,6 +36,7 @@ class ScreenMonitorService : Service() {
     private var lastOcrChars = 0
     private var lastOcrError = ""
     private var captureReady = false
+    private var captureStopping = false
     private var lastScreenType = ""
     private var lastGameEvent = ""
     private var lastNewsSummary = ""
@@ -62,7 +63,17 @@ class ScreenMonitorService : Service() {
             projection = manager.getMediaProjection(code, data)
             if (projection == null) { lastOcrError = "MediaProjection вернул null"; showStatusPreservingDecision(lastOcrError); stopSelf(); return START_NOT_STICKY }
             captureThread = HandlerThread("CopilotCapture").also { it.start() }; captureHandler = Handler(captureThread!!.looper); decisionHandler = Handler(captureThread!!.looper)
-            projection?.registerCallback(object : MediaProjection.Callback() { override fun onStop() { captureReady = false; CopilotState.setMonitoring(this@ScreenMonitorService, false); lastOcrError = "Захват экрана остановлен Android"; CopilotState.addEvent(this@ScreenMonitorService, "CAPTURE • MediaProjection остановлен"); showStatusPreservingDecision(lastOcrError) } }, captureHandler)
+            projection?.registerCallback(object : MediaProjection.Callback() {
+                override fun onStop() {
+                    captureReady = false
+                    captureStopping = true
+                    CopilotState.setMonitoring(this@ScreenMonitorService, false)
+                    lastOcrError = "Android остановил захват. Нажми «Запустить мониторинг» и выдай разрешение ещё раз."
+                    CopilotState.addEvent(this@ScreenMonitorService, "CAPTURE • MediaProjection остановлен Android")
+                    releaseCaptureOnly()
+                    showStatusPreservingDecision(lastOcrError)
+                }
+            }, captureHandler)
             startCapture()
             if (captureReady) { CopilotState.setMonitoring(this, true); CopilotState.addEvent(this, "CAPTURE • MediaProjection готов • OCR запущен"); showStatusPreservingDecision("Захват экрана запущен") }
         } catch (error: Exception) { lastOcrError = error.message ?: "ошибка запуска MediaProjection"; CopilotState.setMonitoring(this, false); CopilotState.addEvent(this, "CAPTURE • ошибка запуска • $lastOcrError"); showStatusPreservingDecision(lastOcrError); stopSelf() }
@@ -75,10 +86,14 @@ class ScreenMonitorService : Service() {
 
     private fun startCapture() {
         if (reader != null || projection == null) return
-        val metrics = resources.displayMetrics; val width = metrics.widthPixels; val height = metrics.heightPixels
+        val metrics = resources.displayMetrics
+        val sourceWidth = metrics.widthPixels
+        val sourceHeight = metrics.heightPixels
+        val width = minOf(sourceWidth, 900)
+        val height = (sourceHeight.toLong() * width / sourceWidth).toInt().coerceAtLeast(1)
         try {
             val callbackHandler = captureHandler ?: Handler(Looper.getMainLooper())
-            reader = ImageReader.newInstance(width, height, PixelFormat.RGBA_8888, 2)
+            reader = ImageReader.newInstance(width, height, PixelFormat.RGBA_8888, 3)
             reader?.setOnImageAvailableListener({ source ->
                 frames++; val now = System.currentTimeMillis(); val image = source.acquireLatestImage() ?: return@setOnImageAvailableListener
                 if (now - lastCapture < 900L || processingOcr) { image.close(); return@setOnImageAvailableListener }
@@ -131,6 +146,15 @@ class ScreenMonitorService : Service() {
     private fun showStatusPreservingDecision(message: String) { overlay?.post { val decision = lastOpportunity; if (decision != null) { overlay?.text = "🤖 COPILOT\n\nСЕЙЧАС: ${decision.action.ifBlank { "ОЖИДАЙ" }}\n\n${lastVehicle.name.ifBlank { "Ситуация игры" }}\n\nЧТО ДЕЛАТЬ\n${decision.title.ifBlank { "Жди подтверждения ситуации" }}\n\nСтатус: $message" } else overlay?.text = "🤖 COPILOT\n\nСЕЙЧАС: АНАЛИЗИРУЮ\n\nЧТО ДЕЛАТЬ\nПодожди подтверждения игровой ситуации\n\nСтатус: $message" } }
     private fun showOverlay() { if (!Settings.canDrawOverlays(this)) return; overlay = TextView(this).apply { text = "🤖 COPILOT\n\nСЕЙЧАС: АНАЛИЗИРУЮ\n\nЧТО ДЕЛАТЬ\nОжидаю игровой экран"; setTextColor(Color.WHITE); setBackgroundColor(0xEE111111.toInt()); setPadding(18,16,18,16); textSize=14f }; val manager=getSystemService(WINDOW_SERVICE) as WindowManager; val type=if(Build.VERSION.SDK_INT>=26) WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY else WindowManager.LayoutParams.TYPE_PHONE; val params=WindowManager.LayoutParams(WindowManager.LayoutParams.WRAP_CONTENT,WindowManager.LayoutParams.WRAP_CONTENT,type,WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,PixelFormat.TRANSLUCENT); manager.addView(overlay,params) }
     private fun createChannel() { if(Build.VERSION.SDK_INT>=26){val manager=getSystemService(NOTIFICATION_SERVICE) as NotificationManager; manager.createNotificationChannel(NotificationChannel("copilot","Copilot",NotificationManager.IMPORTANCE_LOW))} }
-    override fun onDestroy(){CopilotState.setMonitoring(this,false);processingOcr=false;try{commandServer.stop()}catch(_:Exception){};try{remotePoller.stop()}catch(_:Exception){};try{liveBridge.stop()}catch(_:Exception){};try{virtualDisplay?.release()}catch(_:Exception){};virtualDisplay=null;try{projection?.stop()}catch(_:Exception){};projection=null;reader?.close();reader=null;try{captureThread?.quitSafely()}catch(_:Exception){};captureThread=null;captureHandler=null;decisionHandler=null;try{overlay?.let{(getSystemService(WINDOW_SERVICE) as WindowManager).removeView(it)}}catch(_:Exception){};overlay=null;try{lastFrame?.recycle()}catch(_:Exception){};lastFrame=null;super.onDestroy()}
+    private fun releaseCaptureOnly() {
+        try { virtualDisplay?.release() } catch (_: Exception) {}
+        virtualDisplay = null
+        try { reader?.close() } catch (_: Exception) {}
+        reader = null
+        processingOcr = false
+        captureReady = false
+    }
+
+    override fun onDestroy(){CopilotState.setMonitoring(this,false);processingOcr=false;try{commandServer.stop()}catch(_:Exception){};try{remotePoller.stop()}catch(_:Exception){};try{liveBridge.stop()}catch(_:Exception){};releaseCaptureOnly();if(!captureStopping){try{projection?.stop()}catch(_:Exception){}};projection=null;try{captureThread?.quitSafely()}catch(_:Exception){};captureThread=null;captureHandler=null;decisionHandler=null;try{overlay?.let{(getSystemService(WINDOW_SERVICE) as WindowManager).removeView(it)}}catch(_:Exception){};overlay=null;try{lastFrame?.recycle()}catch(_:Exception){};lastFrame=null;super.onDestroy()}
     override fun onBind(intent: Intent?): IBinder?=null
 }
