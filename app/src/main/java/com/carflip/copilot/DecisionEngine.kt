@@ -2,10 +2,6 @@ package com.carflip.copilot
 
 import android.content.Context
 
-/**
- * Стабилизирует решение поверх OCR, чтобы всплывающий помощник не мигал
- * между действиями из-за единичной ошибки распознавания.
- */
 object DecisionEngine {
     private var stable: Opportunity? = null
     private var candidateKey = ""
@@ -39,11 +35,16 @@ object DecisionEngine {
 
     fun decide(c: Context, text: String, v: VehicleSnapshot, balance: Long?, garage: Int?): Opportunity {
         WholeGameEventEngine.observe(c, text, GameScreenClassifier.classify(text), v)
-        val result = GameAiBrain.decide(c, text, v, balance, garage ?: CopilotState.garage(c))
-        CopilotState.saveForecast(c, CopilotState.dealForecast(c, v).optLong("sale_price").takeIf { it > 0 },
-            CopilotState.dealForecast(c, v).optLong("expected_profit").takeIf { CopilotState.dealForecast(c, v).has("expected_profit") },
-            CopilotState.dealForecast(c, v).optDouble("roi_percent").takeIf { CopilotState.dealForecast(c, v).has("roi_percent") },
-            result.opportunity.confidence)
-        return stableDecision(result.opportunity, result.urgent)
+        val brain = GameAiBrain.decide(c, text, v, balance, garage ?: CopilotState.garage(c))
+        val forecast = CopilotState.dealForecast(c, v)
+        val sale = forecast.optLong("sale_price", 0L).takeIf { it > 0L }
+        val profit = if (forecast.has("expected_profit") && !forecast.isNull("expected_profit")) {
+            forecast.optLong("expected_profit")
+        } else null
+        val roi = if (forecast.has("roi_percent") && !forecast.isNull("roi_percent")) {
+            forecast.optDouble("roi_percent")
+        } else null
+        CopilotState.saveForecast(c, sale, profit, roi, brain.opportunity.confidence)
+        return stableDecision(brain.opportunity, brain.urgent)
     }
 }
