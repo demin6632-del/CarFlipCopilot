@@ -13,7 +13,10 @@ object OpportunityAnalyzer {
         val price = v.price
         val hasCar = v.name.isNotBlank() || price != null || v.hp != null || v.plate.isNotBlank()
         val learned = if (hasCar) LearningMemory.score(context, v) else 0
-\n        // Game-level guidance has priority: the assistant must advise on the whole game, not only cars and plates.\n        GeneralGameAdvisor.analyze(context, text, balance, garage)?.let { return it }\n
+
+        // Game-level guidance has priority: the assistant must advise on the whole game, not only cars and plates.
+        GeneralGameAdvisor.analyze(context, text, balance, garage)?.let { return it }
+
         if (reward != null || event == "НАГРАДА") {
             return Opportunity("ПОЛУЧИ", "Найдена награда", "Copilot видит награду/бонус${reward?.let { ": $it" } ?: ""}. Проверь условия и забери её, если действие не требует невыгодных затрат.", 90)
         }
