@@ -25,6 +25,13 @@ object WholeGameEventEngine {
 
         GameMemory.sync(c)
 
+        val extensionCost = GameParser.listingExtensionCost(text)
+        if (extensionCost != null && extensionCost > 0 && once(c, "listing_extension", "${vehicle.plate}|${vehicle.name}|$extensionCost", 90_000L)) {
+            CopilotState.addFeeToOpenDeal(c, vehicle, extensionCost, "Продление объявления")
+            GameMemory.record(c, screen, "ПРОДЛЕНИЕ_ОБЪЯВЛЕНИЯ", vehicle = vehicle, amount = extensionCost)
+            CopilotState.addEvent(c, "РАСХОД • продление объявления • $extensionCost ₽ • авто ${vehicle.name.ifBlank { vehicle.plate }}")
+        }
+
         val purchase = GameParser.purchaseAmount(text)
         if (purchase != null && purchase > 0 &&
             once(c, "purchase", "${vehicle.plate}|${vehicle.name}|$purchase", 90_000L)) {
