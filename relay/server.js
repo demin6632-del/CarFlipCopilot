@@ -7,6 +7,7 @@ const clients=new Set();
 const token=process.env.COPILOT_TOKEN||"";
 const openaiKey=process.env.OPENAI_API_KEY||"";
 const model=process.env.OPENAI_MODEL||"gpt-5.6-luna";
+const BUILD_ID="live-ai-2026-09-28-2";
 const uploadDir=process.env.UPLOAD_DIR||path.join(process.cwd(),"uploads");
 fs.mkdirSync(uploadDir,{recursive:true});
 let latest=null;
@@ -90,14 +91,14 @@ function extractVideoFrames(file){
 }
 async function analyzeLiveFrame(){
  if(!openaiKey){
-  log("AI SKIP: OPENAI_API_KEY missing");
+  log("AI SKIP: OPENAI_API_KEY missing build="+BUILD_ID);
   broadcast({type:"ai_status",message:"Ошибка relay: OPENAI_API_KEY не настроен на сервере"});
   return;
  }
  if(aiBusy||!latestFrame)return;
  aiBusy=true;
  const frame=latestFrame; latestFrame=null;
- log("AI START frameBytes="+Buffer.byteLength(frame||"","base64")+" clients="+clients.size);
+ log("AI START build="+BUILD_ID+" frameBytes="+Buffer.byteLength(frame||"","base64")+" clients="+clients.size);
  broadcast({type:"ai_status",message:"ChatGPT анализирует экран игры…"});
  try{
   const state=latest||{};
@@ -131,8 +132,11 @@ async function analyzeLiveFrame(){
    body:JSON.stringify(body)
   });
   const data=await r.json();
+  log("AI RESPONSE status="+r.status+" outputChars="+String(data.output_text||"").length);
   if(!r.ok)throw new Error(JSON.stringify(data));
-  const parsed=JSON.parse(data.output_text||"{}");
+  if(!data.output_text)throw new Error("OpenAI returned empty output");
+  let parsed;
+  try{parsed=JSON.parse(data.output_text||"{}")}catch(e){throw new Error("Invalid AI JSON: "+String(e.message||e)+" raw="+String(data.output_text||"").slice(0,500))}
   parsed.confidence=Math.max(0,Math.min(100,Number(parsed.confidence)||0));
   aiHistory.push({time:Date.now(),decision:parsed,state:{
    balance:state.balance,garage:state.garage,vehicle:state.vehicle,ocr:state.ocr
@@ -192,7 +196,7 @@ async function analyzeAttachment(u){
 
 const server=http.createServer((req,res)=>{
  if(!auth(req))return json(res,401,{error:"unauthorized"});
- if(req.url==="/health")return json(res,200,{ok:true,clients:clients.size,uploads:uploads.size,ai:!!openaiKey});
+ if(req.url==="/health")return json(res,200,{ok:true,build:BUILD_ID,model,clients:clients.size,uploads:uploads.size,ai:!!openaiKey});
  if(req.url==="/state")return json(res,200,latest||{});
  if(req.url==="/attachments")return json(res,200,[...uploads.values()].map(({file,...x})=>x));
  const m=req.url.match(/^\/attachments\/([^/]+)$/);
@@ -211,7 +215,8 @@ server.on("upgrade",(req,socket)=>{
  const accept=crypto.createHash("sha1").update(key+"258EAFA5-E914-47DA-95CA-C5AB0DC85B11").digest("base64");
  socket.write("HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: "+accept+"\r\n\r\n");
  socket._buf=Buffer.alloc(0);clients.add(socket);
- log("WS CONNECT clients="+clients.size);
+ log("WS CONNECT build="+BUILD_ID+" clients="+clients.size);
+ broadcast({type:"ai_status",message:"Relay build "+BUILD_ID+" подключён"});
  socket.on("data",buf=>{
   socket._buf=Buffer.concat([socket._buf,buf]);
   while(socket._buf.length>=2){
