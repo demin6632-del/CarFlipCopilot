@@ -218,6 +218,8 @@ server.on("upgrade",(req,socket)=>{
    if(masked){const m=socket._buf.subarray(off-4,off);for(let i=0;i<payload.length;i++)payload[i]^=m[i%4]}
    socket._buf=socket._buf.subarray(off+len);
    if((b1&15)===8){clients.delete(socket);socket.end();return}
+   if((b1&15)===9){socket.write(Buffer.from([138,0]));continue}
+   if((b1&15)===10)continue;
    if((b1&15)!==1)continue;
    try{
     const msg=JSON.parse(payload.toString());
