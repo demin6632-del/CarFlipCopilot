@@ -89,9 +89,11 @@ function extractVideoFrames(file){
  return frames;
 }
 async function analyzeLiveFrame(){
- if(!openaiKey){log("AI SKIP: OPENAI_API_KEY missing");return;}\n if(aiBusy||!latestFrame)return;
+ if(!openaiKey){log("AI SKIP: OPENAI_API_KEY missing");return;}
+ if(aiBusy||!latestFrame)return;
  aiBusy=true;
- const frame=latestFrame; latestFrame=null;\n log("AI START frameBytes="+Buffer.byteLength(frame||"","base64")+" clients="+clients.size);
+ const frame=latestFrame; latestFrame=null;
+ log("AI START frameBytes="+Buffer.byteLength(frame||"","base64")+" clients="+clients.size);
  broadcast({type:"ai_status",message:"ChatGPT анализирует экран игры…"});
  try{
   const state=latest||{};
@@ -118,7 +120,8 @@ async function analyzeLiveFrame(){
    input:[{role:"user",content}],
    text:{format:{type:"json_schema",name:"carflip_live_decision",strict:true,schema:liveDecisionSchema}}
   };
-  log("AI REQUEST model="+model);\n  const r=await fetch("https://api.openai.com/v1/responses",{
+  log("AI REQUEST model="+model);
+  const r=await fetch("https://api.openai.com/v1/responses",{
    method:"POST",
    headers:{"Authorization":"Bearer "+openaiKey,"Content-Type":"application/json"},
    body:JSON.stringify(body)
@@ -202,7 +205,8 @@ server.on("upgrade",(req,socket)=>{
  const key=req.headers["sec-websocket-key"];
  const accept=crypto.createHash("sha1").update(key+"258EAFA5-E914-47DA-95CA-C5AB0DC85B11").digest("base64");
  socket.write("HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: "+accept+"\r\n\r\n");
- socket._buf=Buffer.alloc(0);clients.add(socket);\n log("WS CONNECT clients="+clients.size);
+ socket._buf=Buffer.alloc(0);clients.add(socket);
+ log("WS CONNECT clients="+clients.size);
  socket.on("data",buf=>{
   socket._buf=Buffer.concat([socket._buf,buf]);
   while(socket._buf.length>=2){
