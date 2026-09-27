@@ -75,7 +75,6 @@ class ScreenMonitorServiceV2 : Service() {
         }
 
         try {
-            // Every start gets a fresh user-approved MediaProjection token.
             val mgr = getSystemService(MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
             projection = mgr.getMediaProjection(code, data)
             if (projection == null) throw IllegalStateException("MediaProjection=null")
@@ -93,8 +92,6 @@ class ScreenMonitorServiceV2 : Service() {
                 }
             }, captureHandler)
 
-            // IMPORTANT: Android 14+ allows createVirtualDisplay only once per MediaProjection.
-            // The watchdog must never call createCapture() again on the same projection.
             createCapture()
             CopilotState.setMonitoring(this, captureReady)
             if (captureReady) {
@@ -140,7 +137,6 @@ class ScreenMonitorServiceV2 : Service() {
                 }
             }, h)
 
-            // This is the ONLY createVirtualDisplay call for this MediaProjection instance.
             virtualDisplay = projection?.createVirtualDisplay(
                 "CarFlipCopilot-V2",
                 width,
@@ -162,7 +158,6 @@ class ScreenMonitorServiceV2 : Service() {
 
             captureReady = true
             lastCaptureError = ""
-            // Give the first frame a grace period; do not immediately trigger watchdog logic.
             lastFrameAt = SystemClock.elapsedRealtime()
             showDiagnostics("Захват V2 запущен")
         } catch (e: SecurityException) {
@@ -183,15 +178,23 @@ class ScreenMonitorServiceV2 : Service() {
     private fun processImage(image: Image) {
         var bitmap: Bitmap? = null
         try {
+            // Image is invalid after close(); copy all required metadata first.
+            val imageWidth = image.width
+            val imageHeight = image.height
             val plane = image.planes[0]
-            val rowPadding = plane.rowStride - plane.pixelStride * image.width
-            val bitmapWidth = image.width + rowPadding / plane.pixelStride
-            bitmap = Bitmap.createBitmap(bitmapWidth, image.height, Bitmap.Config.ARGB_8888)
+            val rowPadding = plane.rowStride - plane.pixelStride * imageWidth
+            val bitmapWidth = imageWidth + rowPadding / plane.pixelStride
+
+            bitmap = Bitmap.createBitmap(bitmapWidth, imageHeight, Bitmap.Config.ARGB_8888)
             bitmap.copyPixelsFromBuffer(plane.buffer)
             image.close()
-            val frame = if (bitmapWidth != image.width) {
-                Bitmap.createBitmap(bitmap, 0, 0, image.width, image.height).also { bitmap.recycle() }
-            } else bitmap
+
+            val frame = if (bitmapWidth != imageWidth) {
+                Bitmap.createBitmap(bitmap, 0, 0, imageWidth, imageHeight).also { bitmap.recycle() }
+            } else {
+                bitmap
+            }
+            bitmap = null
 
             recognizer.process(InputImage.fromBitmap(frame, 0))
                 .addOnSuccessListener { result ->
@@ -270,9 +273,6 @@ class ScreenMonitorServiceV2 : Service() {
             override fun run() {
                 val age = if (lastFrameAt == 0L) Long.MAX_VALUE else SystemClock.elapsedRealtime() - lastFrameAt
                 if (captureReady && age > 4000L) {
-                    // DO NOT call createCapture() here. Android 14+ forbids creating another
-                    // VirtualDisplay on the same MediaProjection. The next session must obtain
-                    // fresh user consent from MainActivity.
                     lastCaptureError = "Кадры не поступают ${age}мс. Нажми «Запустить мониторинг» заново для новой сессии Android."
                     captureReady = false
                     CopilotState.setMonitoring(this@ScreenMonitorServiceV2, false)
