@@ -192,13 +192,12 @@ class ScreenMonitorService : Service() {
             val price = vehicle.price?.let { String.format("%,d ₽", it).replace(',', ' ') } ?: "—"
             val hp = vehicle.hp?.let { it.toString() + " л.с." } ?: "—"
             val origin = vehicle.origin.ifBlank { "—" }
-            val stats = LearningMemory.stats(this)
-            overlay?.text = "🤖 COPILOT • LIVE\n\nСЕЙЧАС: " + action +
+            overlay?.text = "🤖 CHATGPT • LIVE • LIVE\n\nСЕЙЧАС: " + action +
                 "\n\n" + vehicle.name.ifBlank { screen.ifBlank { "Ситуация игры" } } +
                 "\nЦена: " + price + " • Мощность: " + hp + "\nПроисхождение: " + origin +
                 "\n\nЧТО ДЕЛАТЬ\n" + title +
                 "\n\nПОЧЕМУ\n" + reason +
-                "\n\nУверенность: " + confidence + "%\nИсточник решения: ChatGPT
+                "\n\nУверенность: " + confidence + "%\nИсточник решения: ChatGPT"
         }
     }
 
