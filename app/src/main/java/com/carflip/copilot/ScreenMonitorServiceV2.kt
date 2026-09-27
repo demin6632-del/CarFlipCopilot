@@ -121,7 +121,7 @@ class ScreenMonitorServiceV2 : Service() {
                 frames++
                 lastFrameAt = SystemClock.elapsedRealtime()
                 val image = source.acquireLatestImage() ?: return@setOnImageAvailableListener
-                if (processing || (lastOcrAt != 0L && SystemClock.elapsedRealtime() - lastOcrAt < 900L)) {
+                if (processing || (lastOcrAt != 0L && SystemClock.elapsedRealtime() - lastOcrAt < 700L)) {
                     image.close()
                     return@setOnImageAvailableListener
                 }
@@ -131,7 +131,7 @@ class ScreenMonitorServiceV2 : Service() {
                 } catch (e: Exception) {
                     try { image.close() } catch (_: Exception) {}
                     processing = false
-                    lastCaptureError = "frame error: ${e.message ?: "unknown"}"
+                    lastCaptureError = "FRAME ERROR: ${e.message ?: "unknown"}"
                     showDiagnostics(lastCaptureError)
                     CopilotState.addEvent(this, "CAPTURE • $lastCaptureError")
                 }
@@ -162,7 +162,7 @@ class ScreenMonitorServiceV2 : Service() {
             showDiagnostics("Захват V2 запущен")
         } catch (e: SecurityException) {
             captureReady = false
-            lastCaptureError = "Android запретил повторный захват: ${e.message ?: "SecurityException"}"
+            lastCaptureError = "Android запретил захват: ${e.message ?: "SecurityException"}"
             releaseDisplayOnly()
             showDiagnostics(lastCaptureError)
             CopilotState.addEvent(this, "CAPTURE • $lastCaptureError")
@@ -178,7 +178,6 @@ class ScreenMonitorServiceV2 : Service() {
     private fun processImage(image: Image) {
         var bitmap: Bitmap? = null
         try {
-            // Image is invalid after close(); copy all required metadata first.
             val imageWidth = image.width
             val imageHeight = image.height
             val plane = image.planes[0]
@@ -201,13 +200,13 @@ class ScreenMonitorServiceV2 : Service() {
                     ocrSuccess++
                     lastOcrAt = SystemClock.elapsedRealtime()
                     lastOcrChars = result.text.length
-                    lastOcrPreview = result.text.replace(Regex("\\s+"), " ").trim().take(120)
+                    lastOcrPreview = result.text.replace(Regex("\\s+"), " ").trim().take(180)
                     val stable = stableOcr.accept(result.text)
                     if (stable != null) {
                         ocrAccepted++
                         updateGameState(stable, frame)
                     } else {
-                        showDiagnostics("OCR получен • ждём стабильный текст")
+                        showDiagnostics("OCR идёт • ждём следующего изменения экрана")
                         frame.recycleSafely()
                     }
                     processing = false
@@ -232,35 +231,86 @@ class ScreenMonitorServiceV2 : Service() {
         try {
             val screen = GameScreenClassifier.classify(text)
             val event = GameParser.event(text)
-            val vehicle = VehicleSnapshot(
+            val old = CopilotState.snapshot(this)
+            val parsed = VehicleSnapshot(
                 GameParser.name(text), GameParser.price(text), GameParser.hp(text),
                 GameParser.mileage(text), GameParser.owners(text), GameParser.plate(text),
                 GameParser.origin(text), GameParser.paintedParts(text), text
             )
+            // Keep the last known car fields when the current screen is a menu, auction,
+            // garage or event popup that does not repeat the vehicle details.
+            val vehicle = VehicleSnapshot(
+                name = parsed.name.ifBlank { old.name },
+                price = parsed.price ?: old.price,
+                hp = parsed.hp ?: old.hp,
+                mileage = parsed.mileage ?: old.mileage,
+                owners = parsed.owners ?: old.owners,
+                plate = parsed.plate.ifBlank { old.plate },
+                origin = parsed.origin.ifBlank { old.origin },
+                paintedParts = parsed.paintedParts ?: old.paintedParts,
+                raw = text,
+                updatedAt = System.currentTimeMillis()
+            )
+
             val balance = GameParser.balance(text) ?: CopilotState.balance(this)
             val garage = GameParser.garage(text) ?: CopilotState.garage(this)
             CopilotState.setBalance(this, balance)
             CopilotState.setGarage(this, garage)
             CopilotState.setSnapshot(this, vehicle)
+
             if (screen != lastScreen) {
                 lastScreen = screen
                 CopilotState.addEvent(this, "GAME • экран=$screen • машина='${vehicle.name}'")
             }
-            if (event != null && event != lastEvent) {
-                lastEvent = event
+
+            val sale = GameParser.saleAmount(text)
+            val purchase = GameParser.purchaseAmount(text)
+            val expense = GameParser.expenseAmount(text)
+            val reward = GameParser.rewardAmount(text)
+            val bid = GameParser.bidAmount(text)
+            val plateSale = GameParser.plateSaleEvent(text)
+            val eventKey = listOf(event, sale, purchase, expense, reward, bid, plateSale?.plate, plateSale?.payout).joinToString("|")
+            if (event != null && eventKey != lastEvent) {
+                lastEvent = eventKey
                 CopilotState.addEvent(this, "GAME • событие=$event")
+                sale?.let { CopilotState.addEvent(this, "GAME • продажа=$it ₽") }
+                purchase?.let { CopilotState.addEvent(this, "GAME • покупка=$it ₽") }
+                expense?.let { CopilotState.addEvent(this, "GAME • расход=$it ₽") }
+                reward?.let { CopilotState.addEvent(this, "GAME • награда=$it ₽") }
+                bid?.let { CopilotState.addEvent(this, "GAME • ставка/предложение=$it ₽") }
+                plateSale?.let {
+                    CopilotState.addEvent(this, "GAME • номер ${it.plate} продан • выплата=${it.payout} ₽ • комиссия=${it.commission} ₽")
+                }
+            }
+
+            GameParser.contract(text)?.let { contract ->
+                if (!lastEvent.contains(contract)) CopilotState.addEvent(this, "GAME • задание=$contract")
             }
             GameParser.action(text)?.let { CopilotState.addEvent(this, "GAME • действие=$it") }
-            GameParser.rewardAmount(text)?.let { CopilotState.addEvent(this, "GAME • награда=$it") }
+
+            val resources = GameParser.resources(text)
+            if (resources.isNotEmpty()) {
+                CopilotState.addEvent(this, "GAME • ресурсы=" + resources.entries.joinToString(", ") { "${it.key}:${it.value}" })
+            }
+
             val opportunity = DecisionEngine.decide(this, text, vehicle, balance, garage)
             CopilotState.setDecision(this, opportunity.action)
-            val old = lastFrame
+            val forecast = CopilotState.dealForecast(this, vehicle)
+            CopilotState.saveForecast(
+                this,
+                forecast.optLong("sale_price").takeIf { it > 0 },
+                if (forecast.has("expected_profit") && !forecast.isNull("expected_profit")) forecast.optLong("expected_profit") else null,
+                if (forecast.has("roi_percent") && !forecast.isNull("roi_percent")) forecast.optDouble("roi_percent") else null,
+                opportunity.confidence
+            )
+
+            val oldFrame = lastFrame
             lastFrame = if (frame.width > 720) {
                 Bitmap.createScaledBitmap(frame, 720, frame.height * 720 / frame.width, true)
             } else frame.copy(Bitmap.Config.ARGB_8888, false)
-            old?.recycleSafely()
+            oldFrame?.recycleSafely()
             showLive(opportunity, vehicle, screen)
-            if (lastFrame !== frame) frame.recycleSafely()
+            frame.recycleSafely()
         } catch (e: Exception) {
             frame.recycleSafely()
             CopilotState.addEvent(this, "GAME • parser error • ${e.message}")
@@ -289,7 +339,7 @@ class ScreenMonitorServiceV2 : Service() {
 
     private fun showLive(opportunity: Opportunity, vehicle: VehicleSnapshot, screen: String) {
         overlay?.post {
-            overlay?.text = "🚗 COPILOT • LIVE V2\nЗахват: ${if (captureReady) "ГОТОВ" else "НЕТ"}\nКадры: $frames • OCR: $ocrAccepted/$ocrSuccess • символов: $lastOcrChars\nРаздел: ${screen.ifBlank { "—" }}\nМашина: ${vehicle.name.ifBlank { "—" }}\nНомер: ${vehicle.plate.ifBlank { "—" }}\n${opportunity.action} • ${opportunity.confidence}%"
+            overlay?.text = "🚗 COPILOT • LIVE V2\nЗахват: ${if (captureReady) "ГОТОВ" else "НЕТ"}\nКадры: $frames • OCR: $ocrAccepted/$ocrSuccess • символов: $lastOcrChars\nРаздел: ${screen.ifBlank { "—" }}\nМашина: ${vehicle.name.ifBlank { "—" }}\nНомер: ${vehicle.plate.ifBlank { "—" }}\nРешение: ${opportunity.action} • ${opportunity.confidence}%\nOCR: ${lastOcrPreview.take(90)}"
         }
     }
 
