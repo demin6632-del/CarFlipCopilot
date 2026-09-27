@@ -4,6 +4,11 @@ import android.content.Context
 
 object DecisionEngine {
  fun decide(c:Context,text:String,v:VehicleSnapshot,balance:Long?,garage:Int?):Opportunity{
+  val plateSale=GameParser.plateSaleEvent(text)
+  if(plateSale!=null){
+   PlateSaleRecorder.record(c,plateSale)
+   return Opportunity("НОМЕР ПРОДАН","Аукцион номера завершён","${plateSale.plate}: выплата ${plateSale.payout} ₽; комиссия ${plateSale.commission} ₽${plateSale.commissionPercent?.let { " (${it}%)" } ?: ""}. Продажа номера зафиксирована отдельно от автомобиля.",98)
+  }
   val base=OpportunityAnalyzer.analyze(c,text,v,balance,garage)
   val f=CopilotState.dealForecast(c,v)
   val profit=if(f.has("expected_profit")&&!f.isNull("expected_profit"))f.optLong("expected_profit")else 0L
