@@ -204,7 +204,7 @@ class ScreenMonitorService : Service() {
     }
 
     private fun updateState(text: String, frame: Bitmap) {
-        val screen = GameParser.screenType(text)
+        val screen = GameScreenClassifier.classify(text)
         val event = GameParser.event(text)
         val action = GameParser.action(text)
         val contract = GameParser.contract(text)
@@ -218,7 +218,7 @@ class ScreenMonitorService : Service() {
         CopilotState.setSnapshot(this, vehicle)
         if (screen != lastScreenType) {
             lastScreenType = screen
-            CopilotState.addEvent(this, "GAME • экран=$screen • машина='${vehicle.name}' • баланс=$balance")
+            CopilotState.addEvent(this, "GAME • экран=$screen • навигация=${GameScreenClassifier.isNavigationSection(screen)} • машина='${vehicle.name}' • баланс=$balance")
         }
         if (event != null && event != lastGameEvent) {
             lastGameEvent = event
@@ -239,11 +239,11 @@ class ScreenMonitorService : Service() {
     }
 
     private fun showOverlayText(opportunity: Opportunity, vehicle: VehicleSnapshot, screen: String) {
-        overlay?.text = "🚗 COPILOT • LIVE\nЭкран: $screen • OCR: $ocrAccepted/$ocrSuccess • кадры: $frames\nМашина: ${vehicle.name.ifBlank { "—" }}\nНомер: ${vehicle.plate.ifBlank { "—" }} • ${vehicle.hp?.let { "$it л.с." } ?: "—"}\nЦена/вложено: ${vehicle.price?.toString() ?: "—"} • OCR: $lastOcrChars симв.\n${opportunity.action} • ${opportunity.confidence}%\n${opportunity.title}"
+        overlay?.text = "🚗 COPILOT • LIVE\nРаздел: $screen • OCR: $ocrAccepted/$ocrSuccess • кадры: $frames\nМашина: ${vehicle.name.ifBlank { "—" }}\nНомер: ${vehicle.plate.ifBlank { "—" }} • ${vehicle.hp?.let { "$it л.с." } ?: "—"}\nЦена/вложено: ${vehicle.price?.toString() ?: "—"} • OCR: $lastOcrChars симв.\n${opportunity.action} • ${opportunity.confidence}%\n${opportunity.title}"
     }
 
     private fun showOverlayDiagnostics(message: String) {
-        overlay?.text = "🚗 COPILOT • LIVE\n$message\nЗахват: ${if (captureReady) "ГОТОВ" else "НЕТ"}\nКадры: $frames • OCR: $ocrSuccess • принято: $ocrAccepted\nСимволов: $lastOcrChars\nЭкран: ${if (lastScreenType.isBlank()) "—" else lastScreenType}\n${if (lastOcrPreview.isNotBlank()) lastOcrPreview else "Текст OCR пока отсутствует"}"
+        overlay?.text = "🚗 COPILOT • LIVE\n$message\nЗахват: ${if (captureReady) "ГОТОВ" else "НЕТ"}\nКадры: $frames • OCR: $ocrSuccess • принято: $ocrAccepted\nСимволов: $lastOcrChars\nРаздел: ${if (lastScreenType.isBlank()) "—" else lastScreenType}\n${if (lastOcrPreview.isNotBlank()) lastOcrPreview else "Текст OCR пока отсутствует"}"
     }
 
     private fun showOverlay() {
