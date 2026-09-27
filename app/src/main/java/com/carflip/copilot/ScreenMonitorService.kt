@@ -37,6 +37,8 @@ class ScreenMonitorService : Service() {
     private var lastOcrPreview = ""
     private var lastOcrError = ""
     private var captureReady = false
+    private var lastScreenType = ""
+    private var lastGameEvent = ""
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         CopilotState.setMonitoring(this, false)
@@ -50,11 +52,7 @@ class ScreenMonitorService : Service() {
             .setSmallIcon(android.R.drawable.ic_menu_view)
             .setOngoing(true)
             .build()
-        if (Build.VERSION.SDK_INT >= 29) {
-            startForeground(10, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION)
-        } else {
-            startForeground(10, notification)
-        }
+        if (Build.VERSION.SDK_INT >= 29) startForeground(10, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION) else startForeground(10, notification)
         showOverlay()
 
         val code = intent?.getIntExtra("resultCode", Activity.RESULT_CANCELED) ?: Activity.RESULT_CANCELED
@@ -107,7 +105,7 @@ class ScreenMonitorService : Service() {
     private fun handleCommand(command: String) {
         when {
             command.equals("REQUEST_FRAME", true) -> lastFrame?.let { liveBridge.sendFrame(it) }
-            command.equals("STATUS", true) -> CopilotState.addEvent(this, "LIVE • capture=$captureReady • OCR=$ocrAccepted/$ocrSuccess • кадры=$frames • символов=$lastOcrChars")
+            command.equals("STATUS", true) -> CopilotState.addEvent(this, "LIVE • capture=$captureReady • OCR=$ocrAccepted/$ocrSuccess • кадры=$frames • символов=$lastOcrChars • экран=$lastScreenType")
             command.equals("STOP", true) -> stopSelf()
             command.startsWith("ATTACHMENT_ANALYSIS|") -> saveAttachmentAnalysis(command)
             command.startsWith("ATTACHMENT_ANALYSIS_ERROR|") -> CopilotState.addEvent(this, "AI • ошибка вложения • " + command.substringAfter('|'))
@@ -206,28 +204,46 @@ class ScreenMonitorService : Service() {
     }
 
     private fun updateState(text: String, frame: Bitmap) {
+        val screen = GameParser.screenType(text)
+        val event = GameParser.event(text)
+        val action = GameParser.action(text)
+        val contract = GameParser.contract(text)
+        val reward = GameParser.rewardAmount(text)
+        val resources = GameParser.resources(text)
         val vehicle = VehicleSnapshot(GameParser.name(text), GameParser.price(text), GameParser.hp(text), GameParser.mileage(text), GameParser.owners(text), GameParser.plate(text), GameParser.origin(text), GameParser.paintedParts(text), text)
         val balance = GameParser.balance(text) ?: CopilotState.balance(this)
         val garage = GameParser.garage(text) ?: CopilotState.garage(this)
         CopilotState.setBalance(this, balance)
         CopilotState.setGarage(this, garage)
         CopilotState.setSnapshot(this, vehicle)
+        if (screen != lastScreenType) {
+            lastScreenType = screen
+            CopilotState.addEvent(this, "GAME • экран=$screen • машина='${vehicle.name}' • баланс=$balance")
+        }
+        if (event != null && event != lastGameEvent) {
+            lastGameEvent = event
+            CopilotState.addEvent(this, "GAME • событие=$event")
+        }
+        if (action != null) CopilotState.addEvent(this, "GAME • действие=$action")
+        if (contract != null) CopilotState.addEvent(this, "GAME • задание=${contract.take(240)}")
+        if (reward != null) CopilotState.addEvent(this, "GAME • награда=$reward")
+        if (resources.isNotEmpty()) CopilotState.addEvent(this, "GAME • ресурсы=" + resources.entries.joinToString(", ") { "${it.key}=${it.value}" })
         val opportunity = DecisionEngine.decide(this, text, vehicle, balance, garage)
         CopilotState.setDecision(this, opportunity.action)
         liveBridge.sendState(text, vehicle, balance, garage, opportunity.action, opportunity)
         val old = lastFrame
         lastFrame = if (frame.width > 720) Bitmap.createScaledBitmap(frame, 720, frame.height * 720 / frame.width, true) else frame.copy(Bitmap.Config.ARGB_8888, false)
         if (old != null && old !== frame) old.recycle()
-        CopilotState.addEvent(this, "PARSER • машина='${vehicle.name}' • цена=${vehicle.price} • номер='${vehicle.plate}' • hp=${vehicle.hp} • km=${vehicle.mileage} • окрашено=${vehicle.paintedParts}")
-        showOverlayText(opportunity, vehicle)
+        CopilotState.addEvent(this, "PARSER • экран=$screen • машина='${vehicle.name}' • цена=${vehicle.price} • номер='${vehicle.plate}' • hp=${vehicle.hp} • km=${vehicle.mileage} • окрашено=${vehicle.paintedParts}")
+        showOverlayText(opportunity, vehicle, screen)
     }
 
-    private fun showOverlayText(opportunity: Opportunity, vehicle: VehicleSnapshot) {
-        overlay?.text = "🚗 COPILOT • LIVE\nOCR: $ocrAccepted/$ocrSuccess • кадры: $frames\nМашина: ${vehicle.name.ifBlank { "—" }}\nНомер: ${vehicle.plate.ifBlank { "—" }} • ${vehicle.hp?.let { "$it л.с." } ?: "—"}\nЦена: ${vehicle.price?.toString() ?: "—"} • OCR: $lastOcrChars симв.\n${opportunity.action} • ${opportunity.confidence}%\n${opportunity.title}"
+    private fun showOverlayText(opportunity: Opportunity, vehicle: VehicleSnapshot, screen: String) {
+        overlay?.text = "🚗 COPILOT • LIVE\nЭкран: $screen • OCR: $ocrAccepted/$ocrSuccess • кадры: $frames\nМашина: ${vehicle.name.ifBlank { "—" }}\nНомер: ${vehicle.plate.ifBlank { "—" }} • ${vehicle.hp?.let { "$it л.с." } ?: "—"}\nЦена/вложено: ${vehicle.price?.toString() ?: "—"} • OCR: $lastOcrChars симв.\n${opportunity.action} • ${opportunity.confidence}%\n${opportunity.title}"
     }
 
     private fun showOverlayDiagnostics(message: String) {
-        overlay?.text = "🚗 COPILOT • LIVE\n$message\nЗахват: ${if (captureReady) "ГОТОВ" else "НЕТ"}\nКадры: $frames • OCR: $ocrSuccess • принято: $ocrAccepted\nСимволов: $lastOcrChars\n${if (lastOcrPreview.isNotBlank()) lastOcrPreview else "Текст OCR пока отсутствует"}"
+        overlay?.text = "🚗 COPILOT • LIVE\n$message\nЗахват: ${if (captureReady) "ГОТОВ" else "НЕТ"}\nКадры: $frames • OCR: $ocrSuccess • принято: $ocrAccepted\nСимволов: $lastOcrChars\nЭкран: ${if (lastScreenType.isBlank()) "—" else lastScreenType}\n${if (lastOcrPreview.isNotBlank()) lastOcrPreview else "Текст OCR пока отсутствует"}"
     }
 
     private fun showOverlay() {
