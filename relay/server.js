@@ -29,9 +29,9 @@ const liveDecisionSchema={
   reason:{type:"string"},
   confidence:{type:"number"},
   game_state:{type:"string"},
-  sale_price:{type:["number","null"]},
-  expected_profit:{type:["number","null"]},
-  roi_percent:{type:["number","null"]},
+  sale_price:{anyOf:[{type:"number"},{type:"null"}]},
+  expected_profit:{anyOf:[{type:"number"},{type:"null"}]},
+  roi_percent:{anyOf:[{type:"number"},{type:"null"}]},
   next_actions:{type:"array",items:{type:"string"}},
   changes:{type:"array",items:{type:"string"}}
  },
