@@ -152,7 +152,12 @@ class ScreenMonitorService : Service() {
             val hp = vehicle.hp?.let { it.toString() + " л.с." } ?: "—"
             val origin = vehicle.origin.ifBlank { "—" }
             val stats = LearningMemory.stats(this)
-            overlay?.text = "🤖 COPILOT • LIVE\n\nСЕЙЧАС: \${action}\n\n\${vehicle.name.ifBlank { screen.ifBlank { "Ситуация игры" } }}\nЦена: \${price} • Мощность: \${hp}\nПроисхождение: \${origin}\n\nЧТО ДЕЛАТЬ\n\${title}\n\nПОЧЕМУ\n\${reason}\n\nУверенность: \${confidence}%\nОбучено сделок: \${stats.samples}"
+            overlay?.text = "🤖 COPILOT • LIVE\n\nСЕЙЧАС: " + action +
+                "\n\n" + vehicle.name.ifBlank { screen.ifBlank { "Ситуация игры" } } +
+                "\nЦена: " + price + " • Мощность: " + hp + "\nПроисхождение: " + origin +
+                "\n\nЧТО ДЕЛАТЬ\n" + title +
+                "\n\nПОЧЕМУ\n" + reason +
+                "\n\nУверенность: " + confidence + "%\nОбучено сделок: " + stats.samples
         }
     }
 
