@@ -15,8 +15,8 @@ import java.util.concurrent.TimeUnit
 
 class LiveBridge(
     private val context: Context,
-    private val onCommand: (String) -> Unit,
-    private val onStatus: (Boolean) -> Unit = {}
+    private val onStatus: (Boolean) -> Unit = {},
+    private val onCommand: (String) -> Unit = {}
 ) {
     private val prefs = context.getSharedPreferences("live_bridge", Context.MODE_PRIVATE)
     private var client: OkHttpClient? = null
