@@ -63,19 +63,20 @@ object WholeGameEventEngine {
         }
 
         GameParser.action(text)?.let { action ->
-            if (once(c, "action", "${vehicle.plate}|${vehicle.name}|$action", 90_000L)) {
+            val actionCost = GameParser.expenseAmount(text)
+            if (once(c, "action", "${vehicle.plate}|${vehicle.name}|$action|${actionCost ?: 0L}", 90_000L)) {
                 GameMemory.record(c, screen, "ДЕЙСТВИЕ", action, vehicle)
 
-                // Store the real action cost now. When the car is later sold,
-                // LearningMemory.recordAllActionOutcomes() attaches the realized
-                // sale delta, allowing ActionRoiEngine to show realized ROI.
-                if (screen == "УЛУЧШЕНИЕ") {
-                    val cost = GameParser.expenseAmount(text)
-                    if (cost != null && cost > 0) {
-                        val forecast = CopilotState.dealForecast(c, vehicle)
-                        val beforeSale = if (forecast.has("sale_price") && !forecast.isNull("sale_price")) forecast.optLong("sale_price") else null
-                        LearningMemory.learnAction(c, vehicle, action, cost, 0L, beforeSale, "", vehicle.plate)
-                    }
+                // Every paid vehicle action becomes part of the open deal cost.
+                // This keeps repair/polish/paint/chip/turbo/diagnostics and similar
+                // expenses from disappearing from the final net-profit calculation.
+                if (actionCost != null && actionCost > 0) {
+                    CopilotState.addFeeToOpenDeal(c, vehicle, actionCost, action)
+                    val forecast = CopilotState.dealForecast(c, vehicle)
+                    val beforeSale = if (forecast.has("sale_price") && !forecast.isNull("sale_price")) forecast.optLong("sale_price") else null
+                    LearningMemory.learnAction(c, vehicle, action, actionCost, 0L, beforeSale, "", vehicle.plate)
+                    GameMemory.record(c, screen, "РАСХОД_ПО_АВТО", action, vehicle, actionCost)
+                    CopilotState.addEvent(c, "РАСХОД • $action • $actionCost ₽ • авто ${vehicle.name.ifBlank { vehicle.plate }}")
                 }
             }
         }
