@@ -38,12 +38,13 @@ class ScreenMonitorService : Service() {
     private var captureReady = false
     private var lastScreenType = ""
     private var lastGameEvent = ""
+    private var lastNewsSummary = ""
+    private var lastPromoCode = ""
     private var captureThread: HandlerThread? = null
     private var captureHandler: Handler? = null
     private var decisionHandler: Handler? = null
     private var lastOpportunity: Opportunity? = null
     private var lastVehicle = VehicleSnapshot("", null, null, null, null, "", "", null, "")
-    private var lastOverlayScreen = ""
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         CopilotState.setMonitoring(this, false); createChannel()
@@ -70,7 +71,7 @@ class ScreenMonitorService : Service() {
 
     private fun handleCommand(command: String) { when { command.equals("REQUEST_FRAME", true) -> lastFrame?.let { liveBridge.sendFrame(it) }; command.equals("STATUS", true) -> CopilotState.addEvent(this, "LIVE • capture=$captureReady • OCR=$ocrAccepted/$ocrSuccess • кадры=$frames • символов=$lastOcrChars • экран=$lastScreenType"); command.equals("STOP", true) -> stopSelf(); command.startsWith("ATTACHMENT_ANALYSIS|") -> saveAttachmentAnalysis(command); command.startsWith("ATTACHMENT_ANALYSIS_ERROR|") -> CopilotState.addEvent(this, "AI • ошибка вложения • " + command.substringAfter('|')) } }
 
-    private fun saveAttachmentAnalysis(command: String) { try { val parts = command.split("|", limit = 3); if (parts.size < 3) return; val name = parts[1]; val json = parts[2]; CopilotState.saveAttachmentAnalysis(this, name, json); val root = org.json.JSONObject(json); val vehicle = root.optJSONObject("vehicle"); val base = CopilotState.snapshot(this); val snapshot = VehicleSnapshot(vehicle?.optString("name")?.takeIf { it.isNotBlank() } ?: base.name, vehicle?.takeIf { it.has("price") }?.optLong("price") ?: base.price, vehicle?.takeIf { it.has("hp") }?.optInt("hp") ?: base.hp, vehicle?.takeIf { it.has("mileage") }?.optLong("mileage") ?: base.mileage, vehicle?.takeIf { it.has("owners") }?.optInt("owners") ?: base.owners, vehicle?.optString("plate")?.takeIf { it.isNotBlank() } ?: base.plate, vehicle?.optString("origin")?.takeIf { it.isNotBlank() } ?: base.origin, vehicle?.takeIf { it.has("paintedParts") }?.optInt("paintedParts") ?: base.paintedParts, base.raw); CopilotState.setSnapshot(this, snapshot); CopilotState.addEvent(this, "AI • вложение обработано • $name") } catch (e: Exception) { CopilotState.addEvent(this, "AI • ошибка структуры вложения • ${e.message}") } }
+    private fun saveAttachmentAnalysis(command: String) { try { val parts = command.split("|", limit = 3); if (parts.size < 3) return; val name = parts[1]; val json = parts[2]; CopilotState.saveAttachmentAnalysis(this, name, json); CopilotState.addEvent(this, "AI • вложение обработано • $name") } catch (e: Exception) { CopilotState.addEvent(this, "AI • ошибка структуры вложения • ${e.message}") } }
 
     private fun startCapture() {
         if (reader != null || projection == null) return
@@ -90,19 +91,24 @@ class ScreenMonitorService : Service() {
     }
 
     private fun processImage(image: Image) {
-        var bitmap: Bitmap? = null
         try {
             val plane = image.planes[0]; val rowPadding = plane.rowStride - plane.pixelStride * image.width; val width = image.width + rowPadding / plane.pixelStride
-            bitmap = Bitmap.createBitmap(width, image.height, Bitmap.Config.ARGB_8888); bitmap.copyPixelsFromBuffer(plane.buffer); image.close()
+            val bitmap = Bitmap.createBitmap(width, image.height, Bitmap.Config.ARGB_8888); bitmap.copyPixelsFromBuffer(plane.buffer); image.close()
             val cropped = if (width != image.width) Bitmap.createBitmap(bitmap, 0, 0, image.width, image.height) else bitmap
             if (cropped !== bitmap) bitmap.recycle()
             recognizer.process(InputImage.fromBitmap(cropped, 0)).addOnSuccessListener { result ->
-                try { ocrSuccess++; lastOcrChars = result.text.length; val text = stableOcr.accept(result.text); if (text != null) { ocrAccepted++; decisionHandler?.post { try { updateState(text, cropped) } finally { processingOcr = false; if (cropped !== lastFrame) try { cropped.recycle() } catch (_: Exception) {} } } } else { showStatusPreservingDecision("Обновление данных…"); processingOcr = false; try { cropped.recycle() } catch (_: Exception) {} } } catch (_: Exception) { processingOcr = false; try { cropped.recycle() } catch (_: Exception) {} }
-            }.addOnFailureListener { error -> lastOcrError = error.message ?: "ошибка OCR"; CopilotState.addEvent(this, "OCR • ошибка • $lastOcrError"); showStatusPreservingDecision("Данные обновляются…"); processingOcr = false; try { cropped.recycle() } catch (_: Exception) {} }
-        } catch (error: Exception) { processingOcr = false; lastOcrError = error.message ?: "ошибка захвата"; CopilotState.addEvent(this, "CAPTURE • ошибка • $lastOcrError"); try { image.close() } catch (_: Exception) {}; try { bitmap?.recycle() } catch (_: Exception) {} }
+                try {
+                    ocrSuccess++; lastOcrChars = result.text.length; val text = stableOcr.accept(result.text)
+                    if (text != null) decisionHandler?.post { try { updateState(text, cropped) } finally { processingOcr = false } } else { showStatusPreservingDecision("Обновление данных…"); processingOcr = false }
+                } catch (_: Exception) { processingOcr = false }
+            }.addOnFailureListener { error -> lastOcrError = error.message ?: "ошибка OCR"; CopilotState.addEvent(this, "OCR • ошибка • $lastOcrError"); showStatusPreservingDecision("Данные обновляются…"); processingOcr = false }
+        } catch (error: Exception) { processingOcr = false; lastOcrError = error.message ?: "ошибка захвата"; CopilotState.addEvent(this, "CAPTURE • ошибка • $lastOcrError"); try { image.close() } catch (_: Exception) {} }
     }
 
     private fun updateState(text: String, frame: Bitmap) {
+        val news = NewsParser.summary(text)
+        val promo = NewsParser.promo(text)
+        if (news != null && news != lastNewsSummary) { lastNewsSummary = news; CopilotState.addEvent(this, "NEWS • $news"); if (promo != null && promo.code != lastPromoCode) { lastPromoCode = promo.code; CopilotState.addEvent(this, "PROMO • /promo ${promo.code}${if (promo.limited) " • активации ограничены" else ""}"); showNewsOverlay(promo.code, promo.limited) } }
         val screen = GameScreenClassifier.classify(text); val event = GameParser.event(text); val action = GameParser.action(text); val contract = GameParser.contract(text); val reward = GameParser.rewardAmount(text); val resources = GameParser.resources(text)
         val vehicle = VehicleSnapshot(GameParser.name(text), GameParser.price(text), GameParser.hp(text), GameParser.mileage(text), GameParser.owners(text), GameParser.plate(text), GameParser.origin(text), GameParser.paintedParts(text), text)
         val balance = GameParser.balance(text) ?: CopilotState.balance(this); val garage = GameParser.garage(text) ?: CopilotState.garage(this)
@@ -113,16 +119,16 @@ class ScreenMonitorService : Service() {
         if (contract != null) CopilotState.addEvent(this, "GAME • задание=${contract.take(240)}")
         if (reward != null) CopilotState.addEvent(this, "GAME • награда=$reward")
         if (resources.isNotEmpty()) CopilotState.addEvent(this, "GAME • ресурсы=" + resources.entries.joinToString(", ") { "${it.key}=${it.value}" })
-        val opportunity = DecisionEngine.decide(this, text, vehicle, balance, garage); lastOpportunity = opportunity; lastVehicle = vehicle; lastOverlayScreen = screen
+        val opportunity = DecisionEngine.decide(this, text, vehicle, balance, garage); lastOpportunity = opportunity; lastVehicle = vehicle
         CopilotState.setDecision(this, opportunity.action); liveBridge.sendState(text, vehicle, balance, garage, opportunity.action, opportunity)
         val old = lastFrame; lastFrame = if (frame.width > 720) Bitmap.createScaledBitmap(frame, 720, frame.height * 720 / frame.width, true) else frame.copy(Bitmap.Config.ARGB_8888, false); if (old != null) try { old.recycle() } catch (_: Exception) {}
         CopilotState.addEvent(this, "PARSER • экран=$screen • машина='${vehicle.name}' • цена=${vehicle.price} • номер='${vehicle.plate}'")
         showOverlayDecision(opportunity, vehicle, screen)
-        if (frame !== lastFrame) try { frame.recycle() } catch (_: Exception) {}
     }
 
+    private fun showNewsOverlay(code: String, limited: Boolean) { overlay?.post { overlay?.text = "🤖 COPILOT\n\n🎁 ПРОМОКОД НАЙДЕН\n\n/promo $code\n\n${if (limited) "⚠️ Активации ограничены\n\n" else ""}СЕЙЧАС: АКТИВИРОВАТЬ" } }
     private fun showOverlayDecision(opportunity: Opportunity, vehicle: VehicleSnapshot, screen: String) { overlay?.post { val action = opportunity.action.ifBlank { "ОЖИДАЙ" }; val title = opportunity.title.ifBlank { "Жди подтверждения ситуации" }; val confidence = opportunity.confidence; val price = vehicle.price?.let { String.format("%,d ₽", it).replace(',', ' ') } ?: "—"; overlay?.text = "🤖 COPILOT\n\nСЕЙЧАС: $action\n\n${vehicle.name.ifBlank { "Ситуация игры" }}\nЦена: $price\n\nЧТО ДЕЛАТЬ\n$title\n\nУверенность: $confidence%" } }
-    private fun showStatusPreservingDecision(message: String) { overlay?.post { val decision = lastOpportunity; if (decision != null) { val action = decision.action.ifBlank { "ОЖИДАЙ" }; val title = decision.title.ifBlank { "Жди подтверждения ситуации" }; val price = lastVehicle.price?.let { String.format("%,d ₽", it).replace(',', ' ') } ?: "—"; overlay?.text = "🤖 COPILOT\n\nСЕЙЧАС: $action\n\n${lastVehicle.name.ifBlank { "Ситуация игры" }}\nЦена: $price\n\nЧТО ДЕЛАТЬ\n$title\n\nСтатус: $message" } else overlay?.text = "🤖 COPILOT\n\nСЕЙЧАС: АНАЛИЗИРУЮ\n\nЧТО ДЕЛАТЬ\nПодожди подтверждения игровой ситуации\n\nСтатус: $message" } }
+    private fun showStatusPreservingDecision(message: String) { overlay?.post { val decision = lastOpportunity; if (decision != null) { overlay?.text = "🤖 COPILOT\n\nСЕЙЧАС: ${decision.action.ifBlank { "ОЖИДАЙ" }}\n\n${lastVehicle.name.ifBlank { "Ситуация игры" }}\n\nЧТО ДЕЛАТЬ\n${decision.title.ifBlank { "Жди подтверждения ситуации" }}\n\nСтатус: $message" } else overlay?.text = "🤖 COPILOT\n\nСЕЙЧАС: АНАЛИЗИРУЮ\n\nЧТО ДЕЛАТЬ\nПодожди подтверждения игровой ситуации\n\nСтатус: $message" } }
     private fun showOverlay() { if (!Settings.canDrawOverlays(this)) return; overlay = TextView(this).apply { text = "🤖 COPILOT\n\nСЕЙЧАС: АНАЛИЗИРУЮ\n\nЧТО ДЕЛАТЬ\nОжидаю игровой экран"; setTextColor(Color.WHITE); setBackgroundColor(0xEE111111.toInt()); setPadding(18,16,18,16); textSize=14f }; val manager=getSystemService(WINDOW_SERVICE) as WindowManager; val type=if(Build.VERSION.SDK_INT>=26) WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY else WindowManager.LayoutParams.TYPE_PHONE; val params=WindowManager.LayoutParams(WindowManager.LayoutParams.WRAP_CONTENT,WindowManager.LayoutParams.WRAP_CONTENT,type,WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,PixelFormat.TRANSLUCENT); manager.addView(overlay,params) }
     private fun createChannel() { if(Build.VERSION.SDK_INT>=26){val manager=getSystemService(NOTIFICATION_SERVICE) as NotificationManager; manager.createNotificationChannel(NotificationChannel("copilot","Copilot",NotificationManager.IMPORTANCE_LOW))} }
     override fun onDestroy(){CopilotState.setMonitoring(this,false);processingOcr=false;try{commandServer.stop()}catch(_:Exception){};try{remotePoller.stop()}catch(_:Exception){};try{liveBridge.stop()}catch(_:Exception){};try{virtualDisplay?.release()}catch(_:Exception){};virtualDisplay=null;try{projection?.stop()}catch(_:Exception){};projection=null;reader?.close();reader=null;try{captureThread?.quitSafely()}catch(_:Exception){};captureThread=null;captureHandler=null;decisionHandler=null;try{overlay?.let{(getSystemService(WINDOW_SERVICE) as WindowManager).removeView(it)}}catch(_:Exception){};overlay=null;try{lastFrame?.recycle()}catch(_:Exception){};lastFrame=null;super.onDestroy()}
