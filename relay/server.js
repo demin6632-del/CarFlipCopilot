@@ -89,7 +89,11 @@ function extractVideoFrames(file){
  return frames;
 }
 async function analyzeLiveFrame(){
- if(!openaiKey){log("AI SKIP: OPENAI_API_KEY missing");return;}
+ if(!openaiKey){
+  log("AI SKIP: OPENAI_API_KEY missing");
+  broadcast({type:"ai_status",message:"Ошибка relay: OPENAI_API_KEY не настроен на сервере"});
+  return;
+ }
  if(aiBusy||!latestFrame)return;
  aiBusy=true;
  const frame=latestFrame; latestFrame=null;
@@ -136,6 +140,7 @@ async function analyzeLiveFrame(){
   if(aiHistory.length>30)aiHistory.shift();
   broadcast({type:"ai_decision",decision:parsed,time:Date.now()});
  }catch(e){
+  log("AI ERROR",String(e.message||e));
   broadcast({type:"ai_status",message:"Ошибка ChatGPT: "+String(e.message||e).slice(0,240)});
  }finally{
   aiBusy=false;
