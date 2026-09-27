@@ -1,7 +1,15 @@
 package com.carflip.copilot
 
 object GameParser {
-    private val money = Regex("(\\d[\\d\\s.,]*)\\s*(?:₽|руб|rub|\$|usd|€|eur)", RegexOption.IGNORE_CASE)
+    data class PlateSaleEvent(
+        val plate: String,
+        val payout: Long,
+        val commission: Long,
+        val commissionPercent: Double?,
+        val gross: Long?
+    )
+
+    private val money = Regex("(\\d[\\d\\s.,]*)\\s*(?:₽|руб|rub|\\$|usd|€|eur)", RegexOption.IGNORE_CASE)
     private val number = Regex("\\d[\\d\\s.,]*")
 
     private fun numberAfter(text: String, keywords: List<String>): Long? {
@@ -19,23 +27,16 @@ object GameParser {
 
     private fun amount(text: String, keywords: List<String>): Long? = numberAfter(text, keywords)
 
-    fun price(text: String): Long? = amount(text, listOf(
-        "цена", "стоимость", "купить", "покупка", "price", "buy",
-        "вложено в авто", "вложено в машину", "вложено в проект", "вложено в проекте",
-        "вложено", "инвестировано", "asking"
-    ))
-
+    fun price(text: String): Long? = amount(text, listOf("цена", "стоимость", "купить", "покупка", "price", "buy", "вложено в авто", "вложено в машину", "вложено в проект", "вложено в проекте", "вложено", "инвестировано", "asking"))
     fun purchaseAmount(text: String): Long? = amount(text, listOf("покуп", "купил", "купить", "цена покупки", "buy", "вложено в авто", "вложено в проект"))
-    fun saleAmount(text: String): Long? = amount(text, listOf("продан", "продажа", "продать", "продал", "sale", "sold", "выручка"))
+    fun saleAmount(text: String): Long? = amount(text, listOf("продан", "продажа", "продать", "продал", "sale", "sold", "выручка", "выплата"))
     fun expenseAmount(text: String): Long? = amount(text, listOf("расход", "ремонт", "стоимость ремонта", "оплат", "комис", "fee", "затрат", "стоимость"))
     fun balance(text: String): Long? = amount(text, listOf("баланс", "деньги", "счёт", "счет", "balance", "cash", "банк"))
     fun rewardAmount(text: String): Long? = amount(text, listOf("награда", "бонус", "reward", "bonus", "приз", "prize", "выигрыш"))
     fun bidAmount(text: String): Long? = amount(text, listOf("ставка", "bid", "текущая ставка", "предложение", "offer"))
 
     fun hp(text: String): Int? = Regex("(\\d{2,4})\\s*(?:л\\.?\\s*с\\.?|лошад|hp|bhp)", RegexOption.IGNORE_CASE).find(text)?.groupValues?.get(1)?.toIntOrNull()
-
     fun mileage(text: String): Long? = Regex("(?:пробег|mileage|km|км)\\D{0,30}(\\d[\\d\\s.,]*)", RegexOption.IGNORE_CASE).find(text)?.groupValues?.get(1)?.replace(Regex("[^0-9]"), "")?.toLongOrNull()
-
     fun owners(text: String): Int? = Regex("(?:владельц|owner|owners)\\D{0,20}(\\d{1,2})", RegexOption.IGNORE_CASE).find(text)?.groupValues?.get(1)?.toIntOrNull()
 
     fun percent(text: String, keywords: List<String> = emptyList()): Double? {
@@ -93,6 +94,9 @@ object GameParser {
     }
 
     fun event(text: String): String? {
+        plateSaleEvent(text)?.let { sale ->
+            return "ПРОДАЖА_НОМЕРА • ${sale.plate} • выплата=${sale.payout} ₽ • комиссия=${sale.commission} ₽${sale.commissionPercent?.let { " (${it}%)" } ?: ""}${sale.gross?.let { " • до комиссии=${it} ₽" } ?: ""}"
+        }
         val s = text.lowercase()
         return when {
             s.contains("продан") || s.contains("продажа") || s.contains("продал") || s.contains("sold") -> "ПРОДАЖА"
@@ -172,11 +176,29 @@ object GameParser {
         return m?.groupValues?.getOrNull(1)?.replace(Regex("[^0-9]"), "")?.toLongOrNull()?.takeIf { it > 0 }
     }
 
-    fun plateSale(text: String): Long? {
-        val x = text.lowercase()
-        val re = Regex("(?i)(?:продал|продажа|продан|продано|sold)\\s+(?:гос)?номер[^0-9]{0,50}(\\d[\\d\\s.,]*)\\s*(?:₽|руб|rub)?")
-        val m = re.find(x) ?: Regex("(?i)(?:гос)?номер[^0-9]{0,25}(?:продан|продано|продал)[^0-9]{0,30}(\\d[\\d\\s.,]*)").find(x)
-        return m?.groupValues?.getOrNull(1)?.replace(Regex("[^0-9]"), "")?.toLongOrNull()?.takeIf { it > 0 }
+    fun plateSale(text: String): Long? = plateSaleEvent(text)?.payout
+
+    fun plateCommission(text: String): Long? = plateSaleEvent(text)?.commission
+
+    fun plateGross(text: String): Long? = plateSaleEvent(text)?.gross
+
+    fun plateSaleEvent(text: String): PlateSaleEvent? {
+        val x = text.replace('\u00A0', ' ')
+        val lower = x.lowercase()
+        val saleMarker = lower.contains("твой номер продан") || lower.contains("номер продан с аукциона") || (lower.contains("номер") && lower.contains("продан") && lower.contains("аукцион"))
+        if (!saleMarker) return null
+        val plateValue = plate(x)
+        if (plateValue.isBlank()) return null
+        val payout = numberAfter(x, listOf("выплата", "получишь", "получено", "выручка")) ?: return null
+        val commissionPercent = percent(x, listOf("комиссия", "commission"))
+        val commissionExplicit = numberAfter(x, listOf("комиссия", "комис"))
+        val commission = commissionExplicit ?: commissionPercent?.let { pct ->
+            if (pct >= 0.0 && pct < 100.0) (payout * pct / (100.0 - pct)).toLong() else null
+        } ?: 0L
+        val gross = if (commission > 0) payout + commission else commissionPercent?.let { pct ->
+            if (pct in 0.0..99.999) (payout / (1.0 - pct / 100.0)).toLong() else null
+        }
+        return PlateSaleEvent(plateValue, payout, commission, commissionPercent, gross)
     }
 
     fun plateAuction(text: String): Boolean {
