@@ -1,15 +1,16 @@
 package com.carflip.copilot
 
 object GameParser {
-    private val money = Regex("(\\d[\\d\\s.,]*)\\s*(?:₽|руб|rub)", RegexOption.IGNORE_CASE)
+    private val money = Regex("(\\d[\\d\\s.,]*)\\s*(?:₽|руб|rub|\$|usd|€|eur)", RegexOption.IGNORE_CASE)
+    private val number = Regex("\\d[\\d\\s.,]*")
 
     private fun numberAfter(text: String, keywords: List<String>): Long? {
         val s = text.lowercase()
         for (k in keywords) {
             val i = s.indexOf(k)
             if (i < 0) continue
-            val tail = text.substring(i).take(220)
-            val m = money.find(tail) ?: Regex("(\\d[\\d\\s.,]*)").find(tail) ?: continue
+            val tail = text.substring(i).take(260)
+            val m = money.find(tail) ?: number.find(tail) ?: continue
             val n = m.groupValues[1].replace(Regex("[^0-9]"), "").toLongOrNull()
             if (n != null && n > 0) return n
         }
@@ -19,59 +20,38 @@ object GameParser {
     private fun amount(text: String, keywords: List<String>): Long? = numberAfter(text, keywords)
 
     fun price(text: String): Long? = amount(text, listOf(
-        "цена", "стоимость", "купить", "покупка", "price",
+        "цена", "стоимость", "купить", "покупка", "price", "buy",
         "вложено в авто", "вложено в машину", "вложено в проект", "вложено в проекте",
-        "вложено", "инвестировано"
+        "вложено", "инвестировано", "asking"
     ))
 
-    fun purchaseAmount(text: String): Long? = amount(text, listOf(
-        "покуп", "купил", "купить", "цена покупки", "buy", "вложено в авто", "вложено в проект"
-    ))
+    fun purchaseAmount(text: String): Long? = amount(text, listOf("покуп", "купил", "купить", "цена покупки", "buy", "вложено в авто", "вложено в проект"))
+    fun saleAmount(text: String): Long? = amount(text, listOf("продан", "продажа", "продать", "продал", "sale", "sold", "выручка"))
+    fun expenseAmount(text: String): Long? = amount(text, listOf("расход", "ремонт", "стоимость ремонта", "оплат", "комис", "fee", "затрат", "стоимость"))
+    fun balance(text: String): Long? = amount(text, listOf("баланс", "деньги", "счёт", "счет", "balance", "cash", "банк"))
+    fun rewardAmount(text: String): Long? = amount(text, listOf("награда", "бонус", "reward", "bonus", "приз", "prize", "выигрыш"))
+    fun bidAmount(text: String): Long? = amount(text, listOf("ставка", "bid", "текущая ставка", "предложение", "offer"))
 
-    fun saleAmount(text: String): Long? = amount(text, listOf(
-        "продан", "продажа", "продать", "продал", "sale"
-    ))
+    fun hp(text: String): Int? = Regex("(\\d{2,4})\\s*(?:л\\.?\\s*с\\.?|лошад|hp|bhp)", RegexOption.IGNORE_CASE).find(text)?.groupValues?.get(1)?.toIntOrNull()
 
-    fun expenseAmount(text: String): Long? = amount(text, listOf(
-        "расход", "ремонт", "стоимость ремонта", "оплат", "комис", "fee"
-    ))
+    fun mileage(text: String): Long? = Regex("(?:пробег|mileage|km|км)\\D{0,30}(\\d[\\d\\s.,]*)", RegexOption.IGNORE_CASE).find(text)?.groupValues?.get(1)?.replace(Regex("[^0-9]"), "")?.toLongOrNull()
 
-    fun balance(text: String): Long? = amount(text, listOf(
-        "баланс", "деньги", "счёт", "счет", "balance"
-    ))
+    fun owners(text: String): Int? = Regex("(?:владельц|owner|owners)\\D{0,20}(\\d{1,2})", RegexOption.IGNORE_CASE).find(text)?.groupValues?.get(1)?.toIntOrNull()
 
-    fun hp(text: String): Int? {
-        val m = Regex("(\\d{2,4})\\s*(?:л\\.?\\s*с\\.?|лошад|hp)", RegexOption.IGNORE_CASE).find(text)
-            ?: return null
-        return m.groupValues[1].toIntOrNull()
-    }
-
-    fun mileage(text: String): Long? {
-        val m = Regex("(?:пробег|mileage)\\D{0,30}(\\d[\\d\\s.,]*)", RegexOption.IGNORE_CASE).find(text)
-            ?: return null
-        return m.groupValues[1].replace(Regex("[^0-9]"), "").toLongOrNull()
-    }
-
-    fun owners(text: String): Int? {
-        val m = Regex("(?:владельц|owner)\\D{0,20}(\\d{1,2})", RegexOption.IGNORE_CASE).find(text)
-            ?: return null
-        return m.groupValues[1].toIntOrNull()
+    fun percent(text: String, keywords: List<String> = emptyList()): Double? {
+        val source = if (keywords.isEmpty()) text else text.lines().firstOrNull { line -> keywords.any { line.contains(it, true) } } ?: return null
+        return Regex("(-?\\d+(?:[.,]\\d+)?)\\s*%").find(source)?.groupValues?.get(1)?.replace(',', '.')?.toDoubleOrNull()
     }
 
     fun plate(text: String): String {
-        val normalized = text
-            .uppercase()
+        val normalized = text.uppercase()
             .replace('О', 'O').replace('А', 'A').replace('В', 'B').replace('Е', 'E')
             .replace('К', 'K').replace('М', 'M').replace('Н', 'H').replace('Р', 'P')
             .replace('С', 'C').replace('Т', 'T').replace('У', 'Y').replace('Х', 'X')
             .replace(Regex("[|¦]"), "I")
         val compact = normalized.replace(Regex("[^A-Z0-9]"), "")
-        val patterns = listOf(
-            Regex("[A-Z]\\d{3}[A-Z]{2}\\d{2,3}"),
-            Regex("[A-Z]\\d{3}[A-Z]{2}\\d{2}")
-        )
-        val m = patterns.asSequence().mapNotNull { it.find(compact) }.firstOrNull()
-        return m?.value ?: ""
+        val patterns = listOf(Regex("[A-Z]\\d{3}[A-Z]{2}\\d{2,3}"), Regex("[A-Z]\\d{3}[A-Z]{2}\\d{2}"))
+        return patterns.asSequence().mapNotNull { it.find(compact) }.firstOrNull()?.value ?: ""
     }
 
     fun origin(text: String): String {
@@ -81,55 +61,108 @@ object GameParser {
             s.contains("japan") || s.contains("япон") -> "JAPAN"
             s.contains("germany") || s.contains("герман") || s.contains("немец") -> "GERMANY"
             s.contains("italy") || s.contains("итал") -> "ITALY"
+            s.contains("france") || s.contains("франц") -> "FRANCE"
+            "korea" in s || "коре" in s -> "KOREA"
+            "china" in s || "кита" in s -> "CHINA"
+            "uk" in s || "англи" in s || "британ" in s -> "UK"
+            "russia" in s || "росси" in s || "русск" in s -> "RUSSIA"
             else -> ""
         }
     }
 
-    fun paintedParts(text: String): Int? {
-        val m = Regex("(?:крашен|окрашен|painted)\\D{0,40}(\\d{1,3})", RegexOption.IGNORE_CASE).find(text)
-            ?: return null
-        return m.groupValues[1].toIntOrNull()
-    }
+    fun paintedParts(text: String): Int? = Regex("(?:крашен|окрашен|painted|paint)\\D{0,40}(\\d{1,3})", RegexOption.IGNORE_CASE).find(text)?.groupValues?.get(1)?.toIntOrNull()
 
     fun name(text: String): String {
-        val lines = text.lines().map { it.trim() }.filter { it.length in 3..100 }
-        val stop = Regex(
-            "^(цена|стоимость|пробег|владель|мощность|баланс|купить|продать|гараж|номер|paint|hp|вложено|предложение|убыток|по рукам|ресурс|крашен)",
-            RegexOption.IGNORE_CASE
-        )
-        val explicit = Regex("(?i)([A-ZА-ЯЁ][A-Za-zА-ЯЁа-яё0-9 ._-]{2,60})\\s*\\(")
+        val lines = text.lines().map { it.trim().replace(Regex("\\s+"), " ") }.filter { it.length in 3..100 }
+        val explicit = Regex("(?i)([A-ZА-ЯЁ][A-Za-zА-ЯЁа-яё0-9 ._/-]{2,70})\\s*\\(")
         explicit.find(text)?.groupValues?.getOrNull(1)?.trim()?.let { if (it.length >= 3) return it }
-        return lines.firstOrNull {
-            it.any(Char::isLetter) &&
-                !stop.containsMatchIn(it) &&
-                (it.contains("Audi", true) || it.contains("BMW", true) || it.contains("Mercedes", true) ||
-                 it.contains("Toyota", true) || it.contains("Honda", true) || it.contains("Ford", true) ||
-                 it.contains("Volkswagen", true) || it.contains("Lada", true) || it.contains("Nissan", true) ||
-                 it.contains("Skoda", true) || it.contains("Kia", true) || it.contains("Hyundai", true))
+        val stop = Regex("^(цена|стоимость|пробег|владель|мощность|баланс|купить|продать|гараж|номер|paint|hp|вложено|предложение|убыток|по рукам|ресурс|крашен|ставк|аукцион|контракт|заказ|награда|бонус|ремонт|расход|комис|сч[её]т|деньги|cash|balance)", RegexOption.IGNORE_CASE)
+        return lines.firstOrNull { line ->
+            line.any(Char::isLetter) &&
+                !stop.containsMatchIn(line) &&
+                !Regex("^[-+]?\\d[\\d\\s.,]*([₽$€%]|л\\.?с\\.?|hp|km|км)?$", RegexOption.IGNORE_CASE).matches(line) &&
+                line.count(Char::isLetter) >= 3
         } ?: ""
     }
 
-    fun garage(text: String): Int? {
-        val m = Regex("(?:гараж|garage)\\D{0,10}(\\d{1,2})\\s*/\\s*(\\d{1,2})", RegexOption.IGNORE_CASE).find(text)
-        return m?.groupValues?.get(1)?.toIntOrNull()
-    }
+    fun garage(text: String): Int? = Regex("(?:гараж|garage)\\D{0,10}(\\d{1,2})\\s*/\\s*(\\d{1,2})", RegexOption.IGNORE_CASE).find(text)?.groupValues?.get(1)?.toIntOrNull()
 
     fun contract(text: String): String? {
-        val s = text.lowercase()
-        return if (s.contains("контракт") || s.contains("заказ")) {
-            text.lines().firstOrNull { it.lowercase().contains("контракт") || it.lowercase().contains("заказ") }?.trim()
-        } else null
+        val line = text.lines().firstOrNull { val s = it.lowercase(); s.contains("контракт") || s.contains("заказ") || s.contains("quest") || s.contains("квест") || s.contains("mission") || s.contains("мисси") }
+        return line?.trim()?.takeIf { it.isNotBlank() }
     }
 
     fun event(text: String): String? {
         val s = text.lowercase()
         return when {
-            s.contains("продан") || s.contains("продажа") || s.contains("продал") -> "ПРОДАЖА"
-            s.contains("куплен") || s.contains("покупка") || s.contains("купил") -> "ПОКУПКА"
-            s.contains("аукцион") || s.contains("ставк") -> "АУКЦИОН"
-            s.contains("ремонт") || s.contains("полиров") || s.contains("окрас") || s.contains("турбин") || s.contains("чип") -> "РАСХОД"
+            s.contains("продан") || s.contains("продажа") || s.contains("продал") || s.contains("sold") -> "ПРОДАЖА"
+            s.contains("куплен") || s.contains("покупка") || s.contains("купил") || s.contains("bought") -> "ПОКУПКА"
+            s.contains("аукцион") || s.contains("ставк") || s.contains("auction") || s.contains("bid") -> "АУКЦИОН"
+            s.contains("награда") || s.contains("бонус") || s.contains("reward") || s.contains("bonus") || s.contains("приз") -> "НАГРАДА"
+            s.contains("контракт") || s.contains("заказ") || s.contains("квест") || s.contains("quest") || s.contains("mission") -> "ЗАДАНИЕ"
+            action(text) != null -> "ДЕЙСТВИЕ"
             else -> null
         }
+    }
+
+    fun screenType(text: String): String {
+        val s = text.lowercase()
+        return when {
+            plateAuction(text) -> "АУКЦИОН_НОМЕРА"
+            carAuction(text) -> "АУКЦИОН"
+            s.contains("гараж") || s.contains("garage") -> "ГАРАЖ"
+            s.contains("магазин") || s.contains("shop") || s.contains("магаз") -> "МАГАЗИН"
+            s.contains("контракт") || s.contains("заказ") || s.contains("квест") || s.contains("quest") || s.contains("mission") -> "ЗАДАНИЕ"
+            s.contains("награда") || s.contains("бонус") || s.contains("reward") || s.contains("bonus") || s.contains("приз") -> "НАГРАДА"
+            s.contains("продать") || s.contains("продажа") || s.contains("продан") || s.contains("sell") || s.contains("sold") -> "ПРОДАЖА"
+            s.contains("купить") || s.contains("покупка") || s.contains("куплен") || s.contains("buy") || s.contains("market") -> "ПОКУПКА"
+            s.contains("ремонт") || s.contains("полиров") || s.contains("окрас") || s.contains("турбин") || s.contains("чип") || s.contains("upgrade") || s.contains("тюнинг") -> "УЛУЧШЕНИЕ"
+            s.contains("осмотр") || s.contains("диагност") || s.contains("inspection") -> "ПРОВЕРКА"
+            name(text).isNotBlank() || price(text) != null || hp(text) != null || plate(text).isNotBlank() -> "АВТО"
+            s.contains("гонк") || s.contains("race") || s.contains("заезд") || s.contains("challenge") || s.contains("испытан") -> "СОРЕВНОВАНИЕ"
+            s.contains("банк") || s.contains("bank") || s.contains("кредит") || s.contains("loan") -> "ФИНАНСЫ"
+            else -> "ОБЗОР"
+        }
+    }
+
+    fun resources(text: String): Map<String, Long> {
+        val result = linkedMapOf<String, Long>()
+        val patterns = listOf(
+            "деньги" to listOf("деньги", "баланс", "cash", "balance"),
+            "топливо" to listOf("топливо", "бензин", "fuel"),
+            "опыт" to listOf("опыт", "xp", "experience"),
+            "репутация" to listOf("репутац", "reputation"),
+            "энергия" to listOf("энергия", "energy"),
+            "монеты" to listOf("монет", "coins", "coin"),
+            "жетоны" to listOf("жетон", "tokens", "token")
+        )
+        for ((key, words) in patterns) numberAfter(text, words)?.let { result[key] = it }
+        return result
+    }
+
+    fun action(text: String): String? {
+        val s = text.lowercase()
+        val rules = listOf(
+            Regex("\\bчип\\b|\\bchip\\b") to "ЧИП",
+            Regex("турбин|turbo|supercharger") to "ТУРБИНА",
+            Regex("полиров|polish|detailing") to "ПОЛИРОВКА",
+            Regex("окрас|покрас|paint|bodywork") to "ОКРАСКА",
+            Regex("ремонт|repair|fix") to "РЕМОНТ",
+            Regex("диагност|diagnostic|inspection|осмотр") to "ДИАГНОСТИКА",
+            Regex("двигател|engine|мотор") to "ДВИГАТЕЛЬ",
+            Regex("тормоз|brake") to "ТОРМОЗА",
+            Regex("подвес|suspension") to "ПОДВЕСКА",
+            Regex("шины|резин|tire|tyre") to "ШИНЫ",
+            Regex("диск|колес|wheel|rim") to "КОЛЁСА",
+            Regex("салон|interior") to "САЛОН",
+            Regex("аудио|audio|sound") to "АУДИО",
+            Regex("нитро|nitro") to "НИТРО",
+            Regex("мойк|мойка|wash") to "МОЙКА",
+            Regex("страхов|insurance") to "СТРАХОВКА",
+            Regex("регистрац|registration") to "РЕГИСТРАЦИЯ",
+            Regex("доставка|delivery") to "ДОСТАВКА"
+        )
+        return rules.firstOrNull { it.first.containsMatchIn(s) }?.second
     }
 
     fun plateOffer(text: String): Long? {
@@ -148,32 +181,17 @@ object GameParser {
 
     fun plateAuction(text: String): Boolean {
         val x = text.lowercase()
-        return (x.contains("аукцион") || x.contains("ставк") || x.contains("auction")) &&
-            (x.contains("номер") || x.contains("госномер") || x.contains("plate"))
+        return (x.contains("аукцион") || x.contains("ставк") || x.contains("auction") || x.contains("bid")) && (x.contains("номер") || x.contains("госномер") || x.contains("plate"))
     }
 
     fun carAuction(text: String): Boolean {
         val x = text.lowercase()
-        return (x.contains("аукцион") || x.contains("ставк") || x.contains("auction")) &&
-            !(x.contains("номер") || x.contains("госномер") || x.contains("plate"))
+        return (x.contains("аукцион") || x.contains("ставк") || x.contains("auction") || x.contains("bid")) && !(x.contains("номер") || x.contains("госномер") || x.contains("plate"))
     }
 
     fun plateRemoved(text: String): Boolean {
         val x = text.lowercase()
-        return x.contains("снять номер") || x.contains("снятие номера") || x.contains("снял номер") || x.contains("remove plate")
-    }
-
-    fun action(text: String): String? {
-        val s = text.lowercase()
-        return when {
-            Regex("\\bчип\\b|chip").containsMatchIn(s) -> "ЧИП"
-            s.contains("турбин") || s.contains("turbo") -> "ТУРБИНА"
-            s.contains("полиров") || s.contains("polish") -> "ПОЛИРОВКА"
-            s.contains("окрас") || s.contains("покрас") || s.contains("paint") -> "ОКРАСКА"
-            s.contains("ремонт") || s.contains("repair") -> "РЕМОНТ"
-            s.contains("диагност") || s.contains("diagnostic") -> "ДИАГНОСТИКА"
-            else -> null
-        }
+        return x.contains("снять номер") || x.contains("снятие номера") || x.contains("снял номер") || x.contains("remove plate") || x.contains("remove number")
     }
 
     fun decision(v: VehicleSnapshot): String = if (v.price == null && v.name.isBlank()) "НАБЛЮДАЮ" else "АНАЛИЗ"
