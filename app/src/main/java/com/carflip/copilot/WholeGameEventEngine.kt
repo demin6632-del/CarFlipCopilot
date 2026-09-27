@@ -25,6 +25,13 @@ object WholeGameEventEngine {
 
         GameMemory.sync(c)
 
+        val extensionCost = GameParser.listingExtensionCost(text)
+        if (extensionCost != null && extensionCost > 0 && once(c, "listing_extension", "${vehicle.plate}|${vehicle.name}|$extensionCost", 90_000L)) {
+            CopilotState.addFeeToOpenDeal(c, vehicle, extensionCost, "Продление объявления")
+            GameMemory.record(c, screen, "ПРОДЛЕНИЕ_ОБЪЯВЛЕНИЯ", vehicle = vehicle, amount = extensionCost)
+            CopilotState.addEvent(c, "РАСХОД • продление объявления • $extensionCost ₽ • авто ${vehicle.name.ifBlank { vehicle.plate }}")
+        }
+
         val purchase = GameParser.purchaseAmount(text)
         if (purchase != null && purchase > 0 &&
             once(c, "purchase", "${vehicle.plate}|${vehicle.name}|$purchase", 90_000L)) {
@@ -56,19 +63,25 @@ object WholeGameEventEngine {
         }
 
         GameParser.action(text)?.let { action ->
-            if (once(c, "action", "${vehicle.plate}|${vehicle.name}|$action", 90_000L)) {
+            val actionCost = GameParser.expenseAmount(text)
+            if (once(c, "action", "${vehicle.plate}|${vehicle.name}|$action|${actionCost ?: 0L}", 90_000L)) {
                 GameMemory.record(c, screen, "ДЕЙСТВИЕ", action, vehicle)
 
-                // Store the real action cost now. When the car is later sold,
-                // LearningMemory.recordAllActionOutcomes() attaches the realized
-                // sale delta, allowing ActionRoiEngine to show realized ROI.
-                if (screen == "УЛУЧШЕНИЕ") {
-                    val cost = GameParser.expenseAmount(text)
-                    if (cost != null && cost > 0) {
-                        val forecast = CopilotState.dealForecast(c, vehicle)
-                        val beforeSale = if (forecast.has("sale_price") && !forecast.isNull("sale_price")) forecast.optLong("sale_price") else null
-                        LearningMemory.learnAction(c, vehicle, action, cost, 0L, beforeSale, "", vehicle.plate)
-                    }
+                // Every paid vehicle action becomes part of the open deal cost.
+                // This keeps repair/polish/paint/chip/turbo/diagnostics and similar
+                // expenses from disappearing from the final net-profit calculation.
+                if (actionCost != null && actionCost > 0) {
+                    // Capture the sale forecast BEFORE adding the new cost.
+                    // The real sale price can later be compared with this baseline.
+                    val forecastBeforeCost = CopilotState.dealForecast(c, vehicle)
+                    val beforeSale = if (forecastBeforeCost.has("sale_price") && !forecastBeforeCost.isNull("sale_price")) {
+                        forecastBeforeCost.optLong("sale_price")
+                    } else null
+
+                    CopilotState.addFeeToOpenDeal(c, vehicle, actionCost, action)
+                    LearningMemory.learnAction(c, vehicle, action, actionCost, 0L, beforeSale, "", vehicle.plate)
+                    GameMemory.record(c, screen, "РАСХОД_ПО_АВТО", action, vehicle, actionCost)
+                    CopilotState.addEvent(c, "РАСХОД • $action • $actionCost ₽ • авто ${vehicle.name.ifBlank { vehicle.plate }}")
                 }
             }
         }

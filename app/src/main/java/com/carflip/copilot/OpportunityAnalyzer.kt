@@ -14,6 +14,9 @@ object OpportunityAnalyzer {
         val hasCar = v.name.isNotBlank() || price != null || v.hp != null || v.plate.isNotBlank()
         val learned = if (hasCar) LearningMemory.score(context, v) else 0
 
+        // Game-level guidance has priority: the assistant must advise on the whole game, not only cars and plates.
+        GeneralGameAdvisor.analyze(context, text, balance, garage)?.let { return it }
+
         if (reward != null || event == "НАГРАДА") {
             return Opportunity("ПОЛУЧИ", "Найдена награда", "Copilot видит награду/бонус${reward?.let { ": $it" } ?: ""}. Проверь условия и забери её, если действие не требует невыгодных затрат.", 90)
         }
@@ -62,7 +65,7 @@ object OpportunityAnalyzer {
             return Opportunity("КОНТРОЛИРУЙ", "Финансы", "Отслеживаю баланс, расходы, комиссии, вложения и прибыль, чтобы решения принимались по реальной экономике.", 88)
         }
 
-        if (hasCar) {
+        // Generic game guidance is a fallback. Concrete vehicle/plate economics must remain visible.\n        GeneralGameAdvisor.analyze(context, text, balance, garage)?.let { return it }\n\n        if (hasCar) {
             if (price != null && balance != null && price > balance) return Opportunity("НЕ ПОКУПАЙ", "Недостаточно денег", "Цена $price ₽ выше доступного баланса $balance ₽.", 98)
             if (garage != null && garage >= 3) return Opportunity("ОСВОБОДИ МЕСТО", "Гараж заполнен", "Перед новой покупкой учитываю лимит гаража и текущие открытые сделки.", 96)
             if (price != null && price > 0) {

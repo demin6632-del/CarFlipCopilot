@@ -15,7 +15,7 @@ object DecisionEngine {
     }
 
     private fun stableDecision(next: Opportunity, urgent: Boolean = false): Opportunity {
-        val key = "${next.action}|${next.title}|${next.details.take(180)}"
+        val key = "${next.action}|${next.title}|${next.reason.take(180)}"
         if (urgent) {
             stable = next
             candidateKey = key
@@ -54,6 +54,11 @@ object DecisionEngine {
         if (plateSale != null) {
             PlateSaleRecorder.record(c, plateSale)
             return stableDecision(now("ЗАФИКСИРОВАТЬ ПРОДАЖУ НОМЕРА", "Номер продан с аукциона", "${plateSale.plate}: выплата ${plateSale.payout} ₽; комиссия ${plateSale.commission} ₽${plateSale.commissionPercent?.let { " (${it}%)" } ?: ""}.", 98), true)
+        }
+
+        if (GameParser.listingExtension(text)) {
+            val cost = GameParser.listingExtensionCost(text) ?: 1_500L
+            return stableDecision(now("УЧЕСТЬ ПРОДЛЕНИЕ", "Объявление продлено", "Добавлено в себестоимость сделки: $cost ₽. Следующее предложение покупателя сравнивается уже с учётом этого расхода.", 96), true)
         }
 
         val base = OpportunityAnalyzer.analyze(c, text, v, balance, garage)
