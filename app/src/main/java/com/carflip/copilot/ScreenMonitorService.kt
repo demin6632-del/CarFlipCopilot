@@ -139,9 +139,15 @@ class ScreenMonitorService : Service() {
 
     private fun processImage(image: Image) {
         try {
-            val plane = image.planes[0]; val rowPadding = plane.rowStride - plane.pixelStride * image.width; val width = image.width + rowPadding / plane.pixelStride
-            val bitmap = Bitmap.createBitmap(width, image.height, Bitmap.Config.ARGB_8888); bitmap.copyPixelsFromBuffer(plane.buffer); image.close()
-            val cropped = if (width != image.width) Bitmap.createBitmap(bitmap, 0, 0, image.width, image.height) else bitmap
+            val imageWidth = image.width
+            val imageHeight = image.height
+            val plane = image.planes[0]
+            val rowPadding = plane.rowStride - plane.pixelStride * imageWidth
+            val bufferWidth = imageWidth + rowPadding / plane.pixelStride
+            val bitmap = Bitmap.createBitmap(bufferWidth, imageHeight, Bitmap.Config.ARGB_8888)
+            bitmap.copyPixelsFromBuffer(plane.buffer)
+            image.close()
+            val cropped = if (bufferWidth != imageWidth) Bitmap.createBitmap(bitmap, 0, 0, imageWidth, imageHeight) else bitmap
             if (cropped !== bitmap) bitmap.recycle()
             recognizer.process(InputImage.fromBitmap(cropped, 0)).addOnSuccessListener { result ->
                 try {
