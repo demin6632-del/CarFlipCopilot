@@ -32,7 +32,7 @@ class MainActivity:AppCompatActivity(){
   val perm=Button(this).apply{text="Разрешить панель поверх Telegram";setOnClickListener{startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION,Uri.parse("package:"+packageName)))}}
   val battery=Button(this).apply{text="🔋 Разрешить работу без ограничений";setOnClickListener{requestBatteryOptimizationExemption()}}
   val start=Button(this).apply{text="Запустить мониторинг";setOnClickListener{requestCapture()}}
-  val stop=Button(this).apply{text="Остановить мониторинг";setOnClickListener{stopService(Intent(this@MainActivity,ScreenMonitorService::class.java))}}
+  val stop=Button(this).apply{text="Остановить мониторинг";setOnClickListener{stopService(Intent(this@MainActivity,ScreenMonitorServiceV2::class.java));stopService(Intent(this@MainActivity,ScreenMonitorService::class.java))}}
   val bridge=Button(this).apply{text="Подключить меня к Copilot";setOnClickListener{showBridgeDialog()}}
   val image=Button(this).apply{text="📷 Фото / скриншот";setOnClickListener{pickImage.launch(arrayOf("image/*"))}}
   val video=Button(this).apply{text="🎥 Видео";setOnClickListener{pickVideo.launch(arrayOf("video/*"))}}
@@ -107,5 +107,5 @@ class MainActivity:AppCompatActivity(){
   AlertDialog.Builder(this).setTitle("Постоянный канал «телефон ↔ я»").setMessage("Copilot получает состояние игры, кадры экрана и выбранные фото, скриншоты, видео и файлы.").setView(box).setNegativeButton("Отмена",null).setPositiveButton("Сохранить"){_,_->LiveBridge(this){}.configure(url.text.toString(),token.text.toString());Toast.makeText(this,"Канал сохранён. Запусти мониторинг.",Toast.LENGTH_SHORT).show()}.show()
  }
  private fun requestCapture(){if(!Settings.canDrawOverlays(this)){startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION,Uri.parse("package:"+packageName)));return};val mgr=getSystemService(MEDIA_PROJECTION_SERVICE)as MediaProjectionManager;startActivityForResult(mgr.createScreenCaptureIntent(),captureCode)}
- override fun onActivityResult(requestCode:Int,resultCode:Int,data:Intent?){super.onActivityResult(requestCode,resultCode,data);if(requestCode==captureCode&&resultCode==Activity.RESULT_OK&&data!=null)startForegroundService(Intent(this@MainActivity,ScreenMonitorService::class.java).putExtra("resultCode",resultCode).putExtra("data",data))}
+ override fun onActivityResult(requestCode:Int,resultCode:Int,data:Intent?){super.onActivityResult(requestCode,resultCode,data);if(requestCode==captureCode&&resultCode==Activity.RESULT_OK&&data!=null)startForegroundService(Intent(this@MainActivity,ScreenMonitorServiceV2::class.java).putExtra("resultCode",resultCode).putExtra("data",data))}
 }
