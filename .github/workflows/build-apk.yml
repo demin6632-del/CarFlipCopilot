@@ -48,3 +48,6 @@ jobs:
           name: CarFlipCopilot-debug
           path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
+
+      - name: Print APK SHA256
+        run: sha256sum app/build/outputs/apk/debug/app-debug.apk
