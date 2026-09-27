@@ -71,9 +71,14 @@ object WholeGameEventEngine {
                 // This keeps repair/polish/paint/chip/turbo/diagnostics and similar
                 // expenses from disappearing from the final net-profit calculation.
                 if (actionCost != null && actionCost > 0) {
+                    // Capture the sale forecast BEFORE adding the new cost.
+                    // The real sale price can later be compared with this baseline.
+                    val forecastBeforeCost = CopilotState.dealForecast(c, vehicle)
+                    val beforeSale = if (forecastBeforeCost.has("sale_price") && !forecastBeforeCost.isNull("sale_price")) {
+                        forecastBeforeCost.optLong("sale_price")
+                    } else null
+
                     CopilotState.addFeeToOpenDeal(c, vehicle, actionCost, action)
-                    val forecast = CopilotState.dealForecast(c, vehicle)
-                    val beforeSale = if (forecast.has("sale_price") && !forecast.isNull("sale_price")) forecast.optLong("sale_price") else null
                     LearningMemory.learnAction(c, vehicle, action, actionCost, 0L, beforeSale, "", vehicle.plate)
                     GameMemory.record(c, screen, "РАСХОД_ПО_АВТО", action, vehicle, actionCost)
                     CopilotState.addEvent(c, "РАСХОД • $action • $actionCost ₽ • авто ${vehicle.name.ifBlank { vehicle.plate }}")
