@@ -15,7 +15,49 @@ object LearningMemory {
  fun score(c:Context,v:VehicleSnapshot)=(JSONObject(p(c).getString(WEIGHTS,"{}")).optDouble(featureKey(v),0.0)*12.0).roundToInt()
  fun stats(c:Context):LearningStats{val a=JSONArray(p(c).getString(HISTORY,"[]"));var good=0;var loss=0;var sum=0L;for(i in 0 until a.length()){val n=a.optJSONObject(i)?.optLong("profit")?:0;sum+=n;if(n>0)good++ else if(n<0)loss++};val n=a.length();val accuracy=if(n==0)0 else (good.toDouble()/n*100).roundToInt();return LearningStats(n,good,loss,if(n==0)0 else sum/n,accuracy)}
  fun learnAction(c:Context,v:VehicleSnapshot,action:String,cost:Long,valueDelta:Long,beforeSale:Long?=null,dealId:String="",plate:String=""){val pref=p(c);val a=JSONArray(pref.getString("action_history","[]"));a.put(JSONObject().put("feature",featureKey(v)).put("action",ActionRoiEngine.normalize(action)).put("cost",cost).put("delta",valueDelta).put("roi",if(cost>0)(valueDelta-cost).toDouble()/cost*100.0 else 0.0).put("beforeSale",beforeSale?:JSONObject.NULL).put("deal_id",dealId).put("plate",plate).put("time",System.currentTimeMillis()));while(a.length()>500)a.remove(0);pref.edit().putString("action_history",a.toString()).apply()}
- fun estimatedSale(c:Context,v:VehicleSnapshot,fallback:Long?=null):Long?{val pref=c.getSharedPreferences("copilot_state",Context.MODE_PRIVATE);val a=try{JSONArray(pref.getString("buyer_offers","[]"))}catch(_:Exception){JSONArray()};val nums=mutableListOf<Long>();for(i in 0 until a.length()){val o=a.optJSONObject(i)?:continue;if(v.plate.isNotEmpty()&&o.optString("plate")!=v.plate)continue;val n=o.optLong("amount",0);if(n>0)nums+=n};return when{nums.isNotEmpty()->nums.average().toLong();fallback!=null->fallback;else->v.price}}
+
+ private fun conditionBucket(v:VehicleSnapshot):String{
+  val painted=v.paintedParts?:0
+  val mileage=v.mileage?:0
+  return when{
+   painted>=5->"HEAVY_DAMAGE"
+   painted>=2->"DAMAGED"
+   mileage>=250000->"HIGH_MILEAGE"
+   mileage>=150000->"USED"
+   else->"CLEAN"
+  }
+ }
+ private fun offerConditionBucket(s:String):String{
+  val t=s.lowercase()
+  return when{
+   t.contains("сильн")||t.contains("тяж")||t.contains("много")||t.contains("убит")->"HEAVY_DAMAGE"
+   t.contains("крашен")||t.contains("бит")||t.contains("вмят")||t.contains("ремонт")||t.contains("устал")->"DAMAGED"
+   t.contains("пробег")||t.contains("уставш")||t.contains("возраст")->"USED"
+   t.contains("идеал")||t.contains("чист")||t.contains("отлич")->"CLEAN"
+   else->"UNKNOWN"
+  }
+ }
+
+ fun estimatedSale(c:Context,v:VehicleSnapshot,fallback:Long?=null):Long?{
+  val pref=c.getSharedPreferences("copilot_state",Context.MODE_PRIVATE)
+  val a=try{JSONArray(pref.getString("buyer_offers","[]"))}catch(_:Exception){JSONArray()}
+  val exact=mutableListOf<Pair<Long,Double>>()
+  val sameName=mutableListOf<Pair<Long,Double>>()
+  val wanted=conditionBucket(v)
+  for(i in 0 until a.length()){
+   val o=a.optJSONObject(i)?:continue
+   val plate=o.optString("plate")
+   val name=o.optString("name")
+   val n=o.optLong("amount",0)
+   if(n<=0)continue
+   val cond=offerConditionBucket(o.optString("condition"))
+   val weight=when{cond==wanted->1.0;cond=="UNKNOWN"->0.55;else->0.20}
+   if(v.plate.isNotEmpty()&&plate==v.plate)exact+=n to weight
+   if(v.name.isNotEmpty()&&name==v.name)sameName+=n to weight
+  }
+  fun weighted(xs:List<Pair<Long,Double>>):Long?{if(xs.isEmpty())return null;val sum=xs.sumOf{it.first*it.second};val w=xs.sumOf{it.second};return if(w>0)(sum/w).toLong()else null}
+  return weighted(exact)?:weighted(sameName)?:fallback?:v.price
+ }
  private fun history(c:Context)=JSONArray(p(c).getString("action_history","[]"))
  fun actionSamples(c:Context,v:VehicleSnapshot,action:String)=run{val a=history(c);val n=ActionRoiEngine.normalize(action);(0 until a.length()).count{val o=a.optJSONObject(it);o!=null&&o.optString("feature")==featureKey(v)&&ActionRoiEngine.normalize(o.optString("action"))==n}}
  fun actionRoi(c:Context,v:VehicleSnapshot,action:String):Double?{val a=history(c);val n=ActionRoiEngine.normalize(action);val xs=(0 until a.length()).mapNotNull{val o=a.optJSONObject(it);if(o!=null&&o.optString("feature")==featureKey(v)&&ActionRoiEngine.normalize(o.optString("action"))==n)o.optDouble("roi")else null};return xs.takeIf{it.isNotEmpty()}?.average()}
