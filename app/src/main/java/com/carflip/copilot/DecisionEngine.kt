@@ -56,6 +56,11 @@ object DecisionEngine {
             return stableDecision(now("ЗАФИКСИРОВАТЬ ПРОДАЖУ НОМЕРА", "Номер продан с аукциона", "${plateSale.plate}: выплата ${plateSale.payout} ₽; комиссия ${plateSale.commission} ₽${plateSale.commissionPercent?.let { " (${it}%)" } ?: ""}.", 98), true)
         }
 
+        if (GameParser.listingExtension(text)) {
+            val cost = GameParser.listingExtensionCost(text) ?: 1_500L
+            return stableDecision(now("УЧЕСТЬ ПРОДЛЕНИЕ", "Объявление продлено", "Добавлено в себестоимость сделки: $cost ₽. Следующее предложение покупателя сравнивается уже с учётом этого расхода.", 96), true)
+        }
+
         val base = OpportunityAnalyzer.analyze(c, text, v, balance, garage)
         val f = CopilotState.dealForecast(c, v)
         val expectedSale = if (f.has("sale_price") && !f.isNull("sale_price")) f.optLong("sale_price") else null
