@@ -15,7 +15,7 @@ object DecisionEngine {
     }
 
     private fun stableDecision(next: Opportunity, urgent: Boolean = false): Opportunity {
-        val key = "${next.action}|${next.title}|${next.details.take(180)}"
+        val key = "${next.action}|${next.title}|${next.reason.take(180)}"
         if (urgent) {
             stable = next
             candidateKey = key
