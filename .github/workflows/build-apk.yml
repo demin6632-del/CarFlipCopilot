@@ -55,3 +55,5 @@ jobs:
       # Force a fresh workflow revision after CI configuration changes.
 
       # Fresh rebuild requested for the live copilot APK.
+
+      # Trigger fresh APK build for live diagnostics.
