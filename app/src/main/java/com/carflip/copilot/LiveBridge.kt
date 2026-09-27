@@ -25,6 +25,7 @@ class LiveBridge(
     @Volatile private var connected = false
     @Volatile private var stopped = true
     @Volatile private var reconnectScheduled = false
+    @Volatile private var lastFrameSent = 0L
 
     fun configure(url: String, token: String) {
         prefs.edit().putString("url", url.trim()).putString("token", token.trim()).apply()
@@ -62,7 +63,7 @@ class LiveBridge(
             val request = Request.Builder()
                 .url(u)
                 .header("Authorization", "Bearer " + token())
-                .header("User-Agent", "CarFlipCopilot/1.1")
+                .header("User-Agent", "CarFlipCopilot/2.0")
                 .build()
             socket = client!!.newWebSocket(request, object : WebSocketListener() {
                 override fun onOpen(ws: WebSocket, response: Response) {
@@ -73,10 +74,10 @@ class LiveBridge(
                         .put("type", "hello")
                         .put("device", "android")
                         .put("app", "CarFlipCopilot")
-                        .put("version", "1.1")
+                        .put("version", "2.0")
                         .put("time", System.currentTimeMillis())
                         .toString())
-                    CopilotState.addEvent(context, "LIVE • WebSocket подключён")
+                    CopilotState.addEvent(context, "LIVE • канал ChatGPT подключён")
                 }
 
                 override fun onMessage(ws: WebSocket, text: String) {
@@ -84,6 +85,10 @@ class LiveBridge(
                         val o = JSONObject(text)
                         when (o.optString("type")) {
                             "command" -> onCommand(o.optString("command"))
+                            "ai_decision" ->
+                                onCommand("AI_DECISION|" + o.optJSONObject("decision").toString())
+                            "ai_status" ->
+                                onCommand("AI_STATUS|" + o.optString("message"))
                             "attachment_analysis" ->
                                 onCommand("ATTACHMENT_ANALYSIS|" + o.optString("name") + "|" + o.optString("analysis"))
                             "attachment_analysis_error" ->
@@ -133,7 +138,7 @@ class LiveBridge(
         }, 5, TimeUnit.SECONDS)
     }
 
-    fun sendState(text: String, v: VehicleSnapshot, balance: Long, garage: Int, decision: String, opportunity: Opportunity) {
+    fun sendState(text: String, v: VehicleSnapshot, balance: Long, garage: Int) {
         if (!connected) return
         send(JSONObject()
             .put("type", "state")
@@ -141,11 +146,6 @@ class LiveBridge(
             .put("ocr", text)
             .put("balance", balance)
             .put("garage", garage)
-            .put("decision", decision)
-            .put("action", opportunity.action)
-            .put("confidence", opportunity.confidence)
-            .put("title", opportunity.title)
-            .put("reason", opportunity.reason)
             .put("vehicle", JSONObject()
                 .put("name", v.name)
                 .put("price", v.price)
@@ -160,10 +160,18 @@ class LiveBridge(
 
     fun sendFrame(bitmap: Bitmap) {
         if (!connected) return
+        val now = System.currentTimeMillis()
+        if (now - lastFrameSent < 1800L) return
+        lastFrameSent = now
         val out = ByteArrayOutputStream()
-        bitmap.compress(Bitmap.CompressFormat.JPEG, 55, out)
-        send(JSONObject().put("type", "frame").put("time", System.currentTimeMillis())
-            .put("jpegBase64", Base64.encodeToString(out.toByteArray(), Base64.NO_WRAP)).toString())
+        val scaled = if (bitmap.width > 720) Bitmap.createScaledBitmap(bitmap, 720, bitmap.height * 720 / bitmap.width, true) else bitmap
+        scaled.compress(Bitmap.CompressFormat.JPEG, 48, out)
+        if (scaled !== bitmap) scaled.recycle()
+        send(JSONObject()
+            .put("type", "frame")
+            .put("time", now)
+            .put("jpegBase64", Base64.encodeToString(out.toByteArray(), Base64.NO_WRAP))
+            .toString())
     }
 
     fun sendAttachment(uri: Uri): Boolean {
