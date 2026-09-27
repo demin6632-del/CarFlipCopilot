@@ -96,7 +96,7 @@ class ScreenMonitorService : Service() {
             reader = ImageReader.newInstance(width, height, PixelFormat.RGBA_8888, 3)
             reader?.setOnImageAvailableListener({ source ->
                 frames++; val now = System.currentTimeMillis(); val image = source.acquireLatestImage() ?: return@setOnImageAvailableListener
-                if (now - lastCapture < 900L || processingOcr) { image.close(); return@setOnImageAvailableListener }
+                if (now - lastCapture < 650L || processingOcr) { image.close(); return@setOnImageAvailableListener }
                 lastCapture = now; processingOcr = true; processImage(image)
             }, callbackHandler)
             virtualDisplay = projection?.createVirtualDisplay("CarFlipCopilot", width, height, metrics.densityDpi, DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR, reader!!.surface, null, callbackHandler)
@@ -142,7 +142,20 @@ class ScreenMonitorService : Service() {
     }
 
     private fun showNewsOverlay(code: String, limited: Boolean) { overlay?.post { overlay?.text = "🤖 COPILOT\n\n🎁 ПРОМОКОД НАЙДЕН\n\n/promo $code\n\n${if (limited) "⚠️ Активации ограничены\n\n" else ""}СЕЙЧАС: АКТИВИРОВАТЬ" } }
-    private fun showOverlayDecision(opportunity: Opportunity, vehicle: VehicleSnapshot, screen: String) { overlay?.post { val action = opportunity.action.ifBlank { "ОЖИДАЙ" }; val title = opportunity.title.ifBlank { "Жди подтверждения ситуации" }; val confidence = opportunity.confidence; val price = vehicle.price?.let { String.format("%,d ₽", it).replace(',', ' ') } ?: "—"; overlay?.text = "🤖 COPILOT\n\nСЕЙЧАС: $action\n\n${vehicle.name.ifBlank { "Ситуация игры" }}\nЦена: $price\n\nЧТО ДЕЛАТЬ\n$title\n\nУверенность: $confidence%" } }
+    private fun showOverlayDecision(opportunity: Opportunity, vehicle: VehicleSnapshot, screen: String) {
+        overlay?.post {
+            val action = opportunity.action.ifBlank { "ОЖИДАЙ" }
+            val title = opportunity.title.ifBlank { "Жди подтверждения ситуации" }
+            val reason = opportunity.reason.replace(Regex("\\s+"), " ").trim()
+            val confidence = opportunity.confidence
+            val price = vehicle.price?.let { String.format("%,d ₽", it).replace(',', ' ') } ?: "—"
+            val hp = vehicle.hp?.let { it.toString() + " л.с." } ?: "—"
+            val origin = vehicle.origin.ifBlank { "—" }
+            val stats = LearningMemory.stats(this)
+            overlay?.text = "🤖 COPILOT • LIVE\n\nСЕЙЧАС: \${action}\n\n\${vehicle.name.ifBlank { screen.ifBlank { "Ситуация игры" } }}\nЦена: \${price} • Мощность: \${hp}\nПроисхождение: \${origin}\n\nЧТО ДЕЛАТЬ\n\${title}\n\nПОЧЕМУ\n\${reason}\n\nУверенность: \${confidence}%\nОбучено сделок: \${stats.samples}"
+        }
+    }
+
     private fun showStatusPreservingDecision(message: String) { overlay?.post { val decision = lastOpportunity; if (decision != null) { overlay?.text = "🤖 COPILOT\n\nСЕЙЧАС: ${decision.action.ifBlank { "ОЖИДАЙ" }}\n\n${lastVehicle.name.ifBlank { "Ситуация игры" }}\n\nЧТО ДЕЛАТЬ\n${decision.title.ifBlank { "Жди подтверждения ситуации" }}\n\nСтатус: $message" } else overlay?.text = "🤖 COPILOT\n\nСЕЙЧАС: АНАЛИЗИРУЮ\n\nЧТО ДЕЛАТЬ\nПодожди подтверждения игровой ситуации\n\nСтатус: $message" } }
     private fun showOverlay() { if (!Settings.canDrawOverlays(this)) return; overlay = TextView(this).apply { text = "🤖 COPILOT\n\nСЕЙЧАС: АНАЛИЗИРУЮ\n\nЧТО ДЕЛАТЬ\nОжидаю игровой экран"; setTextColor(Color.WHITE); setBackgroundColor(0xEE111111.toInt()); setPadding(18,16,18,16); textSize=14f }; val manager=getSystemService(WINDOW_SERVICE) as WindowManager; val type=if(Build.VERSION.SDK_INT>=26) WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY else WindowManager.LayoutParams.TYPE_PHONE; val params=WindowManager.LayoutParams(WindowManager.LayoutParams.WRAP_CONTENT,WindowManager.LayoutParams.WRAP_CONTENT,type,WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,PixelFormat.TRANSLUCENT); manager.addView(overlay,params) }
     private fun createChannel() { if(Build.VERSION.SDK_INT>=26){val manager=getSystemService(NOTIFICATION_SERVICE) as NotificationManager; manager.createNotificationChannel(NotificationChannel("copilot","Copilot",NotificationManager.IMPORTANCE_LOW))} }
