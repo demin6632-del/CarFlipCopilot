@@ -65,6 +65,15 @@ object DecisionEngine {
         val roi = if (f.has("roi_percent") && !f.isNull("roi_percent")) f.optDouble("roi_percent") else 0.0
 
         if (v.plate.isNotBlank()) {
+            val carWithPlateSale = GameParser.saleAmount(text)
+            val carWithoutPlateSale = GameParser.carWithoutPlateSale(text)
+            val platePayout = GameParser.plateOffer(text) ?: CopilotState.plateBestBid(c, v.plate)
+            val plateComparison = PlateDecisionEngine.compare(carWithPlateSale, carWithoutPlateSale, platePayout)
+            if (plateComparison != null) {
+                val action = if (plateComparison.separateIsBetter) "СНЯТЬ НОМЕР И ПРОДАТЬ ОТДЕЛЬНО" else "ПРОДАТЬ С НОМЕРОМ"
+                val confidence = if (plateComparison.difference == 0L) 78 else 94
+                return stableDecision(now(action, "Сравнил продажу автомобиля с номером и отдельно", PlateDecisionEngine.summary(plateComparison) + " Снятие номера: 55 000 ₽.", confidence), true)
+            }
             val a = CopilotState.plateAuction(c, v.plate)
             val bid = CopilotState.plateBestBid(c, v.plate)
             val cost = CopilotState.plateCost(c, v.plate)
