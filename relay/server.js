@@ -11,6 +11,28 @@ const uploadDir=process.env.UPLOAD_DIR||path.join(process.cwd(),"uploads");
 fs.mkdirSync(uploadDir,{recursive:true});
 let latest=null;
 const uploads=new Map();
+let latestFrame=null;
+let aiBusy=false;
+let pendingFrame=null;
+const aiHistory=[];
+
+const liveDecisionSchema={
+ type:"object",strict:true,
+ properties:{
+  action:{type:"string"},
+  title:{type:"string"},
+  reason:{type:"string"},
+  confidence:{type:"number"},
+  game_state:{type:"string"},
+  sale_price:{type:["number","null"]},
+  expected_profit:{type:["number","null"]},
+  roi_percent:{type:["number","null"]},
+  next_actions:{type:"array",items:{type:"string"}},
+  changes:{type:"array",items:{type:"string"}}
+ },
+ required:["action","title","reason","confidence","game_state","sale_price","expected_profit","roi_percent","next_actions","changes"],
+ additionalProperties:false
+};
 
 function auth(req){return !token||req.headers.authorization==="Bearer "+token}
 function safeName(s){return String(s||"attachment").replace(/[^a-zA-Z0-9._-]/g,"_").slice(0,120)}
@@ -64,6 +86,58 @@ function extractVideoFrames(file){
  const frames=fs.readdirSync(dir).sort().map(x=>path.join(dir,x));
  return frames;
 }
+async function analyzeLiveFrame(){
+ if(!openaiKey||aiBusy||!latestFrame)return;
+ aiBusy=true;
+ const frame=latestFrame; latestFrame=null;
+ broadcast({type:"ai_status",message:"ChatGPT анализирует экран игры…"});
+ try{
+  const state=latest||{};
+  const history=aiHistory.slice(-12);
+  const prompt=[
+   "Ты — главный игровой помощник пользователя. Именно ты принимаешь решение по игре «Симулятор Перекупа».",
+   "Твоя задача — анализировать ВСЮ видимую игровую ситуацию, а не только автомобиль.",
+   "На Android есть OCR и локальные парсеры только как источники данных. Их решения НЕ являются авторитетом и игнорируются.",
+   "Используй изображение как главный источник истины, OCR/структурированное состояние — как дополнительную расшифровку.",
+   "Учитывай баланс, гараж, текущие сделки, предложения покупателей, номера, аукционы, контракты, расходы, награды, соревнования и любые другие видимые события.",
+   "Пользователь хочет зарабатывать и продвигать баланс, поэтому ищи реальные возможности, но не выдумывай цену продажи, спрос или расходы.",
+   "Если данных недостаточно для безопасного решения — прямо скажи, что именно нужно проверить.",
+   "Верни ОДНО главное действие, которое пользователь должен сделать прямо сейчас. Не давай рейтинг вариантов.",
+   "Если нужно сначала получить данные, действие должно быть конкретным: например «ОТКРОЙ ...», «ПРОВЕРЬ ...», «НЕ ПОКУПАЙ» или «ПОКУПАЙ».",
+   "Текущая структурированная информация: "+JSON.stringify(state),
+   "Предыдущие решения ChatGPT: "+JSON.stringify(history)
+  ].join("\n");
+  const content=[
+   {type:"input_text",text:prompt},
+   {type:"input_image",image_url:"data:image/jpeg;base64,"+frame}
+  ];
+  const body={
+   model,
+   input:[{role:"user",content}],
+   text:{format:{type:"json_schema",name:"carflip_live_decision",strict:true,schema:liveDecisionSchema}}
+  };
+  const r=await fetch("https://api.openai.com/v1/responses",{
+   method:"POST",
+   headers:{"Authorization":"Bearer "+openaiKey,"Content-Type":"application/json"},
+   body:JSON.stringify(body)
+  });
+  const data=await r.json();
+  if(!r.ok)throw new Error(JSON.stringify(data));
+  const parsed=JSON.parse(data.output_text||"{}");
+  parsed.confidence=Math.max(0,Math.min(100,Number(parsed.confidence)||0));
+  aiHistory.push({time:Date.now(),decision:parsed,state:{
+   balance:state.balance,garage:state.garage,vehicle:state.vehicle,ocr:state.ocr
+  }});
+  if(aiHistory.length>30)aiHistory.shift();
+  broadcast({type:"ai_decision",decision:parsed,time:Date.now()});
+ }catch(e){
+  broadcast({type:"ai_status",message:"Ошибка ChatGPT: "+String(e.message||e).slice(0,240)});
+ }finally{
+  aiBusy=false;
+  if(latestFrame)analyzeLiveFrame();
+ }
+}
+
 function basePrompt(u){
  return "Ты — CarFlipCopilot, игровой аналитик. Анализируй текущую игру про перекуп автомобилей целиком, а не только машину. "+
  "Извлекай только данные, которые реально видны/прочитаны. Запоминай предложения покупателей по состоянию машины. "+
@@ -142,6 +216,8 @@ server.on("upgrade",(req,socket)=>{
    try{
     const msg=JSON.parse(payload.toString());
     if(msg.type==="state")latest=msg;
+    if(msg.type==="frame")latestFrame=msg.jpegBase64||null;
+    if(msg.type==="frame")setImmediate(analyzeLiveFrame);
     if(msg.type==="attachment_start"){
       const file=path.join(uploadDir,crypto.randomUUID()+"_"+safeName(msg.name));
       uploads.set(msg.id,{id:msg.id,name:msg.name,mime:msg.mime,size:msg.size,time:msg.time,chunks:0,complete:false,file});
