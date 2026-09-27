@@ -31,6 +31,16 @@ object GameParser {
     fun purchaseAmount(text: String): Long? = amount(text, listOf("покуп", "купил", "купить", "цена покупки", "buy", "вложено в авто", "вложено в проект"))
     fun saleAmount(text: String): Long? = amount(text, listOf("продан", "продажа", "продать", "продал", "sale", "sold", "выручка", "выплата"))
     fun expenseAmount(text: String): Long? = amount(text, listOf("расход", "ремонт", "стоимость ремонта", "оплат", "комис", "fee", "затрат", "стоимость"))
+    /** Fixed listing-extension fee in the game. */
+    fun listingExtension(text: String): Boolean {
+        val s = text.lowercase()
+        return s.contains("продлить объявление") || s.contains("продление объявления") || s.contains("продлить продажу") || s.contains("renew listing") || s.contains("listing extension")
+    }
+
+    fun listingExtensionCost(text: String): Long? {
+        if (!listingExtension(text)) return null
+        return amount(text, listOf("продлить объявление", "продление объявления", "стоимость продления", "цена продления", "renew listing", "listing extension")) ?: 1_500L
+    }
     fun balance(text: String): Long? = amount(text, listOf("баланс", "деньги", "счёт", "счет", "balance", "cash", "банк"))
     fun rewardAmount(text: String): Long? = amount(text, listOf("награда", "бонус", "reward", "bonus", "приз", "prize", "выигрыш"))
     fun bidAmount(text: String): Long? = amount(text, listOf("ставка", "bid", "текущая ставка", "предложение", "offer"))
