@@ -2,6 +2,7 @@ package com.carflip.copilot
 import android.app.Activity
 import android.app.AlertDialog
 import android.content.Intent
+import android.content.pm.ApplicationInfo
 import android.media.projection.MediaProjectionManager
 import android.net.Uri
 import android.os.*
@@ -29,6 +30,7 @@ class MainActivity:AppCompatActivity(){
   attachments=TextView(this).apply{textSize=14f;setPadding(0,8,0,12)}
   history=TextView(this).apply{textSize=14f}
   val perm=Button(this).apply{text="Разрешить панель поверх Telegram";setOnClickListener{startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION,Uri.parse("package:"+packageName)))}}
+  val battery=Button(this).apply{text="🔋 Разрешить работу без ограничений";setOnClickListener{requestBatteryOptimizationExemption()}}
   val start=Button(this).apply{text="Запустить мониторинг";setOnClickListener{requestCapture()}}
   val stop=Button(this).apply{text="Остановить мониторинг";setOnClickListener{stopService(Intent(this@MainActivity,ScreenMonitorService::class.java))}}
   val bridge=Button(this).apply{text="Подключить меня к Copilot";setOnClickListener{showBridgeDialog()}}
@@ -36,12 +38,18 @@ class MainActivity:AppCompatActivity(){
   val video=Button(this).apply{text="🎥 Видео";setOnClickListener{pickVideo.launch(arrayOf("video/*"))}}
   val file=Button(this).apply{text="📎 Файл";setOnClickListener{pickFile.launch(arrayOf("*/*"))}}
   val api=Button(this).apply{text="Ключ командного доступа";setOnClickListener{val t=getSharedPreferences("copilot_state",0).getString("api_token",null) ?: "Ключ появится после запуска мониторинга";AlertDialog.Builder(this@MainActivity).setTitle("Локальный API").setMessage("Адрес: 127.0.0.1:18765\n\nКлюч:\n"+t+"\n\nДоступ ограничен localhost. Telegram приложение не управляется автоматически.").setPositiveButton("OK",null).show()}}
-  root.addView(title);root.addView(status);root.addView(vehicle);root.addView(tabs);root.addView(perm);root.addView(start);root.addView(stop);root.addView(bridge);root.addView(image);root.addView(video);root.addView(file);root.addView(attachments);root.addView(api);root.addView(history)
+  root.addView(title);root.addView(status);root.addView(vehicle);root.addView(tabs);root.addView(perm);root.addView(battery);root.addView(start);root.addView(stop);root.addView(bridge);root.addView(image);root.addView(video);root.addView(file);root.addView(attachments);root.addView(api);root.addView(history)
   setContentView(ScrollView(this).apply{addView(root)});handleIncomingIntent(intent)
  }
  override fun onNewIntent(intent:Intent){super.onNewIntent(intent);setIntent(intent);handleIncomingIntent(intent)}
  override fun onResume(){super.onResume();handler.post(refreshTask)}
  override fun onPause(){handler.removeCallbacks(refreshTask);super.onPause()}
+ private fun requestBatteryOptimizationExemption(){
+  if(Build.VERSION.SDK_INT<Build.VERSION_CODES.M){Toast.makeText(this,"Для этой версии Android настройка не требуется",Toast.LENGTH_SHORT).show();return}
+  val pm=getSystemService(POWER_SERVICE) as PowerManager
+  if(pm.isIgnoringBatteryOptimizations(packageName)){Toast.makeText(this,"Для Copilot уже разрешена работа без ограничений",Toast.LENGTH_SHORT).show();return}
+  try{startActivity(Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,Uri.parse("package:"+packageName)))}catch(_:Exception){startActivity(Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS))}
+ }
  private fun fmt(v:Long)="%,d".format(v).replace(',',' ')
  private fun attach(uri:Uri){
   val p=getSharedPreferences("live_bridge",0);val url=p.getString("url","")?:""
@@ -99,5 +107,5 @@ class MainActivity:AppCompatActivity(){
   AlertDialog.Builder(this).setTitle("Постоянный канал «телефон ↔ я»").setMessage("Copilot получает состояние игры, кадры экрана и выбранные фото, скриншоты, видео и файлы.").setView(box).setNegativeButton("Отмена",null).setPositiveButton("Сохранить"){_,_->LiveBridge(this){}.configure(url.text.toString(),token.text.toString());Toast.makeText(this,"Канал сохранён. Запусти мониторинг.",Toast.LENGTH_SHORT).show()}.show()
  }
  private fun requestCapture(){if(!Settings.canDrawOverlays(this)){startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION,Uri.parse("package:"+packageName)));return};val mgr=getSystemService(MEDIA_PROJECTION_SERVICE)as MediaProjectionManager;startActivityForResult(mgr.createScreenCaptureIntent(),captureCode)}
- override fun onActivityResult(requestCode:Int,resultCode:Int,data:Intent?){super.onActivityResult(requestCode,resultCode,data);if(requestCode==captureCode&&resultCode==Activity.RESULT_OK&&data!=null)startForegroundService(Intent(this,ScreenMonitorService::class.java).putExtra("resultCode",resultCode).putExtra("data",data))}
+ override fun onActivityResult(requestCode:Int,resultCode:Int,data:Intent?){super.onActivityResult(requestCode,resultCode,data);if(requestCode==captureCode&&resultCode==Activity.RESULT_OK&&data!=null)startForegroundService(Intent(this@MainActivity,ScreenMonitorService::class.java).putExtra("resultCode",resultCode).putExtra("data",data))}
 }
