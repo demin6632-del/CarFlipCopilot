@@ -18,12 +18,6 @@ import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.text.TextRecognition
 import com.google.mlkit.vision.text.latin.TextRecognizerOptions
 
-/**
- * Second-generation screen capture service.
- * The important difference from the first implementation is a watchdog:
- * if ImageReader stops receiving frames, the VirtualDisplay is recreated
- * without asking the user for MediaProjection permission again.
- */
 class ScreenMonitorServiceV2 : Service() {
     private var projection: MediaProjection? = null
     private var virtualDisplay: VirtualDisplay? = null
@@ -50,6 +44,8 @@ class ScreenMonitorServiceV2 : Service() {
     private var height = 0
     private var density = 0
 
+    override fun onBind(intent: Intent?): android.os.IBinder? = null
+
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         createChannel()
         val notification = Notification.Builder(this, "copilot")
@@ -58,10 +54,7 @@ class ScreenMonitorServiceV2 : Service() {
             .setSmallIcon(android.R.drawable.ic_menu_view)
             .setOngoing(true)
             .build()
-        if (Build.VERSION.SDK_INT >= 29) {
-            startForeground(11, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION)
-        } else startForeground(11, notification)
-
+        if (Build.VERSION.SDK_INT >= 29) startForeground(11, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION) else startForeground(11, notification)
         showOverlay()
         val code = intent?.getIntExtra("resultCode", Activity.RESULT_CANCELED) ?: Activity.RESULT_CANCELED
         val data = if (Build.VERSION.SDK_INT >= 33) intent?.getParcelableExtra("data", Intent::class.java) else {
@@ -72,12 +65,10 @@ class ScreenMonitorServiceV2 : Service() {
             stopSelf()
             return START_NOT_STICKY
         }
-
         try {
             val mgr = getSystemService(MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
             projection = mgr.getMediaProjection(code, data)
             if (projection == null) throw IllegalStateException("MediaProjection=null")
-
             captureThread = HandlerThread("CopilotCaptureV2").also { it.start() }
             captureHandler = Handler(captureThread!!.looper)
             projection!!.registerCallback(object : MediaProjection.Callback() {
@@ -88,7 +79,6 @@ class ScreenMonitorServiceV2 : Service() {
                     CopilotState.addEvent(this@ScreenMonitorServiceV2, "CAPTURE • Android остановил MediaProjection")
                 }
             }, captureHandler)
-
             createCapture()
             CopilotState.setMonitoring(this, captureReady)
             if (captureReady) CopilotState.addEvent(this, "CAPTURE • V2 готов • watchdog активен")
@@ -113,21 +103,19 @@ class ScreenMonitorServiceV2 : Service() {
             frames++
             lastFrameAt = SystemClock.elapsedRealtime()
             val image = source.acquireLatestImage() ?: return@setOnImageAvailableListener
+            if (processing || SystemClock.elapsedRealtime() - lastOcrAt < 900L) {
+                image.close()
+                return@setOnImageAvailableListener
+            }
+            processing = true
             try {
-                if (!processing && SystemClock.elapsedRealtime() - lastOcrAt >= 900L) {
-                    processing = true
-                    processImage(image)
-                }
+                processImage(image)
             } catch (e: Exception) {
                 try { image.close() } catch (_: Exception) {}
                 processing = false
                 CopilotState.addEvent(this, "CAPTURE • frame error • ${e.message}")
-            } finally {
-                // processImage owns the image close when it actually processes it.
-                if (!processing) try { image.close() } catch (_: Exception) {}
             }
         }, h)
-
         virtualDisplay = projection?.createVirtualDisplay(
             "CarFlipCopilot-V2", width, height, density,
             DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR,
@@ -146,10 +134,7 @@ class ScreenMonitorServiceV2 : Service() {
             bitmap = Bitmap.createBitmap(bitmapWidth, image.height, Bitmap.Config.ARGB_8888)
             bitmap.copyPixelsFromBuffer(plane.buffer)
             image.close()
-            val frame = if (bitmapWidth != image.width) {
-                Bitmap.createBitmap(bitmap, 0, 0, image.width, image.height).also { bitmap.recycle() }
-            } else bitmap
-
+            val frame = if (bitmapWidth != image.width) Bitmap.createBitmap(bitmap, 0, 0, image.width, image.height).also { bitmap.recycle() } else bitmap
             recognizer.process(InputImage.fromBitmap(frame, 0))
                 .addOnSuccessListener { result ->
                     ocrSuccess++
@@ -164,18 +149,19 @@ class ScreenMonitorServiceV2 : Service() {
                         showDiagnostics("OCR получен • ждём стабильный текст")
                         frame.recycleSafely()
                     }
+                    processing = false
                 }
                 .addOnFailureListener { e ->
                     lastOcrAt = SystemClock.elapsedRealtime()
                     showDiagnostics("OCR ERROR: ${e.message ?: "unknown"}")
                     frame.recycleSafely()
+                    processing = false
                 }
         } catch (e: Exception) {
             try { image.close() } catch (_: Exception) {}
             bitmap?.recycleSafely()
-            showDiagnostics("FRAME ERROR: ${e.message ?: "unknown"}")
-        } finally {
             processing = false
+            showDiagnostics("FRAME ERROR: ${e.message ?: "unknown"}")
         }
     }
 
@@ -183,34 +169,20 @@ class ScreenMonitorServiceV2 : Service() {
         try {
             val screen = GameScreenClassifier.classify(text)
             val event = GameParser.event(text)
-            val vehicle = VehicleSnapshot(
-                GameParser.name(text), GameParser.price(text), GameParser.hp(text),
-                GameParser.mileage(text), GameParser.owners(text), GameParser.plate(text),
-                GameParser.origin(text), GameParser.paintedParts(text), text
-            )
+            val vehicle = VehicleSnapshot(GameParser.name(text), GameParser.price(text), GameParser.hp(text), GameParser.mileage(text), GameParser.owners(text), GameParser.plate(text), GameParser.origin(text), GameParser.paintedParts(text), text)
             val balance = GameParser.balance(text) ?: CopilotState.balance(this)
             val garage = GameParser.garage(text) ?: CopilotState.garage(this)
             CopilotState.setBalance(this, balance)
             CopilotState.setGarage(this, garage)
             CopilotState.setSnapshot(this, vehicle)
-            if (screen != lastScreen) {
-                lastScreen = screen
-                CopilotState.addEvent(this, "GAME • экран=$screen • машина='${vehicle.name}'")
-            }
-            if (event != null && event != lastEvent) {
-                lastEvent = event
-                CopilotState.addEvent(this, "GAME • событие=$event")
-            }
-            val action = GameParser.action(text)
-            if (action != null) CopilotState.addEvent(this, "GAME • действие=$action")
-            val reward = GameParser.rewardAmount(text)
-            if (reward != null) CopilotState.addEvent(this, "GAME • награда=$reward")
+            if (screen != lastScreen) { lastScreen = screen; CopilotState.addEvent(this, "GAME • экран=$screen • машина='${vehicle.name}'") }
+            if (event != null && event != lastEvent) { lastEvent = event; CopilotState.addEvent(this, "GAME • событие=$event") }
+            GameParser.action(text)?.let { CopilotState.addEvent(this, "GAME • действие=$it") }
+            GameParser.rewardAmount(text)?.let { CopilotState.addEvent(this, "GAME • награда=$it") }
             val opportunity = DecisionEngine.decide(this, text, vehicle, balance, garage)
             CopilotState.setDecision(this, opportunity.action)
             val old = lastFrame
-            lastFrame = if (frame.width > 720) {
-                Bitmap.createScaledBitmap(frame, 720, frame.height * 720 / frame.width, true)
-            } else frame.copy(Bitmap.Config.ARGB_8888, false)
+            lastFrame = if (frame.width > 720) Bitmap.createScaledBitmap(frame, 720, frame.height * 720 / frame.width, true) else frame.copy(Bitmap.Config.ARGB_8888, false)
             old?.recycleSafely()
             showLive(opportunity, vehicle, screen)
             if (lastFrame !== frame) frame.recycleSafely()
@@ -237,39 +209,21 @@ class ScreenMonitorServiceV2 : Service() {
     }
 
     private fun showLive(opportunity: Opportunity, vehicle: VehicleSnapshot, screen: String) {
-        overlay?.post {
-            overlay?.text = "🚗 COPILOT • LIVE V2\nЗахват: ${if (captureReady) "ГОТОВ" else "НЕТ"}\nКадры: $frames • OCR: $ocrAccepted/$ocrSuccess • символов: $lastOcrChars\nРаздел: ${screen.ifBlank { "—" }}\nМашина: ${vehicle.name.ifBlank { "—" }}\nНомер: ${vehicle.plate.ifBlank { "—" }}\n${opportunity.action} • ${opportunity.confidence}%"
-        }
+        overlay?.post { overlay?.text = "🚗 COPILOT • LIVE V2\nЗахват: ${if (captureReady) "ГОТОВ" else "НЕТ"}\nКадры: $frames • OCR: $ocrAccepted/$ocrSuccess • символов: $lastOcrChars\nРаздел: ${screen.ifBlank { "—" }}\nМашина: ${vehicle.name.ifBlank { "—" }}\nНомер: ${vehicle.plate.ifBlank { "—" }}\n${opportunity.action} • ${opportunity.confidence}%" }
     }
 
     private fun showDiagnostics(message: String) {
-        overlay?.post {
-            overlay?.text = "🚗 COPILOT • LIVE V2\n$message\nЗахват: ${if (captureReady) "ГОТОВ" else "НЕТ"}\nКадры: $frames • OCR: $ocrSuccess • принято: $ocrAccepted\nСимволов: $lastOcrChars\nРаздел: ${lastScreen.ifBlank { "—" }}\n${lastOcrPreview.ifBlank { "Текст OCR пока отсутствует" }}"
-        }
+        overlay?.post { overlay?.text = "🚗 COPILOT • LIVE V2\n$message\nЗахват: ${if (captureReady) "ГОТОВ" else "НЕТ"}\nКадры: $frames • OCR: $ocrSuccess • принято: $ocrAccepted\nСимволов: $lastOcrChars\nРаздел: ${lastScreen.ifBlank { "—" }}\n${lastOcrPreview.ifBlank { "Текст OCR пока отсутствует" }}" }
     }
 
-    private fun setError(message: String) {
-        CopilotState.addEvent(this, "CAPTURE • $message")
-        showDiagnostics(message)
-    }
+    private fun setError(message: String) { CopilotState.addEvent(this, "CAPTURE • $message"); showDiagnostics(message) }
 
     private fun showOverlay() {
         if (!Settings.canDrawOverlays(this)) return
-        overlay = TextView(this).apply {
-            setTextColor(Color.WHITE)
-            setBackgroundColor(0xAA111111.toInt())
-            setPadding(12, 10, 12, 10)
-            text = "🚗 COPILOT • LIVE V2\nПроверка захвата..."
-        }
+        overlay = TextView(this).apply { setTextColor(Color.WHITE); setBackgroundColor(0xAA111111.toInt()); setPadding(12, 10, 12, 10); text = "🚗 COPILOT • LIVE V2\nПроверка захвата..." }
         val manager = getSystemService(WINDOW_SERVICE) as WindowManager
         val type = if (Build.VERSION.SDK_INT >= 26) WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY else WindowManager.LayoutParams.TYPE_PHONE
-        val params = WindowManager.LayoutParams(
-            WindowManager.LayoutParams.WRAP_CONTENT,
-            WindowManager.LayoutParams.WRAP_CONTENT,
-            type,
-            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
-            PixelFormat.TRANSLUCENT
-        )
+        val params = WindowManager.LayoutParams(WindowManager.LayoutParams.WRAP_CONTENT, WindowManager.LayoutParams.WRAP_CONTENT, type, WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE, PixelFormat.TRANSLUCENT)
         manager.addView(overlay, params)
     }
 
