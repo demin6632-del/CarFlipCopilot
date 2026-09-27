@@ -2,8 +2,13 @@ package com.carflip.copilot
 
 import android.os.SystemClock
 
+/**
+ * OCR on a live game screen is rarely byte-for-byte identical from frame to frame.
+ * Accept exact repeats quickly, but also periodically accept changed screens so
+ * dynamic events (auctions, offers, sales, rewards, races, etc.) are not missed.
+ */
 class StableOcr {
-    private var lastSignature = ""
+    private var lastNormalized = ""
     private var repeatCount = 0
     private var stableText = ""
     private var lastAcceptedAt = 0L
@@ -13,25 +18,35 @@ class StableOcr {
             .replace(Regex("\\s+"), " ")
             .trim()
         if (normalized.isBlank()) return null
-        val signature = normalized.hashCode().toString()
-        if (signature == lastSignature) {
+
+        val now = SystemClock.elapsedRealtime()
+        if (normalized == lastNormalized) {
             repeatCount++
         } else {
-            lastSignature = signature
+            lastNormalized = normalized
             repeatCount = 1
         }
-        if (repeatCount >= 2 || SystemClock.elapsedRealtime() - lastAcceptedAt > 5000) {
-            if (normalized != stableText) {
-                stableText = normalized
-                lastAcceptedAt = SystemClock.elapsedRealtime()
-                return text
-            }
+
+        // Same screen twice: accept immediately.
+        if (repeatCount >= 2 && normalized != stableText) {
+            stableText = normalized
+            lastAcceptedAt = now
+            return text
         }
+
+        // The game changes constantly, so do not wait forever for an identical OCR result.
+        // A changed screen is accepted at most once per 1400 ms.
+        if (normalized != stableText && now - lastAcceptedAt >= 1400L) {
+            stableText = normalized
+            lastAcceptedAt = now
+            return text
+        }
+
         return null
     }
 
     fun reset() {
-        lastSignature = ""
+        lastNormalized = ""
         repeatCount = 0
         stableText = ""
         lastAcceptedAt = 0L
