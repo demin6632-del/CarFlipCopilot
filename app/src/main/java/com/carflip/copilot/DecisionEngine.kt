@@ -5,7 +5,7 @@ import android.content.Context
 object DecisionEngine {
     private fun now(action: String, situation: String, details: String, confidence: Int): Opportunity {
         val cleanAction = action.trim().uppercase().ifBlank { "НАБЛЮДАЙ" }
-        val cleanSituation = situation.replace(Regex("\\s+"), " ").trim().take(72)
+        val cleanSituation = situation.replace(Regex("\\s+"), " ").trim().take(96)
         val cleanDetails = details.replace(Regex("\\s+"), " ").trim()
         return Opportunity("СЕЙЧАС: $cleanAction", cleanSituation.ifBlank { "Текущая игровая ситуация" }, cleanDetails, confidence)
     }
@@ -13,6 +13,18 @@ object DecisionEngine {
     fun decide(c: Context, text: String, v: VehicleSnapshot, balance: Long?, garage: Int?): Opportunity {
         val screen = GameScreenClassifier.classify(text)
         WholeGameEventEngine.observe(c, text, screen, v)
+
+        // Time-sensitive game-wide events have priority over the vehicle decision.
+        val promo = NewsParser.promo(text)
+        if (promo != null) {
+            return now("АКТИВИРОВАТЬ /promo ${promo.code}", "Найден промокод", "Промокод ${promo.code}${if (promo.limited) " • количество активаций ограничено" else ""}. Это действие не требует изменения автомобиля.", 99)
+        }
+
+        val news = NewsParser.summary(text)
+        if (news != null && NewsParser.isNews(text)) {
+            return now("ПРОЧИТАТЬ НОВОСТЬ", "Новое событие игры", news, 94)
+        }
+
         val plateSale = GameParser.plateSaleEvent(text)
         if (plateSale != null) {
             PlateSaleRecorder.record(c, plateSale)
@@ -47,7 +59,7 @@ object DecisionEngine {
             val actionGain = if (best.expectedDelta != null && best.cost != null) best.expectedDelta - best.cost else Long.MIN_VALUE
             val saleIsBetter = profit > 0 && (best.action == "НИЧЕГО НЕ ДЕЛАТЬ" || actionGain == Long.MIN_VALUE || profit >= actionGain)
             if (saleIsBetter) {
-                return now("ПРОДАВАТЬ", "Продажа сейчас выгоднее дальнейших вложений", "Ожидаемая цена ${expectedSale ?: 0} ₽; покупка/себестоимость $purchase ₽; комиссии $fees ₽; ожидаемая чистая прибыль +$profit ₽; ROI ${String.format("%.1f", roi)}%. Альтернатива '${best.action}' даёт меньший расчётный прирост.", 92)
+                return now("ПРОДАВАТЬ", "Продажа сейчас выгоднее дальнейших вложений", "Ожидаемая цена ${expectedSale ?: 0} ₽; себестоимость $purchase ₽; комиссии $fees ₽; ожидаемая чистая прибыль +$profit ₽; ROI ${String.format("%.1f", roi)}%. Альтернатива '${best.action}' даёт меньший расчётный результат.", 92)
             }
             val actionIsKnown = best.action != "НИЧЕГО НЕ ДЕЛАТЬ" && best.roi != null && best.cost != null && best.expectedDelta != null
             if (actionIsKnown && best.roi!! > 0.0 && best.confidence >= 55) {
@@ -57,7 +69,7 @@ object DecisionEngine {
 
         if (profit > 0) return now("ПРОДАВАТЬ", "Есть положительный прогноз сделки", "Ожидаемая цена ${expectedSale ?: 0} ₽; ожидаемая прибыль +$profit ₽; ROI ${String.format("%.1f", roi)}%.", 80)
         if (base.action != "НАБЛЮДАЮ") return now(base.action, "$screen • ${base.title}", base.reason, base.confidence)
-        return if (v.name.isNotBlank()) now("ПРОВЕРЯТЬ", "$screen • недостаточно данных для действия", "Copilot сравнивает покупку, продажу, ремонт, улучшения, задания, аукционы и бонусы; пока нет достаточных данных для расчёта следующего шага.", 55)
+        return if (v.name.isNotBlank()) now("ПРОВЕРЯТЬ", "$screen • недостаточно данных для действия", "Copilot сравнивает покупку, продажу, ремонт, улучшения, задания, аукционы, новости, бонусы и ресурсы; пока недостаточно данных для расчёта следующего шага.", 55)
         else now("ЖДАТЬ", "Игра ещё не распознана", "Ожидаю стабильный кадр с данными игры.", 45)
     }
 }
