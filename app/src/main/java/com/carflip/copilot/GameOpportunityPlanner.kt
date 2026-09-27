@@ -16,6 +16,7 @@ object GameOpportunityPlanner {
     fun plan(text: String, balance: Long?, garage: Int?): List<Candidate> {
         val s = text.lowercase()
         val screen = GameParser.screenType(text)
+        val resources = GameParser.resources(text)
         val out = mutableListOf<Candidate>()
 
         if (GameParser.rewardAmount(text) != null ||
@@ -36,7 +37,8 @@ object GameOpportunityPlanner {
             )
         }
 
-        if (garage != null && garage >= 3 &&
+        val garageFull = garage != null && garage >= 3
+        if (garageFull &&
             (screen == "ПОКУПКА" || screen == "АУКЦИОН" || screen == "ГАРАЖ" ||
              s.contains("купить") || s.contains("покупка"))) {
             out += Candidate(
@@ -47,11 +49,14 @@ object GameOpportunityPlanner {
         }
 
         if (screen == "ЗАДАНИЕ") {
-            out += Candidate(
-                "ПРОВЕРИТЬ ЗАДАНИЕ", "Доступна игровая цель",
-                "Сверь требования, награду, срок и неизбежные расходы. Не покупай автомобиль только ради цели без расчёта.",
-                94, 93
-            )
+            val contract = GameParser.contract(text)
+            val title = if (contract != null) "Задание/контракт найдено" else "Доступна игровая цель"
+            val reason = if (contract != null) {
+                "Проверь требования, награду и неизбежные расходы по распознанному заданию: ${contract.take(180)}"
+            } else {
+                "Сверь требования, награду, срок и неизбежные расходы. Не покупай автомобиль только ради цели без расчёта."
+            }
+            out += Candidate("ПРОВЕРИТЬ ЗАДАНИЕ", title, reason, 94, 93)
         }
 
         if (screen == "СОРЕВНОВАНИЕ") {
@@ -95,11 +100,25 @@ object GameOpportunityPlanner {
             )
         }
 
-        if (listOf("работа", "бонус", "новости", "гараж", "магазин", "контракт")
+        val energy = resources["энергия"]
+        if (energy != null && (
+                s.contains("энергия восстановлена") ||
+                s.contains("энергия полна") ||
+                s.contains("energy restored") ||
+                s.contains("energy full"))) {
+            out += Candidate(
+                "ИСПОЛЬЗОВАТЬ ЭНЕРГИЮ", "Энергия восстановлена",
+                "Энергия уже восстановлена. Сначала проверь доступное действие, которое превращает её в деньги, опыт или прогресс.",
+                84, 88
+            )
+        }
+
+        if (listOf("работа доступна", "начать работу", "work available", "бонус доступен",
+                   "новость", "контракт доступен", "заказ доступен")
                 .any { s.contains(it) }) {
             out += Candidate(
                 "ПРОВЕРИТЬ ВЫГОДУ", "Есть игровая возможность",
-                "Copilot учитывает не только машины и номера: работу, задания, магазин, гараж, бонусы, ресурсы и расходы.",
+                "Copilot учитывает не только машины и номера: работу, задания, бонусы, ресурсы и расходы.",
                 70, 78
             )
         }
