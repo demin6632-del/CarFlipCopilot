@@ -126,11 +126,17 @@ async function analyzeLiveFrame(){
    text:{format:{type:"json_schema",name:"carflip_live_decision",strict:true,schema:liveDecisionSchema}}
   };
   log("AI REQUEST model="+model);
-  const r=await fetch("https://api.openai.com/v1/responses",{
+  broadcast({type:"ai_status",message:"Запрос к ChatGPT отправлен • model="+model});
+  const controller=new AbortController();
+  const timeout=setTimeout(()=>controller.abort(),30000);
+  let r;
+  try {
+   r=await fetch("https://api.openai.com/v1/responses",{
    method:"POST",
    headers:{"Authorization":"Bearer "+openaiKey,"Content-Type":"application/json"},
-   body:JSON.stringify(body)
-  });
+   body:JSON.stringify(body),signal:controller.signal
+   });
+  } finally { clearTimeout(timeout); }
   const data=await r.json();
   log("AI RESPONSE status="+r.status+" outputChars="+String(data.output_text||"").length);
   if(!r.ok)throw new Error(JSON.stringify(data));
@@ -234,7 +240,7 @@ server.on("upgrade",(req,socket)=>{
    try{
     const msg=JSON.parse(payload.toString());
     if(msg.type==="state"){latest=msg;log("STATE balance="+msg.balance+" garage="+msg.garage+" ocr="+String(msg.ocr||"").length);}
-    if(msg.type==="frame"){latestFrame=msg.jpegBase64||null;log("FRAME received bytes="+Buffer.byteLength(latestFrame||"","base64"));}
+    if(msg.type==="frame"){latestFrame=msg.jpegBase64||null;log("FRAME received bytes="+Buffer.byteLength(latestFrame||"","base64"));broadcast({type:"ai_status",message:"Кадр получен relay • запускаю анализ"});}
     if(msg.type==="frame")setImmediate(analyzeLiveFrame);
     if(msg.type==="attachment_start"){
       const file=path.join(uploadDir,crypto.randomUUID()+"_"+safeName(msg.name));
