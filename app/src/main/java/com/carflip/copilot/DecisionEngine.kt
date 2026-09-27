@@ -4,6 +4,11 @@ import android.content.Context
 
 object DecisionEngine {
  fun decide(c:Context,text:String,v:VehicleSnapshot,balance:Long?,garage:Int?):Opportunity{
+  val screen=GameScreenClassifier.classify(text)
+  // Every accepted OCR frame becomes an opportunity to learn the whole game.
+  // WholeGameEventEngine deduplicates repeated frames before recording trades/offers/actions.
+  WholeGameEventEngine.observe(c,text,screen,v)
+
   val plateSale=GameParser.plateSaleEvent(text)
   if(plateSale!=null){
    PlateSaleRecorder.record(c,plateSale)
