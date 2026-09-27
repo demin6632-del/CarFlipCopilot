@@ -18,4 +18,4 @@ CarFlipCopilot анализирует всю игровую ситуацию в 
 - Приложение не нажимает кнопки Telegram автоматически.
 
 ## Сборка
-GitHub Actions собирает debug APK при push в `main` и загружает APK как artifact.
+CI rebuild check.
