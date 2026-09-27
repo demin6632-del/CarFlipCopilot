@@ -85,10 +85,15 @@ class LiveBridge(
                         val o = JSONObject(text)
                         when (o.optString("type")) {
                             "command" -> onCommand(o.optString("command"))
-                            "ai_decision" ->
-                                onCommand("AI_DECISION|" + o.optJSONObject("decision").toString())
-                            "ai_status" ->
-                                onCommand("AI_STATUS|" + o.optString("message"))
+                            "ai_decision" -> {
+                                CopilotState.addEvent(context, "LIVE • получено решение ChatGPT")
+                                onCommand("AI_DECISION|" + (o.optJSONObject("decision")?.toString() ?: "{}"))
+                            }
+                            "ai_status" -> {
+                                val message = o.optString("message", "Статус ChatGPT получен")
+                                CopilotState.addEvent(context, "LIVE • ChatGPT • " + message)
+                                onCommand("AI_STATUS|" + message)
+                            }
                             "attachment_analysis" ->
                                 onCommand("ATTACHMENT_ANALYSIS|" + o.optString("name") + "|" + o.optString("analysis"))
                             "attachment_analysis_error" ->
