@@ -53,3 +53,5 @@ jobs:
         run: sha256sum app/build/outputs/apk/debug/app-debug.apk
 
       # Force a fresh workflow revision after CI configuration changes.
+
+      # Fresh rebuild requested for the live copilot APK.
