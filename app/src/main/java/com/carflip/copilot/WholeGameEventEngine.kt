@@ -23,7 +23,6 @@ object WholeGameEventEngine {
     fun observe(c: Context, text: String, screen: String, vehicle: VehicleSnapshot) {
         if (text.isBlank()) return
 
-        // Keep the structured whole-game memory synchronized with the existing journal.
         GameMemory.sync(c)
 
         val purchase = GameParser.purchaseAmount(text)
@@ -41,7 +40,6 @@ object WholeGameEventEngine {
             GameMemory.record(c, screen, "ПРОДАЖА", vehicle = vehicle, amount = sale)
         }
 
-        // Buyer offers are learned from the actual game state, not only from manual entry.
         if (screen == "ПРОДАЖА") {
             val offer = GameParser.bidAmount(text) ?: GameParser.plateOffer(text)
             if (offer != null && offer > 0 &&
@@ -60,6 +58,18 @@ object WholeGameEventEngine {
         GameParser.action(text)?.let { action ->
             if (once(c, "action", "${vehicle.plate}|${vehicle.name}|$action", 90_000L)) {
                 GameMemory.record(c, screen, "ДЕЙСТВИЕ", action, vehicle)
+
+                // Store the real action cost now. When the car is later sold,
+                // LearningMemory.recordAllActionOutcomes() attaches the realized
+                // sale delta, allowing ActionRoiEngine to show realized ROI.
+                if (screen == "УЛУЧШЕНИЕ") {
+                    val cost = GameParser.expenseAmount(text)
+                    if (cost != null && cost > 0) {
+                        val forecast = CopilotState.dealForecast(c, vehicle)
+                        val beforeSale = if (forecast.has("sale_price") && !forecast.isNull("sale_price")) forecast.optLong("sale_price") else null
+                        LearningMemory.learnAction(c, vehicle, action, cost, 0L, beforeSale, "", vehicle.plate)
+                    }
+                }
             }
         }
 
