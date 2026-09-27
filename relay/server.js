@@ -35,6 +35,8 @@ const liveDecisionSchema={
 };
 
 function auth(req){return !token||req.headers.authorization==="Bearer "+token}
+function log(){console.log(new Date().toISOString(),...arguments)}
+
 function safeName(s){return String(s||"attachment").replace(/[^a-zA-Z0-9._-]/g,"_").slice(0,120)}
 function json(res,status,obj){res.writeHead(status,{"content-type":"application/json"});res.end(JSON.stringify(obj))}
 function broadcast(obj,except){
@@ -87,9 +89,9 @@ function extractVideoFrames(file){
  return frames;
 }
 async function analyzeLiveFrame(){
- if(!openaiKey||aiBusy||!latestFrame)return;
+ if(!openaiKey){log("AI SKIP: OPENAI_API_KEY missing");return;}\n if(aiBusy||!latestFrame)return;
  aiBusy=true;
- const frame=latestFrame; latestFrame=null;
+ const frame=latestFrame; latestFrame=null;\n log("AI START frameBytes="+Buffer.byteLength(frame||"","base64")+" clients="+clients.size);
  broadcast({type:"ai_status",message:"ChatGPT анализирует экран игры…"});
  try{
   const state=latest||{};
@@ -116,7 +118,7 @@ async function analyzeLiveFrame(){
    input:[{role:"user",content}],
    text:{format:{type:"json_schema",name:"carflip_live_decision",strict:true,schema:liveDecisionSchema}}
   };
-  const r=await fetch("https://api.openai.com/v1/responses",{
+  log("AI REQUEST model="+model);\n  const r=await fetch("https://api.openai.com/v1/responses",{
    method:"POST",
    headers:{"Authorization":"Bearer "+openaiKey,"Content-Type":"application/json"},
    body:JSON.stringify(body)
@@ -196,11 +198,11 @@ const server=http.createServer((req,res)=>{
 });
 
 server.on("upgrade",(req,socket)=>{
- if(req.url!=="/ws"||!auth(req)){socket.destroy();return}
+ if(req.url!=="/ws"||!auth(req)){log("WS REJECT",req.url,"auth="+auth(req));socket.destroy();return}
  const key=req.headers["sec-websocket-key"];
  const accept=crypto.createHash("sha1").update(key+"258EAFA5-E914-47DA-95CA-C5AB0DC85B11").digest("base64");
  socket.write("HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: "+accept+"\r\n\r\n");
- socket._buf=Buffer.alloc(0);clients.add(socket);
+ socket._buf=Buffer.alloc(0);clients.add(socket);\n log("WS CONNECT clients="+clients.size);
  socket.on("data",buf=>{
   socket._buf=Buffer.concat([socket._buf,buf]);
   while(socket._buf.length>=2){
@@ -215,8 +217,8 @@ server.on("upgrade",(req,socket)=>{
    if((b1&15)!==1)continue;
    try{
     const msg=JSON.parse(payload.toString());
-    if(msg.type==="state")latest=msg;
-    if(msg.type==="frame")latestFrame=msg.jpegBase64||null;
+    if(msg.type==="state"){latest=msg;log("STATE balance="+msg.balance+" garage="+msg.garage+" ocr="+String(msg.ocr||"").length);}
+    if(msg.type==="frame"){latestFrame=msg.jpegBase64||null;log("FRAME received bytes="+Buffer.byteLength(latestFrame||"","base64"));}
     if(msg.type==="frame")setImmediate(analyzeLiveFrame);
     if(msg.type==="attachment_start"){
       const file=path.join(uploadDir,crypto.randomUUID()+"_"+safeName(msg.name));
@@ -238,7 +240,7 @@ server.on("upgrade",(req,socket)=>{
    }catch{}
   }
  });
- socket.on("close",()=>clients.delete(socket));
+ socket.on("close",()=>{clients.delete(socket);log("WS SOCKET CLOSED clients="+clients.size)});
 });
 setInterval(()=>broadcast({type:"heartbeat",time:Date.now()}),15000);
 server.listen(process.env.PORT||8080,"0.0.0.0");
