@@ -8,6 +8,9 @@ import android.net.Uri
 import android.os.*
 import android.provider.Settings
 import android.widget.*
+import com.google.mlkit.vision.common.InputImage
+import com.google.mlkit.vision.text.TextRecognition
+import com.google.mlkit.vision.text.latin.TextRecognizerOptions
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 
@@ -26,7 +29,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var attachments: TextView
     private val handler = Handler(Looper.getMainLooper())
     private val refreshTask = object : Runnable { override fun run() { refresh(); handler.postDelayed(this, 1000) } }
-    private val pickImage = registerForActivityResult(ActivityResultContracts.OpenDocument()) { it?.let(::attach) }
+    private val pickImage = registerForActivityResult(ActivityResultContracts.OpenDocument()) { it?.let(::analyzeImage) }
     private val pickVideo = registerForActivityResult(ActivityResultContracts.OpenDocument()) { it?.let(::attach) }
     private val pickFile = registerForActivityResult(ActivityResultContracts.OpenDocument()) { it?.let(::attach) }
 
@@ -48,6 +51,34 @@ class MainActivity : AppCompatActivity() {
     private fun fmt(v: Long) = "%,d".format(v).replace(',', ' ')
     private fun stopMonitoring() { stopService(Intent(this, ScreenMonitorService::class.java)); stopService(Intent(this, ScreenMonitorServiceV2::class.java)); CopilotState.setMonitoring(this, false); Toast.makeText(this, "Мониторинг остановлен", Toast.LENGTH_SHORT).show() }
     private fun refresh() { val b = CopilotState.balance(this); val v = CopilotState.snapshot(this); val g = CopilotState.garage(this); val d = CopilotState.decision(this); val ls = LearningMemory.stats(this); val monitoring = CopilotState.monitoring(this); status.text = "Мониторинг: ${if (monitoring) "ВКЛЮЧЁН" else "ВЫКЛЮЧЕН"}\nОбучено: ${ls.samples} сделок • положительный результат ${ls.accuracy}%"; decision.text = d.ifBlank { "Наблюдаю игру…" }; money.text = "Баланс: ${fmt(b)} ₽\nГараж: $g / 3"; vehicle.text = if (v.name.isEmpty()) "Пока не распознана. Открой экран машины в игре." else "${v.name}\nЦена: ${v.price?.let { fmt(it) + " ₽" } ?: "—"}    Мощность: ${v.hp?.let { "$it л.с." } ?: "—"}\nПробег: ${v.mileage?.let { fmt(it) + " км" } ?: "—"}    Владельцев: ${v.owners ?: "—"}\nПроисхождение: ${v.origin.ifEmpty { "—" }}\nКрашеных деталей: ${v.paintedParts ?: "—"}\nНомер: ${v.plate.ifEmpty { "—" }}"; val ds = CopilotState.deals(this).take(6); deals.text = if (ds.isEmpty()) "Пока нет завершённых или открытых сделок." else ds.joinToString("\n\n") { x -> val r = if (x.buy != null && x.sell != null) "Результат: ${fmt(x.sell - x.buy - x.fees)} ₽" else "Сделка открыта"; "${x.name.ifEmpty { "Авто" }} ${x.plate}\nКуплено: ${x.buy?.let { fmt(it) + " ₽" } ?: "—"} • Продано: ${x.sell?.let { fmt(it) + " ₽" } ?: "—"}\nРасходы: ${fmt(x.fees)} ₽ • $r" }; val ps = CopilotState.plates(this).take(8); plates.text = if (ps.isEmpty()) "Номера пока не обнаружены." else ps.joinToString("\n") { "${it.plate} — ${it.state}${it.value?.let { v2 -> " • ${fmt(v2)} ₽" } ?: ""}" }; val os = CopilotState.buyerOffers(this, v.plate).take(5); offers.text = if (os.isEmpty()) "Пока нет предложений. Copilot будет запоминать реальные предложения покупателей." else os.joinToString("\n") { "• $it" }; forecast.text = try { val f = org.json.JSONObject(CopilotState.forecast(this)); "Ожидаемая продажа: ${if (f.has("sale_price")) fmt(f.optLong("sale_price")) + " ₽" else "—"}\nОжидаемая прибыль: ${if (f.has("expected_profit")) fmt(f.optLong("expected_profit")) + " ₽" else "—"}\nROI: ${if (f.has("roi_percent")) String.format("%.1f", f.optDouble("roi_percent")) + "%" else "—"}" } catch (_: Exception) { "Пока недостаточно данных для прогноза." }; val ar = if (v.name.isEmpty()) emptyList() else ActionRoiEngine.summary(this, v); actions.text = if (ar.isEmpty()) "Пока нет фактических результатов по улучшениям." else ar.joinToString("\n"); val ledger = CopilotState.ledger(this).take(8); events.text = if (ledger.isEmpty()) "Пока нет событий." else ledger.joinToString("\n") { "• ${it.type}: ${it.amount?.let { a -> fmt(a) + " ₽" } ?: ""} ${it.note}" }; attachments.text = "Скриншот / фото — анализ\nВидео — анализ кадров\nФайл — передача в Copilot\n\nМатериал можно выбрать здесь или отправить через «Поделиться»." }
+    private fun analyzeImage(uri: Uri) {
+        Toast.makeText(this, "Анализирую скриншот…", Toast.LENGTH_SHORT).show()
+        try {
+            val image = InputImage.fromFilePath(this, uri)
+            TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
+                .process(image)
+                .addOnSuccessListener { result ->
+                    val raw = result.text
+                    val v = VehicleSnapshot(GameParser.name(raw), GameParser.price(raw), GameParser.hp(raw), GameParser.mileage(raw), GameParser.owners(raw), GameParser.plate(raw), GameParser.origin(raw), GameParser.paintedParts(raw), raw)
+                    val balance = GameParser.balance(raw) ?: CopilotState.balance(this)
+                    val garage = GameParser.garage(raw) ?: CopilotState.garage(this)
+                    CopilotState.setBalance(this, balance)
+                    CopilotState.setGarage(this, garage)
+                    CopilotState.setSnapshot(this, v)
+                    val opportunity = DecisionEngine.decide(this, raw, v, balance, garage)
+                    CopilotState.setDecision(this, opportunity.action)
+                    CopilotState.addEvent(this, "IMAGE • OCR ${raw.length} символов • ${v.name} • ${v.price ?: "цена не найдена"}")
+                    runOnUiThread { Toast.makeText(this, if (raw.isBlank()) "OCR не нашёл текста" else "OCR готов: ${raw.length} символов • ${opportunity.action}", Toast.LENGTH_LONG).show(); refresh() }
+                }
+                .addOnFailureListener { e ->
+                    CopilotState.addEvent(this, "IMAGE • OCR ошибка • ${e.message}")
+                    Toast.makeText(this, "Ошибка OCR: ${e.message}", Toast.LENGTH_LONG).show()
+                }
+        } catch (e: Exception) {
+            CopilotState.addEvent(this, "IMAGE • не удалось открыть • ${e.message}")
+            Toast.makeText(this, "Не удалось прочитать скриншот: ${e.message}", Toast.LENGTH_LONG).show()
+        }
+    }
     private fun attach(uri: Uri) { val p = getSharedPreferences("live_bridge", 0); val url = p.getString("url", "") ?: ""; if (url.isBlank()) { Toast.makeText(this, "Сначала подключи канал «телефон ↔ Copilot».", Toast.LENGTH_LONG).show(); return }; Thread { val bridge = LiveBridge(this) {}; bridge.configure(url, p.getString("token", "") ?: ""); bridge.start(); Thread.sleep(700); val ok = bridge.sendAttachment(uri); runOnUiThread { Toast.makeText(this, if (ok) "Материал отправлен Copilot" else "Не удалось отправить материал", Toast.LENGTH_SHORT).show() }; bridge.stop() }.start() }
     private fun handleIncomingIntent(i: Intent?) { if (i?.action == Intent.ACTION_SEND) i.getParcelableExtra<Uri>(Intent.EXTRA_STREAM)?.let(::attach) else if (i?.action == Intent.ACTION_SEND_MULTIPLE) i.getParcelableArrayListExtra<Uri>(Intent.EXTRA_STREAM)?.forEach(::attach) }
     private fun requestBatteryOptimizationExemption() { if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) return; try { startActivity(Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, Uri.parse("package:" + packageName))) } catch (_: Exception) { startActivity(Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)) } }
