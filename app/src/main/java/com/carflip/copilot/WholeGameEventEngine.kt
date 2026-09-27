@@ -1,7 +1,6 @@
 package com.carflip.copilot
 
 import android.content.Context
-import java.security.MessageDigest
 
 /**
  * Converts OCR observations into durable whole-game events.
@@ -10,11 +9,6 @@ import java.security.MessageDigest
  */
 object WholeGameEventEngine {
     private const val PREF = "copilot_event_engine"
-
-    private fun key(text: String): String =
-        MessageDigest.getInstance("SHA-256")
-            .digest(text.replace(Regex("\\s+"), " ").trim().toByteArray())
-            .joinToString("") { "%02x".format(it) }
 
     private fun once(c: Context, kind: String, signature: String, windowMs: Long = 120_000L): Boolean {
         val p = c.getSharedPreferences(PREF, Context.MODE_PRIVATE)
@@ -29,15 +23,12 @@ object WholeGameEventEngine {
     fun observe(c: Context, text: String, screen: String, vehicle: VehicleSnapshot) {
         if (text.isBlank()) return
 
-        val normalized = text.replace(Regex("\\s+"), " ").trim()
-        val textKey = key(normalized)
-
         // Keep the structured whole-game memory synchronized with the existing journal.
         GameMemory.sync(c)
 
         val purchase = GameParser.purchaseAmount(text)
         if (purchase != null && purchase > 0 &&
-            once(c, "purchase", "${vehicle.plate}|${vehicle.name}|$purchase|${textKey.take(12)}", 90_000L)) {
+            once(c, "purchase", "${vehicle.plate}|${vehicle.name}|$purchase", 90_000L)) {
             CopilotState.recordPurchase(c, vehicle, purchase)
             GameMemory.record(c, screen, "ПОКУПКА", vehicle = vehicle, amount = purchase)
         }
@@ -45,7 +36,7 @@ object WholeGameEventEngine {
         val sale = GameParser.saleAmount(text)
         val isPlateSale = GameParser.plateSaleEvent(text) != null
         if (sale != null && sale > 0 && !isPlateSale &&
-            once(c, "sale", "${vehicle.plate}|${vehicle.name}|$sale|${textKey.take(12)}", 90_000L)) {
+            once(c, "sale", "${vehicle.plate}|${vehicle.name}|$sale", 90_000L)) {
             CopilotState.recordSale(c, vehicle, sale)
             GameMemory.record(c, screen, "ПРОДАЖА", vehicle = vehicle, amount = sale)
         }
@@ -54,7 +45,7 @@ object WholeGameEventEngine {
         if (screen == "ПРОДАЖА") {
             val offer = GameParser.bidAmount(text) ?: GameParser.plateOffer(text)
             if (offer != null && offer > 0 &&
-                once(c, "offer", "${vehicle.plate}|${vehicle.name}|$offer|${textKey.take(16)}", 120_000L)) {
+                once(c, "offer", "${vehicle.plate}|${vehicle.name}|$offer", 120_000L)) {
                 val condition = when {
                     text.contains("убит", true) || text.contains("сильно", true) -> "тяжёлое состояние"
                     text.contains("крашен", true) || text.contains("ремонт", true) || text.contains("устал", true) -> "повреждения/уставшее состояние"
@@ -67,7 +58,7 @@ object WholeGameEventEngine {
         }
 
         GameParser.action(text)?.let { action ->
-            if (once(c, "action", "${vehicle.plate}|${vehicle.name}|$action|${textKey.take(16)}", 90_000L)) {
+            if (once(c, "action", "${vehicle.plate}|${vehicle.name}|$action", 90_000L)) {
                 GameMemory.record(c, screen, "ДЕЙСТВИЕ", action, vehicle)
             }
         }
