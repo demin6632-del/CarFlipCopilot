@@ -18,7 +18,7 @@ object CopilotState {
  fun setBalance(c:Context,v:Long)=p(c).edit().putLong("balance",v).apply()
  fun garage(c:Context)=p(c).getInt("garage",0).coerceIn(0,3)
  fun setGarage(c:Context,v:Int)=p(c).edit().putInt("garage",v.coerceIn(0,3)).apply()
- fun decision(c:Context)=p(c).getString("decision","СМОТРЮ…")?:"СМОТРЮ…"
+ fun decision(c:Context)=p(c).getString("decision","Ожидаю запуска мониторинга")?:"Ожидаю запуска мониторинга"
  fun setDecision(c:Context,v:String)=p(c).edit().putString("decision",v).apply()
  fun monitoring(c:Context)=p(c).getBoolean("monitoring",false)
  fun setMonitoring(c:Context,v:Boolean)=p(c).edit().putBoolean("monitoring",v).apply()
