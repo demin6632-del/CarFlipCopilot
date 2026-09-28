@@ -7,7 +7,7 @@ const clients=new Set();
 const token=process.env.COPILOT_TOKEN||"";
 const openaiKey=process.env.OPENAI_API_KEY||"";
 const model=process.env.OPENAI_MODEL||"gpt-5.6-luna";
-const BUILD_ID="live-ai-2026-09-28-2";
+const BUILD_ID="live-ai-2026-09-28-3";
 const uploadDir=process.env.UPLOAD_DIR||path.join(process.cwd(),"uploads");
 fs.mkdirSync(uploadDir,{recursive:true});
 let latest=null;
@@ -20,6 +20,8 @@ let lastAiStatus="";
 let lastFrameAt=0;
 let lastAiAt=0;
 const aiHistory=[];
+process.on("uncaughtException",e=>log("PROCESS uncaughtException",e&&e.stack||e));
+process.on("unhandledRejection",e=>log("PROCESS unhandledRejection",e&&e.stack||e));
 
 const liveDecisionSchema={
  type:"object",
@@ -236,6 +238,7 @@ server.on("upgrade",(req,socket)=>{
  socket._buf=Buffer.alloc(0);clients.add(socket);
  log("WS CONNECT build="+BUILD_ID+" clients="+clients.size);
  broadcast({type:"ai_status",message:"Relay build "+BUILD_ID+" подключён"});
+ socket.on("error",e=>log("WS SOCKET ERROR",e&&e.stack||e));
  socket.on("data",buf=>{
   socket._buf=Buffer.concat([socket._buf,buf]);
   while(socket._buf.length>=2){
