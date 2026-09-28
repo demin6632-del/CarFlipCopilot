@@ -31,7 +31,23 @@ object GameParser {
     fun purchaseAmount(text: String): Long? = amount(text, listOf("покуп", "купил", "купить", "цена покупки", "buy", "вложено в авто", "вложено в проект"))
     fun saleAmount(text: String): Long? = amount(text, listOf("продан", "продажа", "продать", "продал", "sale", "sold", "выручка", "выплата"))
     fun expenseAmount(text: String): Long? = amount(text, listOf("расход", "ремонт", "стоимость ремонта", "оплат", "комис", "fee", "затрат", "стоимость"))
-    fun balance(text: String): Long? = amount(text, listOf("баланс", "деньги", "счёт", "счет", "balance", "cash", "банк"))
+    fun balance(text: String): Long? {
+        val normalized = text.replace('\u00A0', ' ')
+        val exact = Regex("(?i)(?:баланс|balance)\\s*[:=\\-]?\\s*(\\d[\\d\\s.,]{2,})").find(normalized)
+            ?.groupValues?.getOrNull(1)
+            ?.replace(Regex("[^0-9]"), "")
+            ?.toLongOrNull()
+            ?.takeIf { it > 0L }
+        if (exact != null) return exact
+
+        for (line in normalized.lines()) {
+            if (!Regex("(?i)\\b(?:баланс|balance)\\b").containsMatchIn(line)) continue
+            val candidate = Regex("\\d[\\d\\s.,]{2,}").find(line)
+                ?.value?.replace(Regex("[^0-9]"), "")?.toLongOrNull()
+            if (candidate != null && candidate > 0L) return candidate
+        }
+        return null
+    }
     fun rewardAmount(text: String): Long? = amount(text, listOf("награда", "бонус", "reward", "bonus", "приз", "prize", "выигрыш"))
     fun bidAmount(text: String): Long? = amount(text, listOf("ставка", "bid", "текущая ставка", "предложение", "offer"))
 
