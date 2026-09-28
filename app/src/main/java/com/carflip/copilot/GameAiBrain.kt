@@ -21,7 +21,7 @@ object GameAiBrain {
         BrainResult(Opportunity(action, title, reason, confidence), urgent)
 
     fun decide(context: Context, text: String, vehicle: VehicleSnapshot, balance: Long?, garage: Int): BrainResult {
-        val money = balance ?: CopilotState.balance(context)
+        val money = balance ?: CopilotState.balance(context) ?: 0L
         val screen = GameScreenClassifier.classify(text)
         val lower = text.lowercase()
 
