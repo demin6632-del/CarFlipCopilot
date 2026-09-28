@@ -13,6 +13,9 @@ object GameMechanics {
     private const val PREF = "copilot_mechanics"
     private const val FACTS = "facts"
     private const val MAX_FACTS = 600
+    private const val LAST_BALANCE = "last_balance"
+    private const val LAST_GARAGE = "last_garage"
+    private const val LAST_VEHICLE = "last_vehicle"
 
     data class Observation(
         val domain: String,
@@ -73,6 +76,15 @@ object GameMechanics {
         p.edit().putString(FACTS, a.toString()).apply()
     }
 
+    private fun recordTransition(c: Context, domain: String, evidence: String, screen: String, now: Long) {
+        val key = "transition:" + domain + ":" + evidence.take(180)
+        val p = prefs(c)
+        val last = p.getLong(key, 0L)
+        if (now - last < 2_000L) return
+        p.edit().putLong(key, now).apply()
+        appendFact(c, Observation(domain, "STATE_CHANGE", evidence, screen, now))
+    }
+
     private fun seen(c: Context, domain: String): Int {
         val a = try { JSONArray(prefs(c).getString(FACTS, "[]")) } catch (_: Exception) { JSONArray() }
         var n = 0
@@ -94,6 +106,35 @@ object GameMechanics {
         val n = normalize(text)
         val now = System.currentTimeMillis()
         val explicit = mutableSetOf<String>()
+        val p = prefs(c)
+
+        if (balance != null && balance > 0L) {
+            val previous = if (p.contains(LAST_BALANCE)) p.getLong(LAST_BALANCE, balance) else balance
+            if (p.contains(LAST_BALANCE) && previous != balance) {
+                val delta = balance - previous
+                recordTransition(c, "economy", "BALANCE_CHANGED: $previous -> $balance (${if (delta >= 0) "+" else ""}$delta ₽)" +
+                    (if (!event.isNullOrBlank()) " • event=$event" else "") +
+                    (if (!action.isNullOrBlank()) " • action=$action" else ""), screen, now)
+            }
+            p.edit().putLong(LAST_BALANCE, balance).apply()
+        }
+
+        if (garage >= 0) {
+            val previousGarage = if (p.contains(LAST_GARAGE)) p.getInt(LAST_GARAGE, garage) else garage
+            if (p.contains(LAST_GARAGE) && previousGarage != garage) {
+                recordTransition(c, "garage", "GARAGE_CHANGED: $previousGarage -> $garage", screen, now)
+            }
+            p.edit().putInt(LAST_GARAGE, garage).apply()
+        }
+
+        val vehicleKey = listOf(vehicle.name, vehicle.plate, vehicle.price, vehicle.hp, vehicle.mileage, vehicle.owners, vehicle.paintedParts).joinToString("|")
+        if (vehicleKey.isNotBlank() && vehicleKey != "||||||") {
+            val previousVehicle = p.getString(LAST_VEHICLE, "") ?: ""
+            if (previousVehicle.isNotBlank() && previousVehicle != vehicleKey) {
+                recordTransition(c, "cars", "VEHICLE_CHANGED: $previousVehicle -> $vehicleKey", screen, now)
+            }
+            p.edit().putString(LAST_VEHICLE, vehicleKey).apply()
+        }
 
         domains.forEach { d -> if (d.signals.any { n.contains(it) }) explicit += d.id }
         if (vehicle.name.isNotBlank() || vehicle.price != null || vehicle.hp != null || vehicle.plate.isNotBlank()) explicit += "cars"
