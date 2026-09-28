@@ -183,7 +183,7 @@ class ScreenMonitorService : Service() {
             CopilotState.addEvent(this, "GAME • событие=" + event)
         }
         lastVehicle = vehicle
-        liveBridge.sendState(text, vehicle, balance, garage)
+        liveBridge.sendState(text, vehicle, detectedBalance, garage, screen, event, GameParser.action(text), GameParser.contract(text), GameParser.resources(text))
         val old = lastFrame
         lastFrame = if (frame.width > 720) Bitmap.createScaledBitmap(frame, 720, frame.height * 720 / frame.width, true)
         else frame.copy(Bitmap.Config.ARGB_8888, false)
