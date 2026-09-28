@@ -58,4 +58,4 @@ jobs:
 
       # Trigger fresh APK build for live diagnostics.
 
-# CI trigger: live-state build
+# CI trigger: compile-fix-2026-09-28
