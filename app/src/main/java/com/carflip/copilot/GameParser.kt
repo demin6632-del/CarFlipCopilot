@@ -125,7 +125,7 @@ object GameParser {
         return when {
             s.contains("продан") || s.contains("продажа") || s.contains("продал") || s.contains("sold") -> "ПРОДАЖА"
             s.contains("куплен") || s.contains("покупка") || s.contains("купил") || s.contains("bought") -> "ПОКУПКА"
-            s.contains("аукцион") || s.contains("ставк") || s.contains("auction") || s.contains("bid") -> "АУКЦИОН"
+            plateAuction(text) -> "АУКЦИОН_НОМЕРА"
             s.contains("награда") || s.contains("бонус") || s.contains("reward") || s.contains("bonus") || s.contains("приз") -> "НАГРАДА"
             s.contains("контракт") || s.contains("заказ") || s.contains("квест") || s.contains("quest") || s.contains("mission") -> "ЗАДАНИЕ"
             action(text) != null -> "ДЕЙСТВИЕ"
@@ -239,10 +239,6 @@ object GameParser {
         return (x.contains("аукцион") || x.contains("ставк") || x.contains("auction") || x.contains("bid")) && (x.contains("номер") || x.contains("госномер") || x.contains("plate"))
     }
 
-    fun carAuction(text: String): Boolean {
-        val x = text.lowercase()
-        return (x.contains("аукцион") || x.contains("ставк") || x.contains("auction") || x.contains("bid")) && !(x.contains("номер") || x.contains("госномер") || x.contains("plate"))
-    }
 
     fun plateRemoved(text: String): Boolean {
         val x = text.lowercase()
