@@ -7,7 +7,7 @@ const clients=new Set();
 const token=process.env.COPILOT_TOKEN||"";
 const openaiKey=process.env.OPENAI_API_KEY||"";
 const model=process.env.OPENAI_MODEL||"gpt-5.6-luna";
-const BUILD_ID="live-ai-2026-09-28-3";
+const BUILD_ID="live-ai-2026-09-28-4";
 const uploadDir=process.env.UPLOAD_DIR||path.join(process.cwd(),"uploads");
 fs.mkdirSync(uploadDir,{recursive:true});
 let latest=null;
@@ -112,6 +112,8 @@ async function analyzeLiveFrame(){
  broadcast({type:"ai_status",message:"ChatGPT анализирует экран игры…"});
  try{
   const state=latest||{};
+  // The image is authoritative when OCR conflicts with structured fields; AI must explicitly verify critical values. 
+  const verificationRule="Проверяй критические данные (баланс, цена, пробег, мощность, владельцы, ставки, предложения и комиссии) по изображению. Если OCR/структурированное состояние расходится с изображением, доверяй читаемому изображению и помечай значение как уточнённое. Не выдумывай отсутствующие значения.";
   const history=aiHistory.slice(-12);
   const prompt=[
    "Ты — главный игровой помощник пользователя. Именно ты принимаешь решение по игре «Симулятор Перекупа».",
@@ -125,7 +127,7 @@ async function analyzeLiveFrame(){
    "Ответь ТОЛЬКО одним корректным JSON-объектом без markdown и без тройных обратных кавычек.",
    "JSON должен иметь поля: action,title,reason,confidence,game_state,sale_price,expected_profit,roi_percent,next_actions,changes. Числовые поля sale_price, expected_profit и roi_percent могут быть null; next_actions и changes — массивы строк.",
    "Если нужно сначала получить данные, действие должно быть конкретным: например ОТКРОЙ, ПРОВЕРЬ, НЕ ПОКУПАЙ или ПОКУПАЙ.",
-   "Текущая структурированная информация: "+JSON.stringify(state),
+   "Правило проверки: "+verificationRule,\n   "Текущая структурированная информация: "+JSON.stringify(state),
    "Полная сохранённая память игры (факты, сделки, предложения, номера, журнал, ROI): "+JSON.stringify(state.memory||{}),
    "Предыдущие решения ChatGPT: "+JSON.stringify(history)
   ].join("\n");
