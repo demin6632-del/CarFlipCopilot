@@ -16,6 +16,9 @@ object GameMechanics {
     private const val LAST_BALANCE = "last_balance"
     private const val LAST_GARAGE = "last_garage"
     private const val LAST_VEHICLE = "last_vehicle"
+    private const val PENDING_ACTION = "pending_action"
+    private const val LAST_ACTION = "last_action"
+    private const val ACTION_WINDOW_MS = 60_000L
 
     data class Observation(
         val domain: String,
@@ -92,6 +95,115 @@ object GameMechanics {
         return n
     }
 
+
+    private fun resourcesJson(resources: Map<String, Long>): JSONObject {
+        val o = JSONObject()
+        resources.forEach { (k, v) -> o.put(k, v) }
+        return o
+    }
+
+    private fun resourceDelta(before: JSONObject, after: Map<String, Long>): String {
+        val parts = mutableListOf<String>()
+        val keys = mutableSetOf<String>()
+        val beforeKeys = before.keys()
+        while (beforeKeys.hasNext()) keys += beforeKeys.next()
+        val afterKeys = after.keys()
+        while (afterKeys.hasNext()) keys += afterKeys.next()
+        for (key in keys) {
+            val b = before.optLong(key, Long.MIN_VALUE)
+            val a = after[key] ?: Long.MIN_VALUE
+            if (b != Long.MIN_VALUE && a != Long.MIN_VALUE && b != a) {
+                val d = a - b
+                parts += "${key}: ${b} -> ${a} (${if (d >= 0) "+" else ""}${d})"
+            }
+        }
+        return parts.joinToString(", ")
+    }
+
+    private fun maybeRecordActionResult(
+        c: Context,
+        screen: String,
+        balance: Long?,
+        garage: Int,
+        vehicleKey: String,
+        resources: Map<String, Long>,
+        now: Long
+    ) {
+        val p = prefs(c)
+        val raw = p.getString(PENDING_ACTION, null) ?: return
+        val pending = try { JSONObject(raw) } catch (_: Exception) {
+            p.edit().remove(PENDING_ACTION).apply()
+            return
+        }
+        val started = pending.optLong("time", 0L)
+        if (started <= 0L || now - started > ACTION_WINDOW_MS) {
+            p.edit().remove(PENDING_ACTION).apply()
+            return
+        }
+
+        val beforeBalance = pending.optLong("balance", Long.MIN_VALUE)
+        val beforeGarage = pending.optInt("garage", Int.MIN_VALUE)
+        val beforeVehicle = pending.optString("vehicle", "")
+        val beforeResources = try { JSONObject(pending.optString("resources", "{}")) } catch (_: Exception) { JSONObject() }
+
+        val balanceChanged = balance != null && beforeBalance != Long.MIN_VALUE && balance != beforeBalance
+        val garageChanged = beforeGarage != Int.MIN_VALUE && garage != beforeGarage
+        val vehicleChanged = vehicleKey.isNotBlank() && beforeVehicle.isNotBlank() && vehicleKey != beforeVehicle
+        val resourcesChanged = resourceDelta(beforeResources, resources).isNotBlank()
+        if (!balanceChanged && !garageChanged && !vehicleChanged && !resourcesChanged) return
+
+        val parts = mutableListOf<String>()
+        if (balanceChanged) {
+            val d = balance!! - beforeBalance
+            parts += "balance: ${beforeBalance} -> ${balance} (${if (d >= 0) "+" else ""}${d} ₽)"
+        }
+        if (garageChanged) parts += "garage: ${beforeGarage} -> ${garage}"
+        if (vehicleChanged) parts += "vehicle changed"
+        if (resourcesChanged) parts += "resources: ${resourceDelta(beforeResources, resources)}"
+
+        val action = pending.optString("action", "")
+        val event = pending.optString("event", "")
+        val label = listOf(action.takeIf { it.isNotBlank() }, event.takeIf { it.isNotBlank() })
+            .filterNotNull().joinToString(" / ")
+
+        recordTransition(c, "economy", "ACTION_RESULT: $label -> ${parts.joinToString("; ")}", screen, now)
+        if (garageChanged || vehicleChanged) {
+            recordTransition(c, "cars", "ACTION_RESULT: $label -> ${parts.joinToString("; ")}", screen, now)
+        }
+        p.edit().remove(PENDING_ACTION).apply()
+    }
+
+    private fun rememberPendingAction(
+        c: Context,
+        screen: String,
+        balance: Long?,
+        garage: Int,
+        vehicleKey: String,
+        resources: Map<String, Long>,
+        event: String?,
+        action: String?,
+        now: Long
+    ) {
+        val label = listOf(action?.takeIf { it.isNotBlank() }, event?.takeIf { it.isNotBlank() })
+            .filterNotNull().joinToString(" / ")
+        if (label.isBlank()) return
+
+        val p = prefs(c)
+        val previous = p.getString(LAST_ACTION, "")
+        if (previous == label && p.contains(PENDING_ACTION)) return
+
+        val pending = JSONObject()
+            .put("time", now)
+            .put("screen", screen)
+            .put("action", action ?: "")
+            .put("event", event ?: "")
+            .put("balance", balance ?: Long.MIN_VALUE)
+            .put("garage", garage)
+            .put("vehicle", vehicleKey)
+            .put("resources", resourcesJson(resources))
+        p.edit().putString(PENDING_ACTION, pending.toString()).putString(LAST_ACTION, label).apply()
+    }
+
     fun observe(
         c: Context,
         text: String,
@@ -128,14 +240,17 @@ object GameMechanics {
         }
 
         val vehicleKey = listOf(vehicle.name, vehicle.plate, vehicle.price, vehicle.hp, vehicle.mileage, vehicle.owners, vehicle.paintedParts).joinToString("|")
-        if (vehicleKey.isNotBlank() && vehicleKey != "||||||") {
+        val usableVehicleKey = vehicleKey.takeIf { it.isNotBlank() && it != "||||||" } ?: ""
+        maybeRecordActionResult(c, screen, balance, garage, usableVehicleKey, resources, now)
+        if (usableVehicleKey.isNotBlank()) {
             val previousVehicle = p.getString(LAST_VEHICLE, "") ?: ""
             if (previousVehicle.isNotBlank() && previousVehicle != vehicleKey) {
                 recordTransition(c, "cars", "VEHICLE_CHANGED: $previousVehicle -> $vehicleKey", screen, now)
             }
-            p.edit().putString(LAST_VEHICLE, vehicleKey).apply()
+            p.edit().putString(LAST_VEHICLE, usableVehicleKey).apply()
         }
 
+        rememberPendingAction(c, screen, balance, garage, usableVehicleKey, resources, event, action, now)
         domains.forEach { d -> if (d.signals.any { n.contains(it) }) explicit += d.id }
         if (vehicle.name.isNotBlank() || vehicle.price != null || vehicle.hp != null || vehicle.plate.isNotBlank()) explicit += "cars"
         if (balance != null) explicit += "economy"
