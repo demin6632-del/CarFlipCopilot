@@ -120,8 +120,13 @@ class LiveBridge(
                     connected = false
                     prefs.edit().putBoolean("connected", false).apply()
                     onStatus(false)
-                    CopilotState.addEvent(context, "LIVE • ошибка • " + (t.message ?: "WebSocket"))
-                    scheduleReconnect("failure")
+                    val detail = when {
+                        response != null -> "HTTP ${response.code} ${response.message}".trim()
+                        !t.message.isNullOrBlank() -> t.message!!
+                        else -> "WebSocket"
+                    }
+                    CopilotState.addEvent(context, "LIVE • ошибка • " + detail)
+                    scheduleReconnect("failure:" + detail)
                 }
             })
         } catch (e: Exception) {
