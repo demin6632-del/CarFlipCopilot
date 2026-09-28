@@ -29,7 +29,18 @@ object CopilotState {
  fun saveAttachmentAnalysis(c:Context,name:String,json:String){p(c).edit().putString("last_attachment_analysis",name+"|"+json.take(5000)).apply();addEvent(c,"ВЛОЖЕНИЕ • "+name+" • AI-анализ получен")}
  fun lastAttachmentAnalysis(c:Context)=p(c).getString("last_attachment_analysis","")?:""
  fun saveForecast(c:Context,sale:Long?,profit:Long?,roi:Double?,confidence:Int?){val o=JSONObject();sale?.let{o.put("sale_price",it)};profit?.let{o.put("expected_profit",it)};roi?.let{o.put("roi_percent",it)};confidence?.let{o.put("confidence",it)};p(c).edit().putString("forecast",o.toString()).apply()}
- fun forecast(c:Context)=p(c).getString("forecast","{}")?:"{}"
+ fun forecast(c:Context)=p(c).getString("forecast","{}")?:"{}" fun aiContext(c:Context):JSONObject{
+  val o=JSONObject()
+  o.put("balance",balance(c)).put("garage",garage(c)).put("forecast",JSONObject(forecast(c)))
+  o.put("vehicle",JSONObject().put("name",snapshot(c).name).put("plate",snapshot(c).plate).put("price",snapshot(c).price).put("hp",snapshot(c).hp).put("mileage",snapshot(c).mileage).put("owners",snapshot(c).owners).put("origin",snapshot(c).origin).put("paintedParts",snapshot(c).paintedParts))
+  o.put("events",JSONArray().apply{events(c).take(40).forEach{put(it)}})
+  o.put("deals",JSONArray().apply{deals(c).take(30).forEach{d->put(JSONObject().put("id",d.id).put("name",d.name).put("plate",d.plate).put("buy",d.buy).put("sell",d.sell).put("fees",d.fees).put("opened",d.opened).put("closed",d.closed)}})
+  o.put("buyer_offers",JSONArray().apply{buyerOffers(c).take(30).forEach{put(it)}})
+  o.put("plates",JSONArray().apply{plates(c).take(30).forEach{p->put(JSONObject().put("plate",p.plate).put("state",p.state).put("value",p.value).put("updated",p.updated))}})
+  o.put("ledger",JSONArray().apply{ledger(c).take(40).forEach{e->put(JSONObject().put("type",e.type).put("amount",e.amount).put("note",e.note).put("time",e.time))}})
+  o.put("action_roi",JSONArray().apply{actionRoi(c).take(30).forEach{put(it)}})
+  return o
+ }
  fun dealForecast(c:Context,v:VehicleSnapshot):JSONObject{val sale=LearningMemory.estimatedSale(c,v,v.price);val open=deals(c).firstOrNull{it.closed==null&&((v.plate.isNotEmpty()&&it.plate==v.plate)||(v.plate.isEmpty()&&it.name==v.name))};val buy=open?.buy?:v.price?:0L;val fees=open?.fees?:0L;val profit=sale?.minus(buy+fees);val roi=if(buy+fees>0&&profit!=null)profit.toDouble()/(buy+fees)*100 else null;return JSONObject().put("sale_price",sale).put("purchase",buy).put("fees",fees).put("expected_profit",profit).put("roi_percent",roi)}
  fun roi(cost:Long,delta:Long)=if(cost<=0)0.0 else (delta-cost).toDouble()/cost*100.0
  fun saveActionRoi(c:Context,action:String,cost:Long,delta:Long,reason:String="",dealId:String="",plate:String="",beforeSale:Long?=null){append(c,"action_roi",JSONObject().put("action",action).put("cost",cost).put("delta",delta).put("roi",roi(cost,delta)).put("reason",reason).put("deal_id",dealId).put("plate",plate).put("before_sale",beforeSale).put("time",System.currentTimeMillis()))}
