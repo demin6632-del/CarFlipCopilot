@@ -147,11 +147,12 @@ async function analyzeLiveFrame(){
    });
   } finally { clearTimeout(timeout); }
   const data=await r.json();
-  log("AI RESPONSE status="+r.status+" outputChars="+String(data.output_text||"").length);
+  const outputText=String(data.output_text||data.output?.flatMap(item=>item.content||[]).filter(x=>typeof x.text==="string").map(x=>x.text).join("")||"");
+  log("AI RESPONSE status="+r.status+" outputChars="+outputText.length);
   if(!r.ok)throw new Error(JSON.stringify(data));
-  if(!data.output_text)throw new Error("OpenAI returned empty output");
+  if(!outputText)throw new Error("OpenAI returned empty output");
   let parsed;
-  try{parsed=JSON.parse(data.output_text||"{}")}catch(e){throw new Error("Invalid AI JSON: "+String(e.message||e)+" raw="+String(data.output_text||"").slice(0,500))}
+  try{parsed=JSON.parse(outputText)}catch(e){throw new Error("Invalid AI JSON: "+String(e.message||e)+" raw="+outputText.slice(0,500))}
   parsed.confidence=Math.max(0,Math.min(100,Number(parsed.confidence)||0));
   aiHistory.push({time:Date.now(),decision:parsed,state:{
    balance:state.balance,garage:state.garage,vehicle:state.vehicle,ocr:state.ocr
