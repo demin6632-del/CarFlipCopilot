@@ -29,7 +29,10 @@ object CopilotState {
  fun saveAttachmentAnalysis(c:Context,name:String,json:String){p(c).edit().putString("last_attachment_analysis",name+"|"+json.take(5000)).apply();addEvent(c,"ВЛОЖЕНИЕ • "+name+" • AI-анализ получен")}
  fun lastAttachmentAnalysis(c:Context)=p(c).getString("last_attachment_analysis","")?:""
  fun saveForecast(c:Context,sale:Long?,profit:Long?,roi:Double?,confidence:Int?){val o=JSONObject();sale?.let{o.put("sale_price",it)};profit?.let{o.put("expected_profit",it)};roi?.let{o.put("roi_percent",it)};confidence?.let{o.put("confidence",it)};p(c).edit().putString("forecast",o.toString()).apply()}
- fun forecast(c:Context)=p(c).getString("forecast","{}")?:"{}" fun aiContext(c:Context):JSONObject{
+ fun forecast(c:Context)=p(c).getString("forecast","{}")?:"{}"
+ fun dealForecast(c:Context,v:VehicleSnapshot)=try{JSONObject(forecast(c))}catch(_:Exception){JSONObject()}
+ private fun roi(cost:Long,delta:Long)=if(cost>0)delta.toDouble()/cost.toDouble()*100.0 else 0.0
+ fun aiContext(c:Context):JSONObject{
   val o=JSONObject()
   val v=snapshot(c)
   o.put("balance",balance(c))
