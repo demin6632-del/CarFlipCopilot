@@ -58,4 +58,4 @@ jobs:
 
       # Trigger fresh APK build for live diagnostics.
 
-# CI trigger: compile-fix-2026-09-28
+# CI trigger: balance-syntax-fix-2026-09-28
