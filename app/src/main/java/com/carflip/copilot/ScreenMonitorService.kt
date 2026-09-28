@@ -177,7 +177,7 @@ class ScreenMonitorService : Service() {
         if (detectedBalance != null) CopilotState.setBalance(this, detectedBalance)
         CopilotState.setGarage(this, garage)
         CopilotState.setSnapshot(this, vehicle)
-        GameMechanics.observe(this, text, screen, vehicle, detectedBalance ?: knownBalance, garage, event, action, resources)
+        GameMechanics.observe(this, text, screen, vehicle, detectedBalance, garage, event, action, resources)
         if (screen != lastScreenType) {
             lastScreenType = screen
             CopilotState.addEvent(this, "GAME • экран=" + screen + " • машина='" + vehicle.name + "' • баланс=" + balance)
