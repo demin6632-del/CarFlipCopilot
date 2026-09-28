@@ -31,18 +31,19 @@ object CopilotState {
  fun saveForecast(c:Context,sale:Long?,profit:Long?,roi:Double?,confidence:Int?){val o=JSONObject();sale?.let{o.put("sale_price",it)};profit?.let{o.put("expected_profit",it)};roi?.let{o.put("roi_percent",it)};confidence?.let{o.put("confidence",it)};p(c).edit().putString("forecast",o.toString()).apply()}
  fun forecast(c:Context)=p(c).getString("forecast","{}")?:"{}" fun aiContext(c:Context):JSONObject{
   val o=JSONObject()
-  o.put("balance",balance(c)).put("garage",garage(c)).put("forecast",JSONObject(forecast(c)))
-  o.put("vehicle",JSONObject().put("name",snapshot(c).name).put("plate",snapshot(c).plate).put("price",snapshot(c).price).put("hp",snapshot(c).hp).put("mileage",snapshot(c).mileage).put("owners",snapshot(c).owners).put("origin",snapshot(c).origin).put("paintedParts",snapshot(c).paintedParts))
-  o.put("events",JSONArray().apply{events(c).take(40).forEach{put(it)}})
-  o.put("deals",JSONArray().apply{deals(c).take(30).forEach{d->put(JSONObject().put("id",d.id).put("name",d.name).put("plate",d.plate).put("buy",d.buy).put("sell",d.sell).put("fees",d.fees).put("opened",d.opened).put("closed",d.closed)}})
-  o.put("buyer_offers",JSONArray().apply{buyerOffers(c).take(30).forEach{put(it)}})
-  o.put("plates",JSONArray().apply{plates(c).take(30).forEach{p->put(JSONObject().put("plate",p.plate).put("state",p.state).put("value",p.value).put("updated",p.updated))}})
-  o.put("ledger",JSONArray().apply{ledger(c).take(40).forEach{e->put(JSONObject().put("type",e.type).put("amount",e.amount).put("note",e.note).put("time",e.time))}})
-  o.put("action_roi",JSONArray().apply{actionRoi(c).take(30).forEach{put(it)}})
+  val v=snapshot(c)
+  o.put("balance",balance(c))
+  o.put("garage",garage(c))
+  o.put("forecast",JSONObject(forecast(c)))
+  o.put("vehicle",JSONObject().put("name",v.name).put("plate",v.plate).put("price",v.price).put("hp",v.hp).put("mileage",v.mileage).put("owners",v.owners).put("origin",v.origin).put("paintedParts",v.paintedParts))
+  val ev=JSONArray(); events(c).take(40).forEach { ev.put(it) }; o.put("events",ev)
+  val ds=JSONArray(); deals(c).take(30).forEach { d -> ds.put(JSONObject().put("id",d.id).put("name",d.name).put("plate",d.plate).put("buy",d.buy).put("sell",d.sell).put("fees",d.fees).put("opened",d.opened).put("closed",d.closed)) }; o.put("deals",ds)
+  val bo=JSONArray(); buyerOffers(c).take(30).forEach { bo.put(it) }; o.put("buyer_offers",bo)
+  val ps=JSONArray(); plates(c).take(30).forEach { pr -> ps.put(JSONObject().put("plate",pr.plate).put("state",pr.state).put("value",pr.value).put("updated",pr.updated)) }; o.put("plates",ps)
+  val le=JSONArray(); ledger(c).take(40).forEach { e -> le.put(JSONObject().put("type",e.type).put("amount",e.amount).put("note",e.note).put("time",e.time)) }; o.put("ledger",le)
+  val ar=JSONArray(); actionRoi(c).take(30).forEach { ar.put(it) }; o.put("action_roi",ar)
   return o
  }
- fun dealForecast(c:Context,v:VehicleSnapshot):JSONObject{val sale=LearningMemory.estimatedSale(c,v,v.price);val open=deals(c).firstOrNull{it.closed==null&&((v.plate.isNotEmpty()&&it.plate==v.plate)||(v.plate.isEmpty()&&it.name==v.name))};val buy=open?.buy?:v.price?:0L;val fees=open?.fees?:0L;val profit=sale?.minus(buy+fees);val roi=if(buy+fees>0&&profit!=null)profit.toDouble()/(buy+fees)*100 else null;return JSONObject().put("sale_price",sale).put("purchase",buy).put("fees",fees).put("expected_profit",profit).put("roi_percent",roi)}
- fun roi(cost:Long,delta:Long)=if(cost<=0)0.0 else (delta-cost).toDouble()/cost*100.0
  fun saveActionRoi(c:Context,action:String,cost:Long,delta:Long,reason:String="",dealId:String="",plate:String="",beforeSale:Long?=null){append(c,"action_roi",JSONObject().put("action",action).put("cost",cost).put("delta",delta).put("roi",roi(cost,delta)).put("reason",reason).put("deal_id",dealId).put("plate",plate).put("before_sale",beforeSale).put("time",System.currentTimeMillis()))}
  fun actionRoi(c:Context):List<String>{val a=arr(c,"action_roi");return(0 until a.length()).mapNotNull{val o=a.optJSONObject(it)?:return@mapNotNull null;"• "+o.optString("action")+" • "+o.optLong("cost")+" ₽ • ROI "+String.format("%.1f",o.optDouble("roi"))+"%"}.reversed()}
  fun addBuyerOffer(c:Context,plate:String,name:String,condition:String,amount:Long,buyer:String="",notes:String=""){append(c,"buyer_offers",JSONObject().put("plate",plate).put("name",name).put("condition",condition).put("amount",amount).put("buyer",buyer).put("notes",notes).put("time",System.currentTimeMillis()))}
