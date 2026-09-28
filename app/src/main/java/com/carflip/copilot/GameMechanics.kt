@@ -104,7 +104,7 @@ object GameMechanics {
         event?.let {
             when {
                 it.contains("ПРОДАЖА_НОМЕРА") -> explicit += "plate_auction"
-                it.contains("АУКЦИОН") -> explicit += "plate_auction"
+                it.contains("АУКЦИОН_НОМЕРА") || it.contains("АУКЦИОН НОМЕРОВ") -> explicit += "plate_auction"
                 it.contains("ПРОДАЖА") -> explicit += "selling"
                 it.contains("ПОКУПКА") -> explicit += "buying"
                 it.contains("НАГРАДА") -> explicit += "rewards"
