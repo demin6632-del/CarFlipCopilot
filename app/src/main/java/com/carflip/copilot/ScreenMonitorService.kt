@@ -167,9 +167,11 @@ class ScreenMonitorService : Service() {
         val vehicle = VehicleSnapshot(GameParser.name(text), GameParser.price(text), GameParser.hp(text),
             GameParser.mileage(text), GameParser.owners(text), GameParser.plate(text),
             GameParser.origin(text), GameParser.paintedParts(text), text)
-        val balance = GameParser.balance(text) ?: CopilotState.balance(this)
+        val detectedBalance = GameParser.balance(text)
+        val knownBalance = CopilotState.balance(this)
+        val balance = detectedBalance ?: knownBalance ?: 0L
         val garage = GameParser.garage(text) ?: CopilotState.garage(this)
-        CopilotState.setBalance(this, balance)
+        if (detectedBalance != null) CopilotState.setBalance(this, detectedBalance)
         CopilotState.setGarage(this, garage)
         CopilotState.setSnapshot(this, vehicle)
         if (screen != lastScreenType) {
