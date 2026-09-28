@@ -215,7 +215,7 @@ class ScreenMonitorService : Service() {
         if (!Settings.canDrawOverlays(this)) return
         if (overlay != null) { overlay?.visibility = View.VISIBLE; return }
         overlay = TextView(this).apply {
-            text = "🤖 COPILOT\n\nСЕЙЧАС: АНАЛИЗИРУЮ\n\nЧТО ДЕЛАТЬ\nОжидаю игровой экран\n\nНажми на панель — скрыть"
+            text = "🤖 COPILOT\n\nСЕЙЧАС: НЕ ЗАПУЩЕН\n\nЧТО ДЕЛАТЬ\nЗапусти мониторинг в приложении\n\nНажми на панель — скрыть"
             setTextColor(Color.WHITE); setBackgroundColor(0xEE111111.toInt()); setPadding(18,16,18,16); textSize=14f
             setOnClickListener { hideOverlay() }
         }
