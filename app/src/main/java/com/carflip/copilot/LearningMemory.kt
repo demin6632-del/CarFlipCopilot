@@ -56,7 +56,7 @@ object LearningMemory {
    if(v.name.isNotEmpty()&&name==v.name)sameName+=n to weight
   }
   fun weighted(xs:List<Pair<Long,Double>>):Long?{if(xs.isEmpty())return null;val sum=xs.sumOf{it.first*it.second};val w=xs.sumOf{it.second};return if(w>0)(sum/w).toLong()else null}
-  return weighted(exact)?:weighted(sameName)?:fallback?:v.price
+  return weighted(exact)?:weighted(sameName)
  }
  private fun history(c:Context)=JSONArray(p(c).getString("action_history","[]"))
  fun actionSamples(c:Context,v:VehicleSnapshot,action:String)=run{val a=history(c);val n=ActionRoiEngine.normalize(action);(0 until a.length()).count{val o=a.optJSONObject(it);o!=null&&o.optString("feature")==featureKey(v)&&ActionRoiEngine.normalize(o.optString("action"))==n}}
