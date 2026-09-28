@@ -119,7 +119,9 @@ async function analyzeLiveFrame(){
    "Пользователь хочет зарабатывать и продвигать баланс, поэтому ищи реальные возможности, но не выдумывай цену продажи, спрос или расходы.",
    "Если данных недостаточно для безопасного решения — прямо скажи, что именно нужно проверить.",
    "Верни ОДНО главное действие, которое пользователь должен сделать прямо сейчас. Не давай рейтинг вариантов.",
-   "Если нужно сначала получить данные, действие должно быть конкретным: например «ОТКРОЙ ...», «ПРОВЕРЬ ...», «НЕ ПОКУПАЙ» или «ПОКУПАЙ».",
+   "Ответь ТОЛЬКО одним корректным JSON-объектом без markdown и без тройных обратных кавычек.",
+   "JSON должен иметь поля: action,title,reason,confidence,game_state,sale_price,expected_profit,roi_percent,next_actions,changes. Числовые поля sale_price, expected_profit и roi_percent могут быть null; next_actions и changes — массивы строк.",
+   "Если нужно сначала получить данные, действие должно быть конкретным: например ОТКРОЙ, ПРОВЕРЬ, НЕ ПОКУПАЙ или ПОКУПАЙ.",
    "Текущая структурированная информация: "+JSON.stringify(state),
    "Предыдущие решения ChatGPT: "+JSON.stringify(history)
   ].join("\n");
@@ -130,7 +132,7 @@ async function analyzeLiveFrame(){
   const body={
    model,
    input:[{role:"user",content}],
-   text:{format:{type:"json_schema",name:"carflip_live_decision",strict:true,schema:liveDecisionSchema}}
+   text:{format:{type:"text"}}
   };
   log("AI REQUEST model="+model);
   setAiStatus("Запрос к ChatGPT отправлен • model="+model);
