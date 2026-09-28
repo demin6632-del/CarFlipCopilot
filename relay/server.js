@@ -22,7 +22,7 @@ let lastAiAt=0;
 const aiHistory=[];
 
 const liveDecisionSchema={
- type:"object",strict:true,
+ type:"object",
  properties:{
   action:{type:"string"},
   title:{type:"string"},
