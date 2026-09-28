@@ -155,7 +155,7 @@ class ScreenMonitorService : Service() {
             recognizer.process(InputImage.fromBitmap(cropped, 0)).addOnSuccessListener { result ->
                 try {
                     ocrSuccess++; lastOcrChars = result.text.length; val text = stableOcr.accept(result.text)
-                    if (text != null) decisionHandler?.post { try { updateState(text, cropped) } finally { processingOcr = false } } else { showStatusPreservingDecision("Обновление данных…"); processingOcr = false }
+                    if (text != null) { decisionHandler?.post { try { updateState(text, cropped) } finally { processingOcr = false } } } else { liveBridge.sendFrame(cropped); showStatusPreservingDecision("Кадр отправлен • жду анализа ChatGPT…"); try { if (!cropped.isRecycled) cropped.recycle() } catch (_: Exception) {}; processingOcr = false }
                 } catch (_: Exception) { processingOcr = false }
             }.addOnFailureListener { error -> lastOcrError = error.message ?: "ошибка OCR"; CopilotState.addEvent(this, "OCR • ошибка • $lastOcrError"); showStatusPreservingDecision("Данные обновляются…"); processingOcr = false }
         } catch (error: Exception) { processingOcr = false; lastOcrError = error.message ?: "ошибка захвата"; CopilotState.addEvent(this, "CAPTURE • ошибка • $lastOcrError"); try { image.close() } catch (_: Exception) {} }
