@@ -187,6 +187,7 @@ class ScreenMonitorService : Service() {
         else frame.copy(Bitmap.Config.ARGB_8888, false)
         if (old != null) try { old.recycle() } catch (_: Exception) {}
         liveBridge.sendFrame(lastFrame!!)
+        try { if (frame !== lastFrame && !frame.isRecycled) frame.recycle() } catch (_: Exception) {}
         CopilotState.addEvent(this, "AI • кадр + состояние отправлены ChatGPT • экран=" + screen)
         showStatusPreservingDecision("ChatGPT анализирует текущую игру…")
     }
@@ -235,6 +236,6 @@ class ScreenMonitorService : Service() {
         captureReady = false
     }
 
-    override fun onDestroy(){CopilotState.setMonitoring(this,false);processingOcr=false;try{commandServer.stop()}catch(_:Exception){};try{remotePoller.stop()}catch(_:Exception){};try{liveBridge.stop()}catch(_:Exception){};releaseCaptureOnly();if(!captureStopping){try{projection?.stop()}catch(_:Exception){}};projection=null;try{captureThread?.quitSafely()}catch(_:Exception){};captureThread=null;captureHandler=null;decisionHandler=null;try{overlay?.let{(getSystemService(WINDOW_SERVICE) as WindowManager).removeView(it)}}catch(_:Exception){};overlay=null;try{lastFrame?.recycle()}catch(_:Exception){};lastFrame=null;super.onDestroy()}
+    override fun onDestroy(){CopilotState.setMonitoring(this,false);processingOcr=false;try{if(::commandServer.isInitialized)commandServer.stop()}catch(_:Exception){};try{if(::remotePoller.isInitialized)remotePoller.stop()}catch(_:Exception){};try{if(::liveBridge.isInitialized)liveBridge.stop()}catch(_:Exception){};releaseCaptureOnly();if(!captureStopping){try{projection?.stop()}catch(_:Exception){}};projection=null;try{captureThread?.quitSafely()}catch(_:Exception){};captureThread=null;captureHandler=null;decisionHandler=null;try{overlay?.let{(getSystemService(WINDOW_SERVICE) as WindowManager).removeView(it)}}catch(_:Exception){};overlay=null;try{lastFrame?.recycle()}catch(_:Exception){};lastFrame=null;super.onDestroy()}
     override fun onBind(intent: Intent?): IBinder?=null
 }
