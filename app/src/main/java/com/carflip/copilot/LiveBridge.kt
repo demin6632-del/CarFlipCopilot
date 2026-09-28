@@ -148,14 +148,19 @@ class LiveBridge(
         }, 5, TimeUnit.SECONDS)
     }
 
-    fun sendState(text: String, v: VehicleSnapshot, balance: Long, garage: Int) {
+    fun sendState(text: String, v: VehicleSnapshot, balance: Long?, garage: Int, screen: String = "", event: String? = null, action: String? = null, contract: String? = null, resources: Map<String, Long> = emptyMap()) {
         if (!connected) return
         send(JSONObject()
             .put("type", "state")
             .put("time", System.currentTimeMillis())
             .put("ocr", text)
-            .put("balance", balance)
+             .put("balance", balance ?: JSONObject.NULL)
             .put("garage", garage)
+            .put("screen", screen)
+            .put("event", event ?: JSONObject.NULL)
+            .put("action", action ?: JSONObject.NULL)
+            .put("contract", contract ?: JSONObject.NULL)
+            .put("resources", JSONObject().apply { resources.forEach { (k,vv) -> put(k, vv) } })
             .put("vehicle", JSONObject()
                 .put("name", v.name)
                 .put("price", v.price)
