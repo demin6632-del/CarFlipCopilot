@@ -105,7 +105,8 @@ async function analyzeLiveFrame(){
  aiBusy=true;
  const frame=latestFrame; latestFrame=null;
  log("AI START build="+BUILD_ID+" frameBytes="+Buffer.byteLength(frame||"","base64")+" clients="+clients.size);
- lastAiAt=Date.now();\n lastAiError="";
+ lastAiAt=Date.now();
+ lastAiError="";
  broadcast({type:"ai_status",message:"ChatGPT анализирует экран игры…"});
  try{
   const state=latest||{};
@@ -123,7 +124,8 @@ async function analyzeLiveFrame(){
    "JSON должен иметь поля: action,title,reason,confidence,game_state,sale_price,expected_profit,roi_percent,next_actions,changes. Числовые поля sale_price, expected_profit и roi_percent могут быть null; next_actions и changes — массивы строк.",
    "Если нужно сначала получить данные, действие должно быть конкретным: например ОТКРОЙ, ПРОВЕРЬ, НЕ ПОКУПАЙ или ПОКУПАЙ.",
    "Текущая структурированная информация: "+JSON.stringify(state),
-   "Полная сохранённая память игры (факты, сделки, предложения, номера, журнал, ROI): "+JSON.stringify(state.memory||{}) ,\n   "Предыдущие решения ChatGPT: "+JSON.stringify(history)
+   "Полная сохранённая память игры (факты, сделки, предложения, номера, журнал, ROI): "+JSON.stringify(state.memory||{}),
+   "Предыдущие решения ChatGPT: "+JSON.stringify(history)
   ].join("\n");
   const content=[
    {type:"input_text",text:prompt},
