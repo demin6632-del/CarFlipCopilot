@@ -57,3 +57,5 @@ jobs:
       # Fresh rebuild requested for the live copilot APK.
 
       # Trigger fresh APK build for live diagnostics.
+
+# CI trigger: live-state build
