@@ -160,6 +160,7 @@ class LiveBridge(
                 .put("plate", v.plate)
                 .put("origin", v.origin)
                 .put("paintedParts", v.paintedParts))
+            .put("memory", CopilotState.aiContext(context))
             .toString())
     }
 
