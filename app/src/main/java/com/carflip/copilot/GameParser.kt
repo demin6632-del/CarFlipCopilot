@@ -137,7 +137,6 @@ object GameParser {
         val s = text.lowercase()
         return when {
             plateAuction(text) -> "АУКЦИОН_НОМЕРА"
-            carAuction(text) -> "АУКЦИОН"
             s.contains("гараж") || s.contains("garage") -> "ГАРАЖ"
             s.contains("магазин") || s.contains("shop") || s.contains("магаз") -> "МАГАЗИН"
             s.contains("контракт") || s.contains("заказ") || s.contains("квест") || s.contains("quest") || s.contains("mission") -> "ЗАДАНИЕ"
