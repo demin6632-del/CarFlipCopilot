@@ -171,9 +171,13 @@ class ScreenMonitorService : Service() {
         val knownBalance = CopilotState.balance(this)
         val balance = detectedBalance ?: knownBalance ?: 0L
         val garage = GameParser.garage(text) ?: CopilotState.garage(this)
+        val action = GameParser.action(text)
+        val contract = GameParser.contract(text)
+        val resources = GameParser.resources(text)
         if (detectedBalance != null) CopilotState.setBalance(this, detectedBalance)
         CopilotState.setGarage(this, garage)
         CopilotState.setSnapshot(this, vehicle)
+        GameMechanics.observe(this, text, screen, vehicle, detectedBalance ?: knownBalance, garage, event, action, resources)
         if (screen != lastScreenType) {
             lastScreenType = screen
             CopilotState.addEvent(this, "GAME • экран=" + screen + " • машина='" + vehicle.name + "' • баланс=" + balance)
@@ -183,7 +187,7 @@ class ScreenMonitorService : Service() {
             CopilotState.addEvent(this, "GAME • событие=" + event)
         }
         lastVehicle = vehicle
-        liveBridge.sendState(text, vehicle, detectedBalance, garage, screen, event, GameParser.action(text), GameParser.contract(text), GameParser.resources(text))
+        liveBridge.sendState(text, vehicle, detectedBalance ?: knownBalance, garage, screen, event, action, contract, resources)
         val old = lastFrame
         lastFrame = if (frame.width > 720) Bitmap.createScaledBitmap(frame, 720, frame.height * 720 / frame.width, true)
         else frame.copy(Bitmap.Config.ARGB_8888, false)

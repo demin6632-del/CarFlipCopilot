@@ -45,6 +45,8 @@ object CopilotState {
   val ps=JSONArray(); plates(c).take(30).forEach { pr -> ps.put(JSONObject().put("plate",pr.plate).put("state",pr.state).put("value",pr.value).put("updated",pr.updated)) }; o.put("plates",ps)
   val le=JSONArray(); ledger(c).take(40).forEach { e -> le.put(JSONObject().put("type",e.type).put("amount",e.amount).put("note",e.note).put("time",e.time)) }; o.put("ledger",le)
   val ar=JSONArray(); actionRoi(c).take(30).forEach { ar.put(it) }; o.put("action_roi",ar)
+  o.put("mechanics", GameMechanics.snapshot(c))
+  o.put("mechanics_recent", GameMechanics.recent(c, 30))
   return o
  }
  fun saveActionRoi(c:Context,action:String,cost:Long,delta:Long,reason:String="",dealId:String="",plate:String="",beforeSale:Long?=null){append(c,"action_roi",JSONObject().put("action",action).put("cost",cost).put("delta",delta).put("roi",roi(cost,delta)).put("reason",reason).put("deal_id",dealId).put("plate",plate).put("before_sale",beforeSale).put("time",System.currentTimeMillis()))}
