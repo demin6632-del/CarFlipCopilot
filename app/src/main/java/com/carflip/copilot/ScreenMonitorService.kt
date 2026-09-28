@@ -50,6 +50,9 @@ class ScreenMonitorService : Service() {
     private var lastAiStatus = "Жду анализа ChatGPT…"
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        if (intent?.action == "SHOW_OVERLAY") { showOverlay(); return START_STICKY }
+        if (intent?.action == "HIDE_OVERLAY") { hideOverlay(); return START_STICKY }
+        if (projection != null && captureReady) { showOverlay(); return START_STICKY }
         CopilotState.setMonitoring(this, false); createChannel()
         commandServer = CommandServer(this).also { it.start() }
         remotePoller = RemoteCommandPoller(this).also { it.start() }
@@ -79,7 +82,7 @@ class ScreenMonitorService : Service() {
             startCapture()
             if (captureReady) { CopilotState.setMonitoring(this, true); CopilotState.addEvent(this, "CAPTURE • MediaProjection готов • OCR запущен"); showStatusPreservingDecision("Захват экрана запущен") }
         } catch (error: Exception) { lastOcrError = error.message ?: "ошибка запуска MediaProjection"; CopilotState.setMonitoring(this, false); CopilotState.addEvent(this, "CAPTURE • ошибка запуска • $lastOcrError"); showStatusPreservingDecision(lastOcrError); stopSelf() }
-        return START_NOT_STICKY
+        return START_STICKY
     }
 
     private fun handleCommand(command: String) {
@@ -208,7 +211,20 @@ class ScreenMonitorService : Service() {
     }
 
     private fun showStatusPreservingDecision(message: String) { overlay?.post { val decision = lastOpportunity; if (decision != null) { overlay?.text = "🤖 COPILOT\n\nСЕЙЧАС: ${decision.action.ifBlank { "ОЖИДАЙ" }}\n\n${lastVehicle.name.ifBlank { "Ситуация игры" }}\n\nЧТО ДЕЛАТЬ\n${decision.title.ifBlank { "Жди подтверждения ситуации" }}\n\nСтатус: $message" } else overlay?.text = "🤖 COPILOT\n\nСЕЙЧАС: АНАЛИЗИРУЮ\n\nЧТО ДЕЛАТЬ\nПодожди подтверждения игровой ситуации\n\nСтатус: $message" } }
-    private fun showOverlay() { if (!Settings.canDrawOverlays(this)) return; overlay = TextView(this).apply { text = "🤖 COPILOT\n\nСЕЙЧАС: АНАЛИЗИРУЮ\n\nЧТО ДЕЛАТЬ\nОжидаю игровой экран"; setTextColor(Color.WHITE); setBackgroundColor(0xEE111111.toInt()); setPadding(18,16,18,16); textSize=14f }; val manager=getSystemService(WINDOW_SERVICE) as WindowManager; val type=if(Build.VERSION.SDK_INT>=26) WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY else WindowManager.LayoutParams.TYPE_PHONE; val params=WindowManager.LayoutParams(WindowManager.LayoutParams.WRAP_CONTENT,WindowManager.LayoutParams.WRAP_CONTENT,type,WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,PixelFormat.TRANSLUCENT); manager.addView(overlay,params) }
+    private fun showOverlay() {
+        if (!Settings.canDrawOverlays(this)) return
+        if (overlay != null) { overlay?.visibility = View.VISIBLE; return }
+        overlay = TextView(this).apply {
+            text = "🤖 COPILOT\n\nСЕЙЧАС: АНАЛИЗИРУЮ\n\nЧТО ДЕЛАТЬ\nОжидаю игровой экран\n\nНажми на панель — скрыть"
+            setTextColor(Color.WHITE); setBackgroundColor(0xEE111111.toInt()); setPadding(18,16,18,16); textSize=14f
+            setOnClickListener { hideOverlay() }
+        }
+        val manager=getSystemService(WINDOW_SERVICE) as WindowManager
+        val type=if(Build.VERSION.SDK_INT>=26) WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY else WindowManager.LayoutParams.TYPE_PHONE
+        val params=WindowManager.LayoutParams(WindowManager.LayoutParams.WRAP_CONTENT,WindowManager.LayoutParams.WRAP_CONTENT,type,WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,PixelFormat.TRANSLUCENT)
+        manager.addView(overlay,params)
+    }
+    private fun hideOverlay() { overlay?.visibility = View.GONE }
     private fun createChannel() { if(Build.VERSION.SDK_INT>=26){val manager=getSystemService(NOTIFICATION_SERVICE) as NotificationManager; manager.createNotificationChannel(NotificationChannel("copilot","Copilot",NotificationManager.IMPORTANCE_LOW))} }
     private fun releaseCaptureOnly() {
         try { virtualDisplay?.release() } catch (_: Exception) {}
