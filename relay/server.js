@@ -226,7 +226,11 @@ const server=http.createServer((req,res)=>{
  if(!auth(req))return json(res,401,{error:"unauthorized"});
  if(req.url==="/health")return json(res,200,{ok:true,build:BUILD_ID,model,clients:clients.size,uploads:uploads.size,ai:!!openaiKey,lastFrameAt,lastAiAt,lastAiStatus,lastAiError:lastAiError?lastAiError.slice(0,500):""});
  if(req.url==="/state")return json(res,200,latest||{});
- if(req.url==="/attachments")return json(res,200,[...uploads.values()].map(({file,...x})=>x));\n if(req.url==="/telegram/advice" && req.method==="POST"){
+ if(req.url==="/attachments")return json(res,200,[...uploads.values()].map(({file,...x})=>x));
+ if(req.url==="/bridge/state" && req.method==="POST"){
+  let body="";req.on("data",x=>body+=x);req.on("end",()=>{try{latest=JSON.parse(body||"{}");latest.source=latest.source||"telegram_user_session";broadcast({type:"state",...latest});return json(res,200,{ok:true})}catch(e){return json(res,400,{error:e.message})}});return;
+ }
+ if(req.url==="/telegram/advice" && req.method==="POST"){
   const last=aiHistory.length ? aiHistory[aiHistory.length-1].decision : null;
   const local=(latest&&latest.memory&&(latest.memory.local_plan||latest.local_plan))||latest?.local_plan||null;
   if(last){
