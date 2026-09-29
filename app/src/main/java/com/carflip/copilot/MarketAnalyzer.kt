@@ -92,11 +92,11 @@ object MarketAnalyzer {
         if(expected==null) risk += 22 else if(h.isEmpty()) risk += 12
         risk=min(100,risk)
 
-        val confidence=min(95,sale.second + if(v.mileage!=null)5 else 0 + if(v.owners!=null)5 else 0 + if(v.paintedParts!=null)3 else 0)
+        val confidence=min(95,sale.second + if(v.mileage!=null)5 else 0 + if(v.owners!=null)5 else 0 + if(v.paintedParts!=null)3 else 0)\n        val capital=CapitalAnalyzer.profile(c,v.price,fees,v.name)
         val key=norm(v.name)+"|"+v.price+"|"+v.plate
         val o=JSONObject().put("key",key).put("name",v.name).put("price",v.price)
             .put("plate",v.plate).put("origin",v.origin).put("fees",fees).put("risk",risk)
-            .put("confidence",confidence).put("updatedAt",System.currentTimeMillis())
+            .put("confidence",confidence).put("capitalLocked",capital.locked).put("capitalUtilizationPercent",capital.utilizationPercent).put("holdingDaysEstimate",capital.holdingDays).put("turnoverConfidence",capital.turnoverConfidence).put("capitalPressure",capital.pressure).put("garagePressure",capital.garagePressure).put("updatedAt",System.currentTimeMillis())
         v.hp?.let{o.put("hp",it)}
         v.mileage?.let{o.put("mileage",it)}
         v.owners?.let{o.put("owners",it)}
@@ -131,7 +131,7 @@ object MarketAnalyzer {
                 o.optLong("fees",0L),
                 if(o.has("expectedProfit"))o.optLong("expectedProfit")else null,
                 if(o.has("roi"))o.optDouble("roi")else null,
-                o.optInt("risk",50),o.optInt("confidence",45),o.optLong("updatedAt")
+                o.optInt("risk",50),o.optInt("confidence",45),o.optLong("capitalLocked",o.optLong("price")),o.optDouble("capitalUtilizationPercent",0.0),if(o.has("holdingDaysEstimate")&&!o.isNull("holdingDaysEstimate"))o.optDouble("holdingDaysEstimate")else null,o.optInt("turnoverConfidence",0),o.optInt("capitalPressure",50),o.optInt("garagePressure",0),o.optLong("updatedAt")
             )
         }.sortedByDescending{score(it)}
     }
@@ -150,7 +150,7 @@ object MarketAnalyzer {
         list.take(10).forEach{v->
             out.put(JSONObject().put("name",v.name).put("price",v.price).put("expected_sale",v.expectedSale)
                 .put("fees",v.fees).put("expected_profit",v.expectedProfit).put("roi_percent",v.roi)
-                .put("risk",v.risk).put("confidence",v.confidence).put("plate",v.plate)
+                .put("risk",v.risk).put("confidence",v.confidence).put("capital_locked",v.capitalLocked).put("capital_utilization_percent",v.capitalUtilizationPercent).put("holding_days_estimate",v.holdingDaysEstimate).put("turnover_confidence",v.turnoverConfidence).put("capital_pressure",v.capitalPressure).put("garage_pressure",v.garagePressure).put("plate",v.plate)
                 .put("mileage",v.mileage).put("owners",v.owners).put("painted_parts",v.paintedParts))
         }
         val b=best(c)
