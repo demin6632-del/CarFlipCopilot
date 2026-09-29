@@ -60,7 +60,7 @@ function kb(chatId) {
     [{text:"🔗 Подключить игру",callback_data:"connect"}],
     [{text:"🧪 Проверить связь с игрой",callback_data:"probe"}]
   ];
-  const connectUrl = CONNECT_URL || (BRIDGE_PUBLIC_URL && chatId ? BRIDGE_PUBLIC_URL + "/connect?chat_id=" + encodeURIComponent(chatId) : "");
+  const connectUrl = CONNECT_URL || (BRIDGE_PUBLIC_URL && chatId ? BRIDGE_PUBLIC_URL + "/connect?ticket=" + encodeURIComponent(userBridge.createTicket(chatId)) : "");
   if (connectUrl) rows.push([{text:"🎮 Открыть подключение",web_app:{url:connectUrl}}]);
   return {inline_keyboard:rows};
 }
@@ -187,7 +187,7 @@ async function handle(m) {
 
 async function connect(chat) {
   if(CONNECT_URL || BRIDGE_PUBLIC_URL) {
-    const url = CONNECT_URL || (BRIDGE_PUBLIC_URL + "/connect?chat_id=" + encodeURIComponent(chat));
+    const url = CONNECT_URL || (BRIDGE_PUBLIC_URL + "/connect?ticket=" + encodeURIComponent(userBridge.createTicket(chat)));
     return send(chat,
       "🔗 Открываю защищённое подключение.\n\nПосле авторизации мост привяжет твой Telegram-профиль к состоянию игры.",
       {reply_markup:{inline_keyboard:[
