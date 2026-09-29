@@ -53,7 +53,7 @@ function tg(method,body){return new Promise((resolve,reject)=>{
   const data=JSON.stringify(body||{}),u=new URL(API+"/"+method);
   const req=https.request({hostname:u.hostname,path:u.pathname,method:"POST",headers:{"content-type":"application/json","content-length":Buffer.byteLength(data)}},res=>{
     let s="";res.on("data",c=>s+=c);res.on("end",()=>{try{const j=JSON.parse(s);if(!j.ok)return reject(new Error(j.description||"Telegram API error"));resolve(j.result);}catch(e){reject(e);}});
-  });req.on("error",reject);req.write(data);req.end();
+  });req.on("error",reject);req.setTimeout(35000,()=>{req.destroy(new Error("Telegram API timeout"));});req.write(data);req.end();
 });}
 function kb(chatId){
   const rows=[[{text:"🧠 Что делать сейчас",callback_data:"advice"}],[{text:"📊 Состояние",callback_data:"state"},{text:"📸 Анализ скрина",callback_data:"photo"}],[{text:"🔗 Подключить игру",callback_data:"connect"}],[{text:"🧪 Проверить связь с игрой",callback_data:"probe"}]];
@@ -63,10 +63,18 @@ function kb(chatId){
 }
 async function send(chat_id,text,extra={}){return tg("sendMessage",Object.assign({chat_id,text,reply_markup:kb(chat_id),disable_web_page_preview:true},extra));}
 async function relay(path,body={}){if(!RELAY_URL)throw new Error("RELAY_URL не настроен");const u=new URL(RELAY_URL+path),data=JSON.stringify(body);
-  return new Promise((resolve,reject)=>{const req=https.request({hostname:u.hostname,port:u.port||443,path:u.pathname+u.search,method:"POST",headers:{"content-type":"application/json","authorization":"Bearer "+RELAY_TOKEN,"content-length":Buffer.byteLength(data)}},res=>{let s="";res.on("data",c=>s+=c);res.on("end",()=>{try{resolve(JSON.parse(s))}catch{resolve({raw:s})}})});req.on("error",reject);req.write(data);req.end();});
+  return new Promise((resolve,reject)=>{const req=https.request({hostname:u.hostname,port:u.port||443,path:u.pathname+u.search,method:"POST",headers:{"content-type":"application/json","authorization":"Bearer "+RELAY_TOKEN,"content-length":Buffer.byteLength(data)}},res=>{let s="";res.on("data",c=>s+=c);res.on("end",()=>{try{resolve(JSON.parse(s))}catch{resolve({raw:s})}})});req.on("error",reject);req.setTimeout(20000,()=>{req.destroy(new Error("Relay timeout"));});req.write(data);req.end();});
 }
 async function downloadTelegramFile(fileId){const file=await tg("getFile",{file_id:fileId});if(!file?.file_path)throw new Error("Telegram не вернул путь к файлу");const u=new URL("https://api.telegram.org/file/bot"+BOT_TOKEN+"/"+file.file_path);
-  return new Promise((resolve,reject)=>{https.get(u,res=>{const chunks=[];res.on("data",c=>chunks.push(c));res.on("end",()=>resolve(Buffer.concat(chunks)));res.on("error",reject);}).on("error",reject);});
+  return new Promise((resolve,reject)=>{const req=https.get(u,res=>{
+    if(res.statusCode!==200){res.resume();return reject(new Error("Telegram file download HTTP "+res.statusCode));}
+    const chunks=[];let size=0;
+    res.on("data",c=>{size+=c.length;if(size>50*1024*1024){req.destroy(new Error("Файл слишком большой"));return;}chunks.push(c);});
+    res.on("end",()=>resolve(Buffer.concat(chunks)));
+    res.on("error",reject);
+  });
+  req.setTimeout(30000,()=>req.destroy(new Error("Telegram file download timeout")));
+  req.on("error",reject);});
 }
 
 async function analyzePhotoFree(bytes){
@@ -113,7 +121,10 @@ async function handle(m){
   if(text==="/start"){users.set(chat,{connected:false});return send(chat,"🚗 CarFlipCopilot\n\nЯ работаю прямо внутри Telegram. Android-приложение для общения со мной не нужно.\n\nМоя задача — смотреть состояние «Симулятора Перекупа», учитывать историю сделок и говорить одно конкретное следующее действие.\n\nНачни с «🔗 Подключить игру».");}
   if(text==="/connect")return connect(chat);if(text==="/state")return state(chat);if(text==="/advice")return advice(chat);if(text==="/probe")return probe(chat);if(text==="/bridge")return bridgeStatus(chat);if(text==="/game")return gameDebug(chat);
   if(text==="/help")return send(chat,"Команды:\n/connect — подключение игры\n/state — состояние\n/advice — что делать сейчас\n/probe — проверить связь с игровым ботом\n\nМожно прислать скриншот текущей ситуации — бот разберёт его прямо здесь.");
-  if(m.photo?.length)return handlePhoto(chat,m.photo);if(text)return send(chat,"Используй кнопки ниже или пришли скриншот игры.");
+  if(m.photo?.length){
+    handlePhoto(chat,m.photo).catch(e=>console.log("PHOTO UNHANDLED ERROR:",e.stack||e.message||e));
+    return;
+  }if(text)return send(chat,"Используй кнопки ниже или пришли скриншот игры.");
 }
 async function connect(chat){
   if(CONNECT_URL||BRIDGE_PUBLIC_URL){const url=CONNECT_URL||(BRIDGE_PUBLIC_URL+"/connect?ticket="+encodeURIComponent(userBridge.createTicket(chat)));return send(chat,"🔗 Открываю защищённое подключение.\n\nПосле авторизации мост привяжет твой Telegram-профиль к состоянию игры.",{reply_markup:{inline_keyboard:[[{text:"🎮 Подключить игру",web_app:{url}}],[{text:"🧪 Проверить связь",callback_data:"probe"}],[{text:"↩️ Назад",callback_data:"menu"}]]}});}
