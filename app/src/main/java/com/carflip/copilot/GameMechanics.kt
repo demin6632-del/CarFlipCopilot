@@ -21,6 +21,9 @@ object GameMechanics {
     private const val ACTION_WINDOW_MS = 60_000L
     private const val RULES = "rules"
     private const val RULE_MIN_CONFIRMATIONS = 2
+    private const val SEQUENCES = "sequences"
+    private const val SEQUENCE_MIN_CONFIRMATIONS = 2
+    private const val LAST_RESULT = "last_result"
 
     data class Observation(
         val domain: String,
@@ -170,7 +173,10 @@ object GameMechanics {
 
         val resultText = parts.joinToString("; ")
         recordTransition(c, "economy", "ACTION_RESULT: $label -> $resultText", screen, now)
-        if (label.isNotBlank()) recordRuleEvidence(c, actionRuleKey(label, parts), "economy", "ACTION_RESULT: $label -> $resultText", screen, now)
+        if (label.isNotBlank()) {
+            recordRuleEvidence(c, actionRuleKey(label, parts), "economy", "ACTION_RESULT: $label -> $resultText", screen, now)
+            recordObservedResult(c, label, resultText, screen, now)
+        }
         if (garageChanged || vehicleChanged) {
             recordTransition(c, "cars", "ACTION_RESULT: $label -> $resultText", screen, now)
         }
@@ -351,6 +357,9 @@ object GameMechanics {
         val rules = try { JSONArray(prefs(c).getString(RULES, "[]")) } catch (_: Exception) { JSONArray() }
         o.put("rules", rules)
         o.put("confirmed_rules", (0 until rules.length()).count { rules.optJSONObject(it)?.optString("status") == "CONFIRMED" })
+        val sequences = try { JSONArray(prefs(c).getString(SEQUENCES, "[]")) } catch (_: Exception) { JSONArray() }
+        o.put("sequences", sequences)
+        o.put("confirmed_dependencies", (0 until sequences.length()).count { sequences.optJSONObject(it)?.optString("status") == "DEPENDENCY_CONFIRMED" })
         return o
     }
 
