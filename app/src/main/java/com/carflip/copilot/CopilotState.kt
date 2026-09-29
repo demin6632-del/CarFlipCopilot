@@ -15,7 +15,7 @@ object CopilotState {
  private fun arr(c:Context,k:String)=JSONArray(p(c).getString(k,"[]"))
  private fun append(c:Context,k:String,o:JSONObject,max:Int=200){val a=arr(c,k);a.put(o);while(a.length()>max)a.remove(0);p(c).edit().putString(k,a.toString()).apply()}
  fun balance(c:Context):Long?=if(p(c).getBoolean(BALANCE_VERIFIED,false)) p(c).getLong("balance",0L).takeIf{it>0L} else null
- fun setBalance(c:Context,v:Long){if(v<=0L)return;p(c).edit().putLong("balance",v).putBoolean(BALANCE_VERIFIED,true).apply()}()
+ fun setBalance(c:Context,v:Long){if(v<=0L)return;p(c).edit().putLong("balance",v).putBoolean(BALANCE_VERIFIED,true).apply()}
  fun garage(c:Context)=p(c).getInt("garage",0).coerceIn(0,3)
  fun setGarage(c:Context,v:Int)=p(c).edit().putInt("garage",v.coerceIn(0,3)).apply()
  fun decision(c:Context)=p(c).getString("decision","Ожидаю запуска мониторинга")?:"Ожидаю запуска мониторинга"
