@@ -178,6 +178,21 @@ class TelegramUserBridge {
     return this.client.sendMessage(this.gameUsername,{message:String(message)});
   }
 
+  async clickGameButton(label) {
+    if (!this.state.connected || !this.client) throw new Error("Игровая Telegram-сессия не подключена");
+    const target=String(label||"").trim();
+    if (!target) throw new Error("Не указана кнопка");
+    const msgs=await this.client.getMessages(this.gameUsername,{limit:10});
+    for (const msg of msgs) {
+      const rows=msg.replyMarkup && msg.replyMarkup.rows ? msg.replyMarkup.rows : [];
+      for (const row of rows) for (const button of (row.buttons||[])) {
+        if (String(button.text||"").trim()!==target) continue;
+        if (typeof msg.clickButton==="function") return msg.clickButton(button);
+      }
+    }
+    throw new Error("Кнопка не найдена: "+target);
+  }
+
   status() {
     return Object.assign({},this.state,{game_bot:"@"+this.gameUsername,auth_in_progress:!!this.authPromise,last_game_message:this.lastGameMessage});
   }
