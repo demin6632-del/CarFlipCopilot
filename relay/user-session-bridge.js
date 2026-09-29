@@ -2,6 +2,7 @@ const crypto = require("crypto");
 const fs = require("fs");
 const path = require("path");
 const http = require("http");
+const https = require("https");
 const QRCode = require("qrcode");
 const { TelegramClient, Api } = require("telegram");
 const { StringSession } = require("telegram/sessions");
@@ -164,12 +165,15 @@ class TelegramUserBridge {
     if (!this.relayUrl) return;
     const body=JSON.stringify(state);
     const u=new URL(this.relayUrl+"/bridge/state");
+    const transport=u.protocol==="https:"?https:http;
     await new Promise((resolve,reject)=>{
-      const req=http.request({
-        hostname:u.hostname,port:u.port||443,path:u.pathname,method:"POST",
+      const req=transport.request({
+        protocol:u.protocol,hostname:u.hostname,port:u.port||undefined,path:u.pathname+u.search,method:"POST",
         headers:{"content-type":"application/json","authorization":"Bearer "+this.relayToken,"content-length":Buffer.byteLength(body)}
       },res=>{res.resume();res.on("end",resolve)});
-      req.on("error",reject);req.write(body);req.end();
+      req.on("error",reject);
+      req.setTimeout(10000,()=>req.destroy(new Error("Relay state timeout")));
+      req.write(body);req.end();
     }).catch(e=>console.log("RELAY STATE ERROR:",e.message));
   }
 
