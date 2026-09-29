@@ -13,7 +13,7 @@ class TelegramUserBridge {
     this.apiHash = String(opts.apiHash || "");
     this.gameUsername = String(opts.gameUsername || "m0dsbeamngbot").replace(/^@/,"");
     this.sessionFile = opts.sessionFile || path.join(process.cwd(),"data","telegram-user-session.txt");
-    this.publicUrl = String(opts.publicUrl || "").replace(/\/$/,"");
+    this.publicUrl = String(opts.publicUrl || process.env.RENDER_EXTERNAL_URL || "").replace(/\/$/,"");
     this.relayUrl = String(opts.relayUrl || "").replace(/\/$/,"");
     this.relayToken = String(opts.relayToken || "");
     this.onState = typeof opts.onState === "function" ? opts.onState : null;
