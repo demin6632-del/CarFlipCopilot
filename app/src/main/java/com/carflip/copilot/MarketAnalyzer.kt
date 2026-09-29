@@ -47,6 +47,7 @@ object MarketAnalyzer {
         risk=min(100,risk)
         val confidence=min(95,sale.second+if(v.mileage!=null)5 else 0+if(v.owners!=null)5 else 0+if(v.paintedParts!=null)3 else 0)
         val cap=CapitalAnalyzer.profile(c,v.price,fees,v.name)
+        val efficiency=profit?.let{DealEfficiencyAnalyzer.candidateScore(c,v.name,it,cap.locked,cap.holdingDays)}
         val key=norm(v.name)+"|"+v.price+"|"+v.plate
         val o=JSONObject().put("key",key).put("name",v.name).put("price",v.price).put("plate",v.plate).put("origin",v.origin)
             .put("fees",fees).put("risk",risk).put("confidence",confidence).put("capitalLocked",cap.locked)
