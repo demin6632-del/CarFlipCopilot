@@ -142,7 +142,7 @@ object MarketAnalyzer {
         return profit.toDouble()/max(1L,x.price)*100.0 + roi*0.7 - x.risk*0.8 + x.confidence*0.25
     }
 
-    fun best(c:Context):MarketCandidate?=candidates(c).firstOrNull{it.expectedProfit!=null && it.expectedProfit>0}
+    fun best(c:Context):MarketCandidate?=candidates(c).firstOrNull{it.expectedProfit!=null && it.expectedProfit>0 && it.capitalPressure<90 && it.garagePressure<100}
 
     fun snapshot(c:Context):JSONObject{
         val list=candidates(c)
@@ -157,7 +157,7 @@ object MarketAnalyzer {
         return JSONObject().put("count",list.size).put("candidates",out)
             .put("best",b?.let{JSONObject().put("name",it.name).put("price",it.price).put("expected_sale",it.expectedSale).put("fees",it.fees)
                 .put("expected_profit",it.expectedProfit).put("roi_percent",it.roi)
-                .put("risk",it.risk).put("confidence",it.confidence).put("plate",it.plate)})
+                .put("risk",it.risk).put("confidence",it.confidence).put("capital_locked",it.capitalLocked).put("capital_utilization_percent",it.capitalUtilizationPercent).put("holding_days_estimate",it.holdingDaysEstimate).put("turnover_confidence",it.turnoverConfidence).put("capital_pressure",it.capitalPressure).put("garage_pressure",it.garagePressure).put("plate",it.plate)})
             .put("source","observed_market_history")
     }
 }
