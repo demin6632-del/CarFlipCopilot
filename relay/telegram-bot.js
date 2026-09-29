@@ -16,6 +16,24 @@ let offset = 0;
 let polling = false;
 const users = new Map();
 const pendingGameProbes = new Map();
+let lastBridgeNotice = 0;
+let lastBridgeFingerprint = "";
+async function notifyBridgeState(state) {
+  const chat=userBridge.boundChatId;
+  if(!chat || !state || !state.received_at) return;
+  const fingerprint=JSON.stringify({balance:state.balance,garage:state.garage,vehicle:state.vehicle,raw_message:state.raw_message});
+  if(fingerprint===lastBridgeFingerprint) return;
+  lastBridgeFingerprint=fingerprint;
+  const now=Date.now();
+  if(now-lastBridgeNotice<5000) return;
+  lastBridgeNotice=now;
+  const lines=["🎮 Новое событие из игры","", "💰 Баланс: "+(state.balance??"—"), "🚗 Гараж: "+(state.garage??"—")];
+  if(state.vehicle?.name) lines.push("🚘 "+state.vehicle.name);
+  if(state.vehicle?.price!=null) lines.push("💵 Цена: "+state.vehicle.price);
+  lines.push("", "Нажми «🧠 Что делать сейчас», чтобы получить решение ИИ.");
+  try { await send(chat,lines.join("\n")); } catch(e) { console.log("BRIDGE NOTICE ERROR:",e.message); }
+}
+
 const userBridge = new TelegramUserBridge({
   apiId: process.env.TELEGRAM_API_ID,
   apiHash: process.env.TELEGRAM_API_HASH,
