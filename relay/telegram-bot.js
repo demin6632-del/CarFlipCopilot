@@ -263,7 +263,8 @@ async function state(chat) {
 async function advice(chat) {
   try {
     const r=await relay("/telegram/advice",{chat_id:chat});
-    return send(chat,r.text||"Пока нет актуального решения. Передай состояние игры или скриншот.");
+    const buttons=(r.game_buttons||[]).slice(0,8).map(label=>{const id=require("crypto").randomBytes(8).toString("hex");gameButtonMap.set(id,{chat:String(chat),label,expires:Date.now()+5*60*1000});return [{text:"▶️ "+label,callback_data:"gamebtn:"+id}];});
+    return send(chat,r.text||"Пока нет актуального решения. Передай состояние игры или скриншот.",buttons.length?{reply_markup:{inline_keyboard:buttons}}:{});
   } catch(e) {
     return send(chat,"⚠️ Помощник пока не получил состояние игры: "+e.message);
   }
