@@ -22,7 +22,9 @@ object MarketAnalyzer {
     private fun history(c:Context,name:String):List<Deal>{
         val t=norm(name); return CopilotState.deals(c).filter{norm(it.name)==t&&it.buy!=null&&it.sell!=null}
     }
-    private fun tokens(name:String):Set<String>=norm(name).split(Regex("[^a-zа-я0-9]+")).filter{it.length>=3}.toSet()
+    private fun tokens(name:String):Set<String>{
+        return norm(name).split(Regex("[^a-zа-я0-9]+")).filter{it.length>=3}.toSet()
+    }
     private fun similarHistory(c:Context,name:String):List<Deal>{
         val t=tokens(name); if(t.isEmpty())return emptyList()
         return CopilotState.deals(c).filter{d->d.sell!=null&&tokens(d.name).let{o->val common=t.intersect(o).size;common>=2||(t.size==1&&common==1)}}
