@@ -48,7 +48,7 @@ object CopilotState {
   o.put("mechanics", GameMechanics.snapshot(c))
   o.put("mechanics_recent", GameMechanics.recent(c, 30))
   o.put("market", MarketAnalyzer.snapshot(c))
-    o.put("market", MarketAnalyzer.snapshot(c))
+  o.put("capital", CapitalAnalyzer.snapshot(c))
   o.put("local_plan", GamePlanner.snapshot(c))
   return o
  }
