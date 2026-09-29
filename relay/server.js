@@ -246,10 +246,10 @@ const server=http.createServer((req,res)=>{
     d.roi_percent!=null ? "📈 ROI: "+d.roi_percent+"%" : "",
     d.next_actions?.length ? "\nСледом:\n• "+d.next_actions.join("\n• ") : ""
    ].filter(Boolean);
-   return json(res,200,{ok:true,text:lines.join("\n"),decision:d});
+   return json(res,200,{ok:true,text:lines.join("\n"),decision:d,game_buttons:(latest&&latest.buttons)||[]});
   }
   if(local){
-   return json(res,200,{ok:true,text:"🧠 Пока нет свежего AI-решения. Локальный план:\n\n"+JSON.stringify(local),local_plan:local});
+   return json(res,200,{ok:true,text:"🧠 Пока нет свежего AI-решения. Локальный план:\n\n"+JSON.stringify(local),local_plan:local,game_buttons:(latest&&latest.buttons)||[]});
   }
   return json(res,200,{ok:false,text:"Пока нет актуального анализа игры. Сначала передай состояние экрана/игры в CarFlipCopilot."});
  }
