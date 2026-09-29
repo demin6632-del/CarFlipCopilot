@@ -351,13 +351,8 @@ async function callback(q) {
     const id=data.slice(11);
     const item=gameButtonMap.get(id);
     if(!item || item.chat!==String(chat) || item.expires<Date.now()) return send(chat,"⚠️ Рекомендация устарела. Нажми /advice ещё раз.");
-    if(!item.confirmed) {
-      item.confirmed=true;
-      gameButtonMap.set(id,item);
-      return send(chat,"⚠️ Подтверждение получено. Нажимаю «"+item.label+"» в игре…");
-    }
-    try { await userBridge.clickGameButton(item.label); gameButtonMap.delete(id); return send(chat,"✅ Нажал в игре: "+item.label); }
-    catch(e) { return send(chat,"❌ Не удалось нажать «"+item.label+"»: "+e.message); }
+    try { await userBridge.clickGameButton(item.label); gameButtonMap.delete(id); return send(chat,"✅ Выполнено в игре: "+item.label); }
+    catch(e) { return send(chat,"❌ Не удалось выполнить «"+item.label+"»: "+e.message); }
   }
   if(data.startsWith("gamebtn:")) {
     const id=data.slice(8); const item=gameButtonMap.get(id);
