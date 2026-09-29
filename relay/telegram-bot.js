@@ -12,6 +12,8 @@ const BRIDGE_PORT = Number(process.env.BRIDGE_PORT || 8787);
 const API = "https://api.telegram.org/bot" + BOT_TOKEN;
 
 let offset=0,polling=false;
+process.on("unhandledRejection",e=>console.log("UNHANDLED REJECTION:",e?.stack||e?.message||e));
+process.on("uncaughtException",e=>console.log("UNCAUGHT EXCEPTION:",e?.stack||e?.message||e));
 const users=new Map(),pendingGameProbes=new Map(),gameButtonMap=new Map();
 let lastBridgeNotice=0,lastBridgeFingerprint="";
 
