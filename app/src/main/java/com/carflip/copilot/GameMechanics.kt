@@ -24,6 +24,8 @@ object GameMechanics {
     private const val SEQUENCES = "sequences"
     private const val SEQUENCE_MIN_CONFIRMATIONS = 2
     private const val LAST_RESULT = "last_result"
+    private const val DEAL_CHAIN = "deal_chain"
+    private const val MAX_CHAIN = 80
 
     data class Observation(
         val domain: String,
@@ -271,6 +273,16 @@ object GameMechanics {
         p.edit().putString(SEQUENCES, a.toString()).apply()
     }
 
+    private fun recordDealChain(c: Context, label: String, resultText: String, screen: String, now: Long) {
+        if (label.isBlank()) return
+        val p=prefs(c)
+        val a=try{JSONArray(p.getString(DEAL_CHAIN,"[]"))}catch(_:Exception){JSONArray()}
+        val item=JSONObject().put("label",normalize(label)).put("result",resultText.take(400)).put("screen",screen).put("time",now)
+        a.put(item)
+        while(a.length()>MAX_CHAIN)a.remove(0)
+        p.edit().putString(DEAL_CHAIN,a.toString()).apply()
+    }
+
     private fun recordObservedResult(c: Context, label: String, resultText: String, screen: String, now: Long) {
         if (label.isBlank()) return
         val current = normalize(label)
@@ -279,6 +291,7 @@ object GameMechanics {
             recordSequenceEvidence(c, previous, current, "sequence",
                 "observed result sequence: $previous -> $current; result=$resultText", screen, now)
         }
+        recordDealChain(c,label,resultText,screen,now)
         prefs(c).edit().putString(LAST_RESULT, current).apply()
     }
 
@@ -404,6 +417,8 @@ object GameMechanics {
         val sequences = try { JSONArray(prefs(c).getString(SEQUENCES, "[]")) } catch (_: Exception) { JSONArray() }
         o.put("sequences", sequences)
         o.put("confirmed_dependencies", (0 until sequences.length()).count { sequences.optJSONObject(it)?.optString("status") == "DEPENDENCY_CONFIRMED" })
+        val chain=try{JSONArray(prefs(c).getString(DEAL_CHAIN,"[]"))}catch(_:Exception){JSONArray()}
+        o.put("recent_deal_chain",chain)
         return o
     }
 
