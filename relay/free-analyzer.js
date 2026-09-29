@@ -344,4 +344,4 @@ function analyzeImage(input) {
   return analyzeImageQueued(input);
 }
 
-module.exports = { analyzeImage, parseState, decide };
+async function warmup() {\n  try { await getWorker(); return true; } catch (e) { console.log("OCR WARMUP ERROR:", e.message); return false; }\n}\n\nmodule.exports = { analyzeImage, parseState, decide, warmup };
