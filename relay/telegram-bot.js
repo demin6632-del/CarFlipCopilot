@@ -95,21 +95,18 @@ async function analyzePhotoFree(bytes){
 ");
 }
 async function handlePhoto(chat,photo){
-  const best=photo[photo.length-1];
   try {
-    await send(chat,"📥 Скриншот получил. Начинаю бесплатный локальный анализ — это может занять до пары минут.");
-  } catch(e) { console.log("PHOTO ACK ERROR:",e.message); }
-  try {
-    const bytes=await downloadTelegramFile(best.file_id);
-    const result=await analyzePhotoFree(bytes);
-    return send(chat,"📸 Анализ скриншота\
-\
-"+result);
-  } catch(e) {
-    console.log("PHOTO ANALYSIS ERROR:",e.stack||e.message);
-    return send(chat,"⚠️ Не удалось разобрать скриншот.\
-\
-Причина: "+String(e.message||e).slice(0,500));
+    if (!Array.isArray(photo) || !photo.length) throw new Error("Фото не найдено в сообщении");
+    const best = photo[photo.length - 1];
+    if (!best || !best.file_id) throw new Error("Telegram не передал file_id");
+    await send(chat, "📥 Скриншот получил. Анализирую локально...");
+    const bytes = await downloadTelegramFile(best.file_id);
+    if (!bytes || !bytes.length) throw new Error("Telegram вернул пустой файл");
+    const result = await analyzePhotoFree(bytes);
+    return send(chat, "📸 Анализ скриншота\n\n" + result);
+  } catch (e) {
+    console.log("PHOTO ANALYSIS ERROR:", e && (e.stack || e.message || e));
+    return send(chat, "⚠️ Анализ не выполнен.\n\nПричина: " + String(e && (e.message || e) || "неизвестная ошибка").slice(0, 700));
   }
 }
 
