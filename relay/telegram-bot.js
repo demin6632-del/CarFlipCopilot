@@ -18,6 +18,7 @@ const users = new Map();
 const pendingGameProbes = new Map();
 let lastBridgeNotice = 0;
 let lastBridgeFingerprint = "";
+const gameButtonMap = new Map();
 async function notifyBridgeState(state) {
   const chat=userBridge.boundChatId;
   if(!chat || !state || !state.received_at) return;
@@ -230,7 +231,8 @@ async function gameDebug(chat) {
   const m=s.last_game_message;
   if(!m) return send(chat,"🎮 Пока нет сообщения от игрового бота. Сначала подключи игру и нажми «Проверить связь с игрой».");
   const buttons=m.buttons&&m.buttons.length ? "\n\n🔘 Кнопки:\n"+m.buttons.map((x,i)=>(i+1)+". "+x).join("\n") : "";
-  return send(chat,"🎮 Последнее сообщение игры:\n\n"+String(m.text||"—").slice(0,6000)+buttons);
+  const rows=(m.buttons||[]).slice(0,8).map(label=>{const id=require("crypto").randomBytes(8).toString("hex");gameButtonMap.set(id,{chat:String(chat),label,expires:Date.now()+5*60*1000});return [{text:"▶️ "+label,callback_data:"gamebtn:"+id}];});
+  return send(chat,"🎮 Последнее сообщение игры:\n\n"+String(m.text||"—").slice(0,6000)+buttons,{reply_markup:{inline_keyboard:rows}});
 }
 
 async function bridgeStatus(chat) {
@@ -286,6 +288,7 @@ async function callback(q) {
   const chat=q.message?.chat?.id;
   const data=q.data;
   try { await tg("answerCallbackQuery",{callback_query_id:q.id}); } catch {}
+  if(data.startsWith("gamebtn:")) { const id=data.slice(8); const item=gameButtonMap.get(id); if(!item || item.chat!==String(chat) || item.expires<Date.now()) return send(chat,"⚠️ Эта кнопка устарела. Нажми /game ещё раз."); try { await userBridge.clickGameButton(item.label); gameButtonMap.delete(id); return send(chat,"✅ Нажал: "+item.label); } catch(e) { return send(chat,"❌ Не удалось нажать «"+item.label+"»: "+e.message); } }
   if(data==="connect") return connect(chat);
   if(data==="state") return state(chat);
   if(data==="advice") return advice(chat);
