@@ -14,3 +14,37 @@ services:
         sync: false
       - key: OPENAI_MODEL
         value: gpt-5.6-luna
+
+  - type: web
+    name: carflip-copilot-telegram
+    runtime: node
+    rootDir: relay
+    buildCommand: npm install
+    startCommand: npm run start:telegram
+    plan: free
+    healthCheckPath: /connect
+    envVars:
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false
+      - key: TELEGRAM_API_ID
+        sync: false
+      - key: TELEGRAM_API_HASH
+        sync: false
+      - key: TELEGRAM_2FA_PASSWORD
+        sync: false
+      - key: TELEGRAM_SESSION
+        sync: false
+      - key: RELAY_URL
+        sync: false
+      - key: COPILOT_TOKEN
+        sync: false
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: OPENAI_MODEL
+        value: gpt-5.6-luna
+      - key: GAME_BOT_USERNAME
+        value: m0dsbeamngbot
+      - key: BRIDGE_PUBLIC_URL
+        sync: false
+      - key: BRIDGE_PORT
+        value: "10000"
