@@ -19,3 +19,25 @@ CarFlipCopilot анализирует всю игровую ситуацию в 
 
 ## Сборка
 CI rebuild check.
+
+
+## Telegram-only game bridge
+
+The Telegram version uses a server-side MTProto user session to communicate with `@m0dsbeamngbot`. The CarFlipCopilot bot remains the user interface.
+
+Required server secrets:
+- `TELEGRAM_BOT_TOKEN` — token of the CarFlipCopilot bot from @BotFather.
+- `TELEGRAM_API_ID` and `TELEGRAM_API_HASH` — Telegram API credentials for the user session.
+- `RELAY_URL` and `COPILOT_TOKEN` — relay connection.
+- `OPENAI_API_KEY` — optional for AI analysis/advice.
+- `BRIDGE_PUBLIC_URL` — public HTTPS URL of the Telegram bridge service.
+- `GAME_BOT_USERNAME=m0dsbeamngbot`.
+
+After deployment:
+1. Open the CarFlipCopilot bot in Telegram.
+2. Press **🔗 Подключить игру**.
+3. Open **🎮 Подключить игру**.
+4. Complete Telegram QR authorization in the official Telegram client.
+5. Return to CarFlipCopilot and use **/bridge**, **📊 Состояние**, and **🧠 Что делать сейчас**.
+
+Never send Telegram login codes, 2FA passwords, bot tokens, API hashes, or session strings through the chat.
