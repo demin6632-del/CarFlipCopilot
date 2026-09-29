@@ -195,6 +195,7 @@ async function handle(m) {
   if(text==="/advice") return advice(chat);
   if(text==="/probe") return probe(chat);
   if(text==="/bridge") return bridgeStatus(chat);
+  if(text==="/game") return gameDebug(chat);
   if(text==="/help") return send(chat,
     "Команды:\n/connect — подключение игры\n/state — состояние\n/advice — что делать сейчас\n/probe — проверить связь с игровым ботом\n\n"+
     "Можно прислать скриншот текущей ситуации — бот разберёт его прямо здесь.");
@@ -222,6 +223,14 @@ async function connect(chat) {
     "Бот уже готов к игровому мосту, но URL авторизации пока не настроен. "+
     "Я не буду просить пароль или код Telegram в сообщении.\n\n"+
     "Пока можно нажать «🧪 Проверить связь» или присылать скриншоты — они анализируются прямо через Telegram.");
+}
+
+async function gameDebug(chat) {
+  const s=userBridge.status();
+  const m=s.last_game_message;
+  if(!m) return send(chat,"🎮 Пока нет сообщения от игрового бота. Сначала подключи игру и нажми «Проверить связь с игрой».");
+  const buttons=m.buttons&&m.buttons.length ? "\n\n🔘 Кнопки:\n"+m.buttons.map((x,i)=>(i+1)+". "+x).join("\n") : "";
+  return send(chat,"🎮 Последнее сообщение игры:\n\n"+String(m.text||"—").slice(0,6000)+buttons);
 }
 
 async function bridgeStatus(chat) {
