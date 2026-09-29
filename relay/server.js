@@ -226,7 +226,29 @@ const server=http.createServer((req,res)=>{
  if(!auth(req))return json(res,401,{error:"unauthorized"});
  if(req.url==="/health")return json(res,200,{ok:true,build:BUILD_ID,model,clients:clients.size,uploads:uploads.size,ai:!!openaiKey,lastFrameAt,lastAiAt,lastAiStatus,lastAiError:lastAiError?lastAiError.slice(0,500):""});
  if(req.url==="/state")return json(res,200,latest||{});
- if(req.url==="/attachments")return json(res,200,[...uploads.values()].map(({file,...x})=>x));
+ if(req.url==="/attachments")return json(res,200,[...uploads.values()].map(({file,...x})=>x));\n if(req.url==="/telegram/advice" && req.method==="POST"){
+  const last=aiHistory.length ? aiHistory[aiHistory.length-1].decision : null;
+  const local=(latest&&latest.memory&&(latest.memory.local_plan||latest.local_plan))||latest?.local_plan||null;
+  if(last){
+   const d=last;
+   const lines=[
+    "🧠 РЕШЕНИЕ: "+String(d.title||d.action||"Анализ"),
+    "",
+    "➡️ Сейчас: "+String(d.action||"уточнить ситуацию"),
+    "💬 Почему: "+String(d.reason||"нет объяснения"),
+    "🎯 Уверенность: "+Math.round(Number(d.confidence)||0)+"%",
+    d.expected_profit!=null ? "💰 Ожидаемая прибыль: "+d.expected_profit : "",
+    d.roi_percent!=null ? "📈 ROI: "+d.roi_percent+"%" : "",
+    d.next_actions?.length ? "\nСледом:\n• "+d.next_actions.join("\n• ") : ""
+   ].filter(Boolean);
+   return json(res,200,{ok:true,text:lines.join("\n"),decision:d});
+  }
+  if(local){
+   return json(res,200,{ok:true,text:"🧠 Пока нет свежего AI-решения. Локальный план:\n\n"+JSON.stringify(local),local_plan:local});
+  }
+  return json(res,200,{ok:false,text:"Пока нет актуального анализа игры. Сначала передай состояние экрана/игры в CarFlipCopilot."});
+ }
+
  const m=req.url.match(/^\/attachments\/([^/]+)$/);
  if(m&&req.method==="GET"){
   const u=uploads.get(m[1]);if(!u)return json(res,404,{error:"not_found"});
