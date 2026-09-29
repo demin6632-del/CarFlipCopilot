@@ -9,7 +9,7 @@ services:
     healthCheckPath: /health
     envVars:
       - key: COPILOT_TOKEN
-        sync: false
+        generateValue: true
       - key: OPENAI_API_KEY
         sync: false
       - key: OPENAI_MODEL
@@ -35,9 +35,15 @@ services:
       - key: TELEGRAM_SESSION
         sync: false
       - key: RELAY_URL
-        sync: false
+        fromService:
+          name: carflip-copilot-relay
+          type: web
+          envVarKey: RENDER_EXTERNAL_URL
       - key: COPILOT_TOKEN
-        sync: false
+        fromService:
+          name: carflip-copilot-relay
+          type: web
+          envVarKey: COPILOT_TOKEN
       - key: OPENAI_API_KEY
         sync: false
       - key: OPENAI_MODEL
