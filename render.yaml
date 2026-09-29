@@ -44,7 +44,5 @@ services:
         value: gpt-5.6-luna
       - key: GAME_BOT_USERNAME
         value: m0dsbeamngbot
-      - key: BRIDGE_PUBLIC_URL
-        sync: false
       - key: BRIDGE_PORT
         value: "10000"
