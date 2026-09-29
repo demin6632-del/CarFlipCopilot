@@ -22,7 +22,7 @@ services:
     buildCommand: npm install
     startCommand: npm run start:telegram
     plan: free
-    healthCheckPath: /connect
+    healthCheckPath: /health
     envVars:
       - key: TELEGRAM_BOT_TOKEN
         sync: false
