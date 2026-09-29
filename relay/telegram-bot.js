@@ -1,5 +1,6 @@
 const https = require("https");
 const { TelegramUserBridge, createConnectServer } = require("./user-session-bridge");
+const { analyzeImage } = require("./free-analyzer");
 
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || "";
 const RELAY_TOKEN = process.env.COPILOT_TOKEN || "";
@@ -168,53 +169,35 @@ async function downloadTelegramFile(fileId) {
   });
 }
 
-async function analyzePhotoWithAI(bytes) {
-  if(!OPENAI_KEY) throw new Error("OPENAI_API_KEY не настроен");
-  const prompt =
-    "Ты — CarFlipCopilot для игры «Симулятор Перекупа». Разбери скриншот. "+
-    "Извлеки только реально видимые данные: баланс, гараж, автомобиль, цену, пробег, мощность, владельцев, окрашенные детали, предложения покупателей, расходы и события. "+
-    "Учитывай, что в игре НЕТ аукционов автомобилей; есть аукцион номеров. "+
-    "В конце дай одно конкретное действие, которое игроку нужно сделать прямо сейчас. "+
-    "Если данных недостаточно, скажи, чего не хватает. Не выдумывай числа. "+
-    "Ответ на русском, коротко и по делу.";
-  const body={
-    model:OPENAI_MODEL,
-    input:[{role:"user",content:[
-      {type:"input_text",text:prompt},
-      {type:"input_image",image_url:"data:image/jpeg;base64,"+bytes.toString("base64")}
-    ]}]
-  };
-  const data=JSON.stringify(body);
-  const u=new URL("https://api.openai.com/v1/responses");
-  return new Promise((resolve,reject)=>{
-    const req=https.request({
-      hostname:u.hostname,path:u.pathname,method:"POST",
-      headers:{
-        "content-type":"application/json",
-        "authorization":"Bearer "+OPENAI_KEY,
-        "content-length":Buffer.byteLength(data)
-      }
-    },res=>{
-      let s="";res.on("data",x=>s+=x);
-      res.on("end",()=>{
-        try{
-          const j=JSON.parse(s);
-          if(!res.statusCode||res.statusCode>=300) return reject(new Error(j.error?.message||"OpenAI error"));
-          const out=String(j.output_text||j.output?.flatMap(x=>x.content||[]).filter(x=>x.text).map(x=>x.text).join("")||"");
-          if(!out) return reject(new Error("ИИ не вернул результат"));
-          resolve(out);
-        }catch(e){reject(e)}
-      });
-    });
-    req.on("error",reject);req.write(data);req.end();
-  });
+async function analyzePhotoFree(bytes) {
+  const r = await analyzeImage(bytes);
+  const v = r.vehicle || {};
+  const d = r.decision || {};
+  return [
+    "📸 БЕСПЛАТНЫЙ АНАЛИЗ СКРИНШОТА",
+    "",
+    "💰 Баланс: "+(r.balance ?? "не распознан"),
+    "🚗 Гараж: "+(r.garage ?? "не распознан"),
+    v.name ? "🚘 Авто: "+v.name : "",
+    v.price != null ? "💵 Цена: "+v.price.toLocaleString("ru-RU")+" ₽" : "",
+    v.mileage != null ? "🛣 Пробег: "+v.mileage.toLocaleString("ru-RU")+" км" : "",
+    v.hp != null ? "⚙️ Мощность: "+v.hp+" л.с." : "",
+    v.owners != null ? "👤 Владельцев: "+v.owners : "",
+    "",
+    "➡️ СЕЙЧАС: "+(d.action || "нужно больше данных"),
+    "💬 "+(d.reason || ""),
+    "🎯 Уверенность: "+Math.round(Number(d.confidence)||0)+"%",
+    "",
+    "🆓 Локальный OCR. OpenAI API не используется."
+  ].filter(Boolean).join("\n");
 }
+
 
 async function handlePhoto(chat, photo) {
   try {
     const best = photo[photo.length-1];
     const bytes = await downloadTelegramFile(best.file_id);
-    const result = await analyzePhotoWithAI(bytes);
+    const result = await analyzePhotoFree(bytes);
     return send(chat, "📸 Анализ скриншота\n\n"+result);
   } catch(e) {
     return send(chat, "⚠️ Не удалось разобрать скриншот: "+e.message);
