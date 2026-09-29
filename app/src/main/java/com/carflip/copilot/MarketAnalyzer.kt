@@ -17,6 +17,7 @@ data class MarketCandidate(
     val plate:String,
     val origin:String,
     val expectedSale:Long?,
+    val fees:Long,
     val expectedProfit:Long?,
     val roi:Double?,
     val risk:Int,
@@ -71,7 +72,9 @@ object MarketAnalyzer {
         val sale= saleEstimate(c,v,h)
         val expected=sale.first
         val baseline=expected
-        val profit=baseline?.let{it-v.price}
+        val currentDeal=history(c,v.name).firstOrNull{it.buy==v.price && it.sell==null}
+        val fees=currentDeal?.fees?:0L
+        val profit=baseline?.let{it-v.price-fees}
         val roi=profit?.let{if(v.price>0)it.toDouble()/v.price*100.0 else null}
 
         var risk=0
@@ -92,7 +95,7 @@ object MarketAnalyzer {
         val confidence=min(95,sale.second + if(v.mileage!=null)5 else 0 + if(v.owners!=null)5 else 0 + if(v.paintedParts!=null)3 else 0)
         val key=norm(v.name)+"|"+v.price+"|"+v.plate
         val o=JSONObject().put("key",key).put("name",v.name).put("price",v.price)
-            .put("plate",v.plate).put("origin",v.origin).put("risk",risk)
+            .put("plate",v.plate).put("origin",v.origin).put("fees",fees).put("risk",risk)
             .put("confidence",confidence).put("updatedAt",System.currentTimeMillis())
         v.hp?.let{o.put("hp",it)}
         v.mileage?.let{o.put("mileage",it)}
@@ -125,6 +128,7 @@ object MarketAnalyzer {
                 if(o.has("paintedParts"))o.optInt("paintedParts")else null,
                 o.optString("plate"),o.optString("origin"),
                 if(o.has("expectedSale"))o.optLong("expectedSale")else null,
+                o.optLong("fees",0L),
                 if(o.has("expectedProfit"))o.optLong("expectedProfit")else null,
                 if(o.has("roi"))o.optDouble("roi")else null,
                 o.optInt("risk",50),o.optInt("confidence",45),o.optLong("updatedAt")
@@ -145,13 +149,13 @@ object MarketAnalyzer {
         val out=JSONArray()
         list.take(10).forEach{v->
             out.put(JSONObject().put("name",v.name).put("price",v.price).put("expected_sale",v.expectedSale)
-                .put("expected_profit",v.expectedProfit).put("roi_percent",v.roi)
+                .put("fees",v.fees).put("expected_profit",v.expectedProfit).put("roi_percent",v.roi)
                 .put("risk",v.risk).put("confidence",v.confidence).put("plate",v.plate)
                 .put("mileage",v.mileage).put("owners",v.owners).put("painted_parts",v.paintedParts))
         }
         val b=best(c)
         return JSONObject().put("count",list.size).put("candidates",out)
-            .put("best",b?.let{JSONObject().put("name",it.name).put("price",it.price).put("expected_sale",it.expectedSale)
+            .put("best",b?.let{JSONObject().put("name",it.name).put("price",it.price).put("expected_sale",it.expectedSale).put("fees",it.fees)
                 .put("expected_profit",it.expectedProfit).put("roi_percent",it.roi)
                 .put("risk",it.risk).put("confidence",it.confidence).put("plate",it.plate)})
             .put("source","observed_market_history")
