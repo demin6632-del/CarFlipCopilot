@@ -44,11 +44,30 @@ class MainActivity : AppCompatActivity() {
         card("Состояние Copilot", status); card("🎯 Что делать сейчас", decision); card("💰 Деньги и гараж", money); card("🚘 Текущая машина", vehicle); card("📊 Сделки", deals); card("🔖 Номера", plates); card("💬 Предложения покупателей", offers); card("📈 Прогноз сделки", forecast); card("🔧 Что дали улучшения", actions); card("🧠 Последние события", events); card("📎 Материалы", attachments)
         fun button(label: String, click: () -> Unit) = Button(this).apply { text = label; setOnClickListener { click() } }
         root.addView(button("▶ Запустить мониторинг") { requestCapture() }); root.addView(button("■ Остановить мониторинг") { stopMonitoring() }); root.addView(button("👁 Показать панель Copilot") { sendOverlayCommand("SHOW_OVERLAY") }); root.addView(button("⚙ Разрешить панель поверх игры") { startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:" + packageName))) }); root.addView(button("🔋 Разрешить работу без ограничений") { requestBatteryOptimizationExemption() }); root.addView(button("📷 Добавить скриншот") { pickImage.launch(arrayOf("image/*")) }); root.addView(button("🎥 Добавить видео") { pickVideo.launch(arrayOf("video/*")) }); root.addView(button("📎 Добавить файл") { pickFile.launch(arrayOf("*/*")) }); root.addView(button("🔗 Настроить канал «телефон ↔ Copilot»") { showBridgeDialog() })
-        setContentView(ScrollView(this).apply { addView(root) }); handleIncomingIntent(intent)
+        setContentView(ScrollView(this).apply { addView(root) }); handleIncomingIntent(intent); showLastCrashIfAny()
     }
     override fun onResume() { super.onResume(); handler.post(refreshTask) }
     override fun onPause() { handler.removeCallbacks(refreshTask); super.onPause() }
     override fun onNewIntent(i: Intent) { super.onNewIntent(i); setIntent(i); handleIncomingIntent(i) }
+    private fun showLastCrashIfAny() {
+        try {
+            val p = getSharedPreferences("copilot_crash", 0)
+            val stack = p.getString("stack", "") ?: ""
+            if (stack.isBlank()) return
+            status.text = "Обнаружено предыдущее падение приложения. Диагностика сохранена."
+            AlertDialog.Builder(this)
+                .setTitle("Найдено падение")
+                .setMessage(stack.take(6000))
+                .setPositiveButton("Скопировать") { _, _ ->
+                    val cm = getSystemService(CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                    cm.setPrimaryClip(android.content.ClipData.newPlainText("CarFlipCopilot crash", stack))
+                    Toast.makeText(this, "Ошибка скопирована", Toast.LENGTH_SHORT).show()
+                }
+                .setNegativeButton("Закрыть", null)
+                .show()
+        } catch (_: Throwable) {}
+    }
+
     private fun fmt(v: Long) = "%,d".format(v).replace(',', ' ')
     private fun sendOverlayCommand(action: String) { try { startService(Intent(this, ScreenMonitorService::class.java).setAction(action)); Toast.makeText(this, if (action == "SHOW_OVERLAY") "Панель показана" else "Панель скрыта", Toast.LENGTH_SHORT).show() } catch (e: Exception) { Toast.makeText(this, "Не удалось изменить панель: ${e.message}", Toast.LENGTH_LONG).show() } }
     private fun stopMonitoring() { stopService(Intent(this, ScreenMonitorService::class.java)); stopService(Intent(this, ScreenMonitorServiceV2::class.java)); CopilotState.setMonitoring(this, false); Toast.makeText(this, "Мониторинг остановлен", Toast.LENGTH_SHORT).show() }
