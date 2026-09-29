@@ -60,7 +60,34 @@ object CopilotState {
  fun ledger(c:Context):List<LedgerEvent>{val a=arr(c,"ledger");return(0 until a.length()).map{val o=a.getJSONObject(it);LedgerEvent(o.optString("type"),o.optLong("amount"),o.optString("note"),o.optLong("time"))}.reversed()}
  fun recordPurchase(c:Context,v:VehicleSnapshot,amount:Long){append(c,"deals",JSONObject().put("id",(v.plate.ifBlank{v.name})+"|"+System.currentTimeMillis()).put("name",v.name).put("plate",v.plate).put("buy",amount).put("fees",0).put("opened",System.currentTimeMillis()));addLedger(c,"ПОКУПКА",-amount,v.name)}
  fun recordSale(c:Context,v:VehicleSnapshot,amount:Long){val a=arr(c,"deals");var idx=-1;for(i in a.length()-1 downTo 0){val o=a.optJSONObject(i)?:continue;if(!o.has("sell")&&((v.plate.isNotEmpty()&&o.optString("plate")==v.plate)||(v.plate.isEmpty()&&o.optString("name")==v.name))){idx=i;break}};var profit:Long?=null;if(idx>=0){val o=a.getJSONObject(idx);profit=amount-o.optLong("buy")-o.optLong("fees");o.put("sell",amount).put("closed",System.currentTimeMillis())}else a.put(JSONObject().put("id",(v.plate.ifBlank{v.name})+"|"+System.currentTimeMillis()).put("name",v.name).put("plate",v.plate).put("sell",amount).put("fees",0).put("opened",System.currentTimeMillis()).put("closed",System.currentTimeMillis()));while(a.length()>200)a.remove(0);p(c).edit().putString("deals",a.toString()).apply();if(profit!=null){LearningMemory.recordAllActionOutcomes(c,v,amount,"",v.plate);LearningMemory.learn(c,v,profit);addEvent(c,"ОБУЧЕНИЕ • продажа "+amount+" ₽ • прибыль "+profit+" ₽")};addLedger(c,"ПРОДАЖА",amount,v.name)}
- fun addFee(c:Context,amount:Long,note:String){addLedger(c,"РАСХОД",-amount,note)}
+ fun addFee(c:Context,amount:Long,note:String){
+  if(amount<=0)return
+  val a=arr(c,"deals")
+  for(i in a.length()-1 downTo 0){
+   val o=a.optJSONObject(i)?:continue
+   if(o.has("buy")&&!o.has("sell")){
+    o.put("fees",o.optLong("fees",0L)+amount)
+    break
+   }
+  }
+  p(c).edit().putString("deals",a.toString()).apply()
+  addLedger(c,"РАСХОД",-amount,note)
+ }
+ fun observeDealCashflow(c:Context,v:VehicleSnapshot,balance:Long?,action:String?,event:String?){
+  if(balance==null||v.name.isBlank())return
+  val prefs=p(c);val key="deal_cashflow_balance"
+  val previous=if(prefs.contains(key))prefs.getLong(key,balance)else balance
+  if(!prefs.contains(key)){prefs.edit().putLong(key,balance).apply();return}
+  if(previous==balance){return}
+  prefs.edit().putLong(key,balance).apply()
+  val delta=balance-previous
+  if(delta>=0L)return
+  val label=((action?:"")+" "+(event?:"")).lowercase()
+  if(label.contains("куп")||label.contains("покуп"))return
+  val serviceSignals=listOf("ремонт","полиров","окрас","тюнинг","диагност","шиномонтаж","снять номер","номер","запчаст","услуг")
+  if(serviceSignals.none{label.contains(it)})return
+  addFee(c,-delta,"Подтверждённый расход по текущей машине: "+(action?:event?:"услуга"))
+ }
  fun deals(c:Context):List<Deal>{val a=arr(c,"deals");return(0 until a.length()).map{val o=a.getJSONObject(it);Deal(o.optString("id"),o.optString("name"),o.optString("plate"),if(o.has("buy"))o.optLong("buy")else null,if(o.has("sell"))o.optLong("sell")else null,o.optLong("fees"),o.optLong("opened"),if(o.has("closed"))o.optLong("closed")else null)}.reversed()}
  fun savePlateBid(c:Context,plate:String,amount:Long,buyer:String="",source:String=""){if(plate.isBlank()||amount<=0)return;append(c,"plate_bids",JSONObject().put("plate",plate).put("amount",amount).put("buyer",buyer).put("source",source).put("time",System.currentTimeMillis()))}
  fun plateBids(c:Context,plate:String=""):List<String>{val a=arr(c,"plate_bids");return(0 until a.length()).mapNotNull{val o=a.optJSONObject(it)?:return@mapNotNull null;if(plate.isNotBlank()&&o.optString("plate")!=plate)return@mapNotNull null;"• "+o.optString("plate")+" → "+o.optLong("amount")+" ₽"}.reversed()}

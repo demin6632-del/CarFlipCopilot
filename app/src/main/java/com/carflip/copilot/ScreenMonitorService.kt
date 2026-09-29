@@ -175,6 +175,7 @@ class ScreenMonitorService : Service() {
         val contract = GameParser.contract(text)
         val resources = GameParser.resources(text)
         if (detectedBalance != null) CopilotState.setBalance(this, detectedBalance)
+        CopilotState.observeDealCashflow(this, vehicle, detectedBalance, action, event)
         CopilotState.setGarage(this, garage)
         CopilotState.setSnapshot(this, vehicle)
         MarketAnalyzer.observe(this, vehicle, screen)
