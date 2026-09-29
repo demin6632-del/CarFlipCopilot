@@ -5,5 +5,9 @@
   "scripts": {
     "start": "node server.js",
     "start:telegram": "node telegram-bot.js"
+  },
+  "dependencies": {
+    "qrcode": "^1.5.4",
+    "telegram": "^2.26.22"
   }
 }
