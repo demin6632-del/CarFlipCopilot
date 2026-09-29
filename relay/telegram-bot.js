@@ -1,6 +1,6 @@
 const https = require("https");
 const { TelegramUserBridge, createConnectServer } = require("./user-session-bridge");
-const { analyzeImage, warmup } = require("./free-analyzer");
+const { analyzeImage, parseState, decide, warmup } = require("./free-analyzer");
 
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || "";
 const RELAY_TOKEN = process.env.COPILOT_TOKEN || "";
@@ -102,10 +102,38 @@ async function analyzePhotoFree(bytes){
   ];
   return lines.filter(Boolean).join("\n");
 }
+function forwardedInfo(m){
+  return !!(m?.forward_origin || m?.forward_date || m?.is_automatic_forward || m?.external_reply);
+}
+function imageFileId(m){
+  if(Array.isArray(m?.photo) && m.photo.length) return m.photo[m.photo.length-1]?.file_id || null;
+  if(m?.document && /^image\\//i.test(String(m.document.mime_type||""))) return m.document.file_id || null;
+  return null;
+}
+async function analyzeForwardedText(chat,text){
+  const state=parseState(text);
+  const decision=decide(state,100);
+  const lines=[
+    "📨 ПЕРЕСЛАННОЕ СООБЩЕНИЕ ИЗ ИГРЫ","",
+    state.balance!=null?"💰 Баланс: "+state.balance.toLocaleString("ru-RU")+" ₽":"",
+    state.garage?"🚗 Гараж: "+state.garage:"",
+    state.vehicle?.name?"🚘 Авто: "+state.vehicle.name:"",
+    state.price!=null?"💵 Цена: "+state.price.toLocaleString("ru-RU")+" ₽":"",
+    state.mileage!=null?"🛣 Пробег: "+state.mileage.toLocaleString("ru-RU")+" км":"",
+    state.hp!=null?"⚙️ Мощность: "+state.hp+" л.с.":"",
+    state.owners!=null?"👤 Владельцев: "+state.owners:"",
+    state.plate?"🔢 Номер: "+state.plate:"",
+    "",
+    "➡️ СЕЙЧАС: "+decision.action,
+    "💬 "+decision.reason,
+    "🎯 Уверенность: "+decision.confidence+"%"
+  ].filter(Boolean);
+  return send(chat,lines.join("\n"));
+}
+
 async function handlePhoto(chat,photo){
   try {
-    if (!Array.isArray(photo) || !photo.length) throw new Error("Фото не найдено в сообщении");
-    const best = photo[photo.length - 1];
+    const best = Array.isArray(photo) ? photo[photo.length - 1] : photo;
     if (!best || !best.file_id) throw new Error("Telegram не передал file_id");
     await send(chat, "📥 Скриншот получил. Анализирую локально...");
     const bytes = await downloadTelegramFile(best.file_id);
@@ -123,10 +151,21 @@ async function handle(m){
   if(text==="/start"){users.set(chat,{connected:false});return send(chat,"🚗 CarFlipCopilot\n\nЯ работаю прямо внутри Telegram. Android-приложение для общения со мной не нужно.\n\nМоя задача — смотреть состояние «Симулятора Перекупа», учитывать историю сделок и говорить одно конкретное следующее действие.\n\nНачни с «🔗 Подключить игру».");}
   if(text==="/connect")return connect(chat);if(text==="/state")return state(chat);if(text==="/advice")return advice(chat);if(text==="/probe")return probe(chat);if(text==="/bridge")return bridgeStatus(chat);if(text==="/game")return gameDebug(chat);
   if(text==="/help")return send(chat,"Команды:\n/connect — подключение игры\n/state — состояние\n/advice — что делать сейчас\n/probe — проверить связь с игровым ботом\n\nМожно прислать скриншот текущей ситуации — бот разберёт его прямо здесь.");
+  const forwarded=forwardedInfo(m);
+  const forwardedImage=imageFileId(m);
+  if(forwardedImage){
+    handlePhoto(chat,[{file_id:forwardedImage}]).catch(e=>console.log("FORWARDED PHOTO ERROR:",e.stack||e.message||e));
+    return;
+  }
   if(m.photo?.length){
     handlePhoto(chat,m.photo).catch(e=>console.log("PHOTO UNHANDLED ERROR:",e.stack||e.message||e));
     return;
-  }if(text)return send(chat,"Используй кнопки ниже или пришли скриншот игры.");
+  }
+  if(forwarded && text){
+    analyzeForwardedText(chat,text).catch(e=>console.log("FORWARDED TEXT ERROR:",e.stack||e.message||e));
+    return;
+  }
+  if(text)return send(chat,"Используй кнопки ниже или пришли скриншот игры или пересланное сообщение из игры.");
 }
 async function connect(chat){
   if(CONNECT_URL||BRIDGE_PUBLIC_URL){const url=CONNECT_URL||(BRIDGE_PUBLIC_URL+"/connect?ticket="+encodeURIComponent(userBridge.createTicket(chat)));return send(chat,"🔗 Открываю защищённое подключение.\n\nПосле авторизации мост привяжет твой Telegram-профиль к состоянию игры.",{reply_markup:{inline_keyboard:[[{text:"🎮 Подключить игру",web_app:{url}}],[{text:"🧪 Проверить связь",callback_data:"probe"}],[{text:"↩️ Назад",callback_data:"menu"}]]}});}
