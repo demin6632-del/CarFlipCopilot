@@ -5,8 +5,8 @@ const path=require("path");
 
 const clients=new Set();
 const token=process.env.COPILOT_TOKEN||"";
-const openaiKey=process.env.OPENAI_API_KEY||"";
-const model=process.env.OPENAI_MODEL||"gpt-5.6-luna";
+
+const model="free-local-ocr";
 const BUILD_ID="whole-game-planner-2026-09-29-1";
 const uploadDir=process.env.UPLOAD_DIR||path.join(process.cwd(),"uploads");
 fs.mkdirSync(uploadDir,{recursive:true});
@@ -61,6 +61,7 @@ function frame(obj){
 }
 
 const {spawnSync}=require("child_process");
+const { analyzeImage } = require("./free-analyzer");
 
 const analysisSchema={
  type:"object",strict:true,
@@ -97,83 +98,34 @@ function extractVideoFrames(file){
  return frames;
 }
 async function analyzeLiveFrame(){
- if(!openaiKey){
-  lastAiError="OPENAI_API_KEY missing";
-  log("AI SKIP: OPENAI_API_KEY missing build="+BUILD_ID);
-  setAiStatus("Ошибка relay: OPENAI_API_KEY не настроен на сервере");
-  return;
- }
  if(aiBusy||!latestFrame)return;
  aiBusy=true;
  const frame=latestFrame; latestFrame=null;
- log("AI START build="+BUILD_ID+" frameBytes="+Buffer.byteLength(frame||"","base64")+" clients="+clients.size);
- lastAiAt=Date.now();
- lastAiError="";
- broadcast({type:"ai_status",message:"ChatGPT анализирует экран игры…"});
+ lastAiAt=Date.now(); lastAiError="";
+ setAiStatus("Локальный OCR анализирует экран игры…");
  try{
-  const state=latest||{};
-  // The image is authoritative when OCR conflicts with structured fields; AI must explicitly verify critical values. 
-  const verificationRule="Проверяй критические данные (баланс, цена, пробег, мощность, владельцы, ставки, предложения и комиссии) по изображению. Если OCR/структурированное состояние расходится с изображением, доверяй читаемому изображению и помечай значение как уточнённое. Не выдумывай отсутствующие значения.";
-  const history=aiHistory.slice(-12);
-  const prompt=[
-   "Ты — главный игровой помощник пользователя. Именно ты принимаешь решение по игре «Симулятор Перекупа».",
-   "Твоя задача — анализировать ВСЮ видимую игровую ситуацию, а не только автомобиль.",
-   "На Android есть OCR и локальные парсеры только как источники данных. Их решения НЕ являются авторитетом и игнорируются.",
-   "Используй изображение как главный источник истины, OCR/структурированное состояние — как дополнительную расшифровку.",
-   "Учитывай баланс, гараж, текущие сделки, предложения покупателей, номера, аукцион номеров, контракты, расходы, награды, соревнования и любые другие видимые события.",
-   "Пользователь хочет зарабатывать и продвигать баланс, поэтому ищи реальные возможности, но не выдумывай цену продажи, спрос или расходы.",
-   "Если данных недостаточно для безопасного решения — прямо скажи, что именно нужно проверить.",
-   "Верни ОДНО главное действие, которое пользователь должен сделать прямо сейчас. Не давай рейтинг вариантов.",
-   "Ответь ТОЛЬКО одним корректным JSON-объектом без markdown и без тройных обратных кавычек.",
-   "JSON должен иметь поля: action,title,reason,confidence,game_state,sale_price,expected_profit,roi_percent,next_actions,changes. Числовые поля sale_price, expected_profit и roi_percent могут быть null; next_actions и changes — массивы строк.",
-   "Если нужно сначала получить данные, действие должно быть конкретным: например ОТКРОЙ, ПРОВЕРЬ, НЕ ПОКУПАЙ или ПОКУПАЙ.",
-   "Правило проверки: "+verificationRule,
-   "Текущая структурированная информация: "+JSON.stringify(state),
-   "Полная сохранённая память игры (факты, сделки, предложения, номера, журнал, ROI): "+JSON.stringify(state.memory||{}),
-   "Карта механик игры: "+JSON.stringify(state.mechanics||state.memory?.mechanics||{}),
-   "Локальный планировщик (используй как evidence-backed fallback, но не выдумывай данные): "+JSON.stringify(state.memory?.local_plan||state.local_plan||{}),
-   "Важно: карта механик содержит только наблюдавшиеся системы. Поля observed=false означают неизвестное, а не отсутствие механики. Не выдумывай скрытые правила.",
-   "Рассматривай игру целиком: текущую цель игрока, капитал, прогрессию, гараж, автомобили, покупку, продажу, переговоры, проверки, ремонт/тюнинг, номера, аукцион номеров, контракты, награды, импорт, финансы, бизнесы, работу, соревнования, кланы, рефералы, социальные разделы и рынки.",
-   "Предыдущие решения ChatGPT: "+JSON.stringify(history)
-  ].join("\n");
-  const content=[
-   {type:"input_text",text:prompt},
-   {type:"input_image",image_url:"data:image/jpeg;base64,"+frame}
-  ];
-  const body={
-   model,
-   input:[{role:"user",content}],
-   text:{format:{type:"text"}}
+  const r=await analyzeImage(Buffer.from(frame,"base64"));
+  const d=r.decision||{};
+  const decision={
+   action:d.action||"УТОЧНИ СИТУАЦИЮ",
+   title:d.title||"Локальный анализ",
+   reason:d.reason||"",
+   confidence:Number(d.confidence)||0,
+   game_state:r.raw_text||"",
+   sale_price:r.vehicle?.price??null,
+   expected_profit:null,
+   roi_percent:null,
+   next_actions:[],
+   changes:[]
   };
-  log("AI REQUEST model="+model);
-  setAiStatus("Запрос к ChatGPT отправлен • model="+model);
-  const controller=new AbortController();
-  const timeout=setTimeout(()=>controller.abort(),30000);
-  let r;
-  try {
-   r=await fetch("https://api.openai.com/v1/responses",{
-   method:"POST",
-   headers:{"Authorization":"Bearer "+openaiKey,"Content-Type":"application/json"},
-   body:JSON.stringify(body),signal:controller.signal
-   });
-  } finally { clearTimeout(timeout); }
-  const data=await r.json();
-  const outputText=String(data.output_text||data.output?.flatMap(item=>item.content||[]).filter(x=>typeof x.text==="string").map(x=>x.text).join("")||"");
-  log("AI RESPONSE status="+r.status+" outputChars="+outputText.length);
-  if(!r.ok)throw new Error(JSON.stringify(data));
-  if(!outputText)throw new Error("OpenAI returned empty output");
-  let parsed;
-  try{parsed=JSON.parse(outputText)}catch(e){throw new Error("Invalid AI JSON: "+String(e.message||e)+" raw="+outputText.slice(0,500))}
-  parsed.confidence=Math.max(0,Math.min(100,Number(parsed.confidence)||0));
-  aiHistory.push({time:Date.now(),decision:parsed,state:{
-   balance:state.balance,garage:state.garage,vehicle:state.vehicle,ocr:state.ocr
-  }});
+  latest={...(latest||{}),balance:r.balance??latest?.balance,garage:r.garage??latest?.garage,vehicle:r.vehicle??latest?.vehicle,ocr:r.raw_text};
+  aiHistory.push({time:Date.now(),decision,state:{balance:latest.balance,garage:latest.garage,vehicle:latest.vehicle,ocr:latest.ocr}});
   if(aiHistory.length>30)aiHistory.shift();
-  broadcast({type:"ai_decision",decision:parsed,time:Date.now()});
+  broadcast({type:"state",...latest});
+  broadcast({type:"ai_decision",decision,time:Date.now()});
+  setAiStatus("Готово • бесплатный локальный анализ");
  }catch(e){
-  lastAiError=String(e.message||e);
-  log("AI ERROR",lastAiError);
-  setAiStatus("Ошибка ChatGPT: "+lastAiError.slice(0,240));
+  lastAiError=String(e.message||e); setAiStatus("Ошибка локального OCR: "+lastAiError.slice(0,240));
  }finally{
   aiBusy=false;
   if(latestFrame)analyzeLiveFrame();
@@ -190,30 +142,22 @@ function basePrompt(u){
  "\nВложение: "+u.name+" ("+u.mime+").";
 }
 async function analyzeAttachment(u){
- if(!openaiKey)return;
  let frameFiles=[];
  try{
-  const mime=u.mime||"";
-  let content=[{type:"input_text",text:basePrompt(u)}];
-  if(mime.startsWith("image/")){
-   const b64=fs.readFileSync(u.file).toString("base64");
-   content.push({type:"input_image",image_url:"data:"+mime+";base64,"+b64});
-  }else if(mime.startsWith("video/")){
+  if((u.mime||"").startsWith("image/")){
+   const r=await analyzeImage(fs.readFileSync(u.file));
+   u.analysis={attachment_type:"image",detected_game_state:r.raw_text,vehicle:r.vehicle,buyer_offers:[],actions:[r.decision],sale_price:r.vehicle?.price??null,expected_profit:null,roi_percent:null,confidence:r.decision?.confidence||0,changes:[],next_actions:[r.decision?.action||""]};
+  }else if((u.mime||"").startsWith("video/")){
    frameFiles=extractVideoFrames(u.file);
-   if(frameFiles.length){
-    content[0].text+="\nЭто видео. Анализируй последовательность кадров как таймлайн и отмечай изменения между кадрами.";
-    for(const f of frameFiles)content.push({type:"input_image",image_url:"data:image/jpeg;base64,"+fs.readFileSync(f).toString("base64")});
-   }else content[0].text+="\nВидео не удалось разложить на кадры на сервере. Сообщи это в detected_game_state.";
+   const results=[];
+   for(const f of frameFiles.slice(0,6)) results.push(await analyzeImage(fs.readFileSync(f)));
+   const last=results[results.length-1]||{};
+   u.analysis={attachment_type:"video",detected_game_state:results.map(x=>x.raw_text).join("\n---\n"),vehicle:last.vehicle||null,buyer_offers:[],actions:results.map(x=>x.decision),sale_price:last.vehicle?.price??null,expected_profit:null,roi_percent:null,confidence:last.decision?.confidence||0,changes:[],next_actions:results.map(x=>x.decision?.action).filter(Boolean)};
   }else{
-   content[0].text+="\nДля документа/файла используй только фактически доступное содержимое. Если содержимое не передано модели, не выдумывай его.";
+   u.analysis={attachment_type:"file",detected_game_state:"Файл не является изображением.",vehicle:null,buyer_offers:[],actions:[],sale_price:null,expected_profit:null,roi_percent:null,confidence:0,changes:[],next_actions:["Пришли скриншот PNG/JPG"]};
   }
-  const body={model,input:[{role:"user",content}],text:{format:{type:"json_schema",name:"carflip_attachment_analysis",strict:true,schema:analysisSchema}}};
-  const r=await fetch("https://api.openai.com/v1/responses",{method:"POST",headers:{"Authorization":"Bearer "+openaiKey,"Content-Type":"application/json"},body:JSON.stringify(body)});
-  const data=await r.json();if(!r.ok)throw new Error(JSON.stringify(data));
-  const raw=data.output_text||"";
-  let parsed;try{parsed=JSON.parse(raw)}catch{parsed={attachment_type:mime.startsWith("image/")?"image":mime.startsWith("video/")?"video":"file",detected_game_state:raw,vehicle:null,buyer_offers:[],actions:[],sale_price:null,expected_profit:null,roi_percent:null,confidence:0,changes:[],next_actions:[]}}
-  u.analysis=parsed;u.analyzedAt=Date.now();
-  broadcast({type:"attachment_analysis",id:u.id,name:u.name,mime:u.mime,analysis:parsed,time:u.analyzedAt});
+  u.analyzedAt=Date.now();
+  broadcast({type:"attachment_analysis",id:u.id,name:u.name,mime:u.mime,analysis:u.analysis,time:u.analyzedAt});
  }catch(e){
   u.analysisError=String(e.message||e);broadcast({type:"attachment_analysis_error",id:u.id,error:u.analysisError});
  }finally{
@@ -224,7 +168,7 @@ async function analyzeAttachment(u){
 
 const server=http.createServer((req,res)=>{
  if(!auth(req))return json(res,401,{error:"unauthorized"});
- if(req.url==="/health")return json(res,200,{ok:true,build:BUILD_ID,model,clients:clients.size,uploads:uploads.size,ai:!!openaiKey,lastFrameAt,lastAiAt,lastAiStatus,lastAiError:lastAiError?lastAiError.slice(0,500):""});
+ if(req.url==="/health")return json(res,200,{ok:true,build:BUILD_ID,model,clients:clients.size,uploads:uploads.size,ai:true,lastFrameAt,lastAiAt,lastAiStatus,lastAiError:lastAiError?lastAiError.slice(0,500):""});
  if(req.url==="/state")return json(res,200,latest||{});
  if(req.url==="/attachments")return json(res,200,[...uploads.values()].map(({file,...x})=>x));
  if(req.url==="/bridge/state" && req.method==="POST"){
