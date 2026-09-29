@@ -35,7 +35,13 @@ object StrategySequenceLearning {
                 if(profitable)o.put("successes",o.optInt("successes")+1)
                 o.put("last_seen",System.currentTimeMillis()).put("status",if(o.optInt("confirmations")>=MIN)"CONFIRMED":"OBSERVED_ONCE")
                 var replaced=false
-                for(i in 0 until a.length())if(a.optJSONObject(i)?.optString("key")==key){a.put(i,o);replaced=true;break}
+                for(i in 0 until a.length()){
+                    if(a.optJSONObject(i)?.optString("key")==key){
+                        a.put(i,o)
+                        replaced=true
+                        break
+                    }
+                }
                 if(!replaced)a.put(o)
             }
         }
@@ -45,12 +51,22 @@ object StrategySequenceLearning {
     private fun <T> List<T>.distinctConsecutive():List<T>{val out=mutableListOf<T>();for(x in this)if(out.isEmpty()||out.last()!=x)out+=x;return out}
     fun snapshot(c:Context):JSONObject{
         val a=arr(c);val out=JSONArray()
-        for(i in 0 until a.length()){val o=a.optJSONObject(i)?:continue;if(o.optInt("confirmations")>=MIN)out.put(o)}
+        for(i in 0 until a.length()){
+            val o=a.optJSONObject(i)?:continue
+            if(o.optInt("confirmations")>=MIN){
+                out.put(o)
+            }
+        }
         return JSONObject().put("confirmed_sequences",out).put("count",out.length()).put("source","observed_completed_deals")
     }
     fun evidence(c:Context):List<String>{
         val a=arr(c);val out=mutableListOf<String>()
-        for(i in 0 until a.length()){val o=a.optJSONObject(i)?:continue;if(o.optInt("confirmations")>=MIN)out+="sequence="+o.optString("key")+"; confirmations="+o.optInt("confirmations")}
+        for(i in 0 until a.length()){
+            val o=a.optJSONObject(i)?:continue
+            if(o.optInt("confirmations")>=MIN){
+                out += "sequence="+o.optString("key")+"; confirmations="+o.optInt("confirmations")
+            }
+        }
         return out.take(6)
     }
 }
