@@ -102,6 +102,7 @@ class ScreenMonitorService : Service() {
             val o = JSONObject(json)
             val opportunity = Opportunity(o.optString("action", "ОЖИДАЙ"), o.optString("title", "ChatGPT анализирует ситуацию"), o.optString("reason", "Жду следующего подтверждённого состояния игры."), o.optInt("confidence", 0).coerceIn(0, 100))
             lastOpportunity = opportunity
+            RecommendationLearning.record(this, "AI", opportunity.action, opportunity.title, opportunity.confidence, lastVehicle)
             lastAiStatus = "Решение получено от ChatGPT"
             CopilotState.setDecision(this, opportunity.action)
             val sale = if (o.isNull("sale_price")) null else o.optLong("sale_price").takeIf { it > 0L }
@@ -179,6 +180,8 @@ class ScreenMonitorService : Service() {
         CopilotState.setGarage(this, garage)
         CopilotState.setSnapshot(this, vehicle)
         MarketAnalyzer.observe(this, vehicle, screen)
+        val localPlan = GamePlanner.plan(this, text)
+        RecommendationLearning.record(this, "LOCAL", localPlan.action, localPlan.title, localPlan.confidence, vehicle)
         GameMechanics.observe(this, text, screen, vehicle, detectedBalance, garage, event, action, resources)
         if (screen != lastScreenType) {
             lastScreenType = screen
