@@ -33,7 +33,7 @@ object StrategySequenceLearning {
                 if(o==null)o=JSONObject().put("key",key).put("steps",JSONArray(seq)).put("confirmations",0).put("successes",0).put("last_seen",0)
                 o.put("confirmations",o.optInt("confirmations")+1).put("deal_profitable",profitable)
                 if(profitable)o.put("successes",o.optInt("successes")+1)
-                o.put("last_seen",System.currentTimeMillis()).put("status",if(o.optInt("confirmations")>=MIN)"CONFIRMED":"OBSERVED_ONCE")
+                o.put("last_seen",System.currentTimeMillis()).put("status",if(o.optInt("confirmations")>=MIN) "CONFIRMED" else "OBSERVED_ONCE")
                 var replaced=false
                 for(i in 0 until a.length()){
                     if(a.optJSONObject(i)?.optString("key")==key){
