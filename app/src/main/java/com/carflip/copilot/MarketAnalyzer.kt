@@ -72,7 +72,7 @@ object MarketAnalyzer {
         val sale= saleEstimate(c,v,h)
         val expected=sale.first
         val baseline=expected
-        val currentDeal=history(c,v.name).firstOrNull{it.buy==v.price && it.sell==null}
+        val currentDeal=CopilotState.deals(c).firstOrNull{norm(it.name)==norm(v.name) && it.buy==v.price && it.sell==null}
         val fees=currentDeal?.fees?:0L
         val profit=baseline?.let{it-v.price-fees}
         val roi=profit?.let{if(v.price>0)it.toDouble()/v.price*100.0 else null}
