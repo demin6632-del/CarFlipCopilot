@@ -21,7 +21,7 @@ object RecommendationLearning {
 
  private fun p(c:Context)=c.getSharedPreferences(PREF,Context.MODE_PRIVATE)
  private fun arr(c:Context)=JSONArray(p(c).getString(HISTORY,"[]"))
- private fun norm(s:String)=s.lowercase().replace('ё','е').replace(Regex("\s+")," ").trim()
+ private fun norm(s:String)=s.lowercase().replace('ё','е').replace(Regex("\\s+")," ").trim()
  private fun save(c:Context,a:JSONArray){while(a.length()>MAX_HISTORY)a.remove(0);p(c).edit().putString(HISTORY,a.toString()).apply()}
 
  fun record(c:Context,source:String,action:String,title:String,confidence:Int,v:VehicleSnapshot){
