@@ -1,10 +1,13 @@
 const https = require("https");
+const { TelegramUserBridge, createConnectServer } = require("./user-session-bridge");
 
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || "";
 const RELAY_TOKEN = process.env.COPILOT_TOKEN || "";
 const RELAY_URL = process.env.RELAY_URL || "";
 const GAME_USERNAME = process.env.GAME_BOT_USERNAME || "m0dsbeamngbot";
 const CONNECT_URL = process.env.GAME_CONNECT_URL || "";
+const BRIDGE_PUBLIC_URL = String(process.env.BRIDGE_PUBLIC_URL || "").replace(/\/$/,"");
+const BRIDGE_PORT = Number(process.env.BRIDGE_PORT || 8787);
 const OPENAI_KEY = process.env.OPENAI_API_KEY || "";
 const OPENAI_MODEL = process.env.OPENAI_MODEL || "gpt-5.6-luna";
 const API = "https://api.telegram.org/bot" + BOT_TOKEN;
@@ -13,6 +16,16 @@ let offset = 0;
 let polling = false;
 const users = new Map();
 const pendingGameProbes = new Map();
+const userBridge = new TelegramUserBridge({
+  apiId: process.env.TELEGRAM_API_ID,
+  apiHash: process.env.TELEGRAM_API_HASH,
+  gameUsername: GAME_USERNAME,
+  relayUrl: RELAY_URL,
+  relayToken: RELAY_TOKEN,
+  publicUrl: BRIDGE_PUBLIC_URL,
+  sessionFile: process.env.TELEGRAM_SESSION_FILE || require("path").join(process.cwd(),"data","telegram-user-session.txt")
+});
+if (BRIDGE_PUBLIC_URL) createConnectServer(userBridge,BRIDGE_PORT);
 
 function tg(method, body) {
   return new Promise((resolve, reject) => {
@@ -40,20 +53,21 @@ function tg(method, body) {
   });
 }
 
-function kb() {
+function kb(chatId) {
   const rows = [
     [{text:"🧠 Что делать сейчас",callback_data:"advice"}],
     [{text:"📊 Состояние",callback_data:"state"},{text:"📸 Анализ скрина",callback_data:"photo"}],
     [{text:"🔗 Подключить игру",callback_data:"connect"}],
     [{text:"🧪 Проверить связь с игрой",callback_data:"probe"}]
   ];
-  if (CONNECT_URL) rows.push([{text:"🎮 Открыть подключение",web_app:{url:CONNECT_URL}}]);
+  const connectUrl = CONNECT_URL || (BRIDGE_PUBLIC_URL && chatId ? BRIDGE_PUBLIC_URL + "/connect?chat_id=" + encodeURIComponent(chatId) : "");
+  if (connectUrl) rows.push([{text:"🎮 Открыть подключение",web_app:{url:connectUrl}}]);
   return {inline_keyboard:rows};
 }
 
 async function send(chat_id, text, extra={}) {
   return tg("sendMessage", Object.assign({
-    chat_id, text, reply_markup:kb(), disable_web_page_preview:true
+    chat_id, text, reply_markup:kb(chat_id), disable_web_page_preview:true
   }, extra));
 }
 
@@ -162,6 +176,7 @@ async function handle(m) {
   if(text==="/state") return state(chat);
   if(text==="/advice") return advice(chat);
   if(text==="/probe") return probe(chat);
+  if(text==="/bridge") return bridgeStatus(chat);
   if(text==="/help") return send(chat,
     "Команды:\n/connect — подключение игры\n/state — состояние\n/advice — что делать сейчас\n/probe — проверить связь с игровым ботом\n\n"+
     "Можно прислать скриншот текущей ситуации — бот разберёт его прямо здесь.");
@@ -171,11 +186,12 @@ async function handle(m) {
 }
 
 async function connect(chat) {
-  if(CONNECT_URL) {
+  if(CONNECT_URL || BRIDGE_PUBLIC_URL) {
+    const url = CONNECT_URL || (BRIDGE_PUBLIC_URL + "/connect?chat_id=" + encodeURIComponent(chat));
     return send(chat,
       "🔗 Открываю защищённое подключение.\n\nПосле авторизации мост привяжет твой Telegram-профиль к состоянию игры.",
       {reply_markup:{inline_keyboard:[
-        [{text:"🎮 Подключить игру",web_app:{url:CONNECT_URL}}],
+        [{text:"🎮 Подключить игру",web_app:{url}}],
         [{text:"🧪 Проверить связь",callback_data:"probe"}],
         [{text:"↩️ Назад",callback_data:"menu"}]
       ]}});
@@ -184,9 +200,20 @@ async function connect(chat) {
   return send(chat,
     "🔗 Подключение игры\n\n"+
     "Игра: @"+GAME_USERNAME+"\n\n"+
+    "Пользовательский Telegram-мост: "+(userBridge.configured()?"готов":"не настроен")+"\n\n"+
     "Бот уже готов к игровому мосту, но URL авторизации пока не настроен. "+
     "Я не буду просить пароль или код Telegram в сообщении.\n\n"+
     "Пока можно нажать «🧪 Проверить связь» или присылать скриншоты — они анализируются прямо через Telegram.");
+}
+
+async function bridgeStatus(chat) {
+  const s=userBridge.status();
+  return send(chat,
+    "🔗 Telegram-мост\n\n"+
+    "Статус: "+(s.connected?"✅ подключён":"❌ не подключён")+"\n"+
+    "Игровой бот: @"+GAME_USERNAME+"\n"+
+    "Пользователь: "+(s.username?"@"+s.username:"не определён")+"\n"+
+    (s.last_error?"\n⚠️ "+s.last_error:""));
 }
 
 async function state(chat) {
@@ -263,5 +290,8 @@ async function loop() {
       await new Promise(r=>setTimeout(r,3000));
     }
   }
+}
+if (process.env.TELEGRAM_API_ID && process.env.TELEGRAM_API_HASH) {
+  userBridge.ensureClient().then(()=>console.log("Telegram user bridge initialized")).catch(e=>console.log("Telegram user bridge init:",e.message));
 }
 loop();
