@@ -11,7 +11,6 @@ services:
       - key: COPILOT_TOKEN
         generateValue: true
         sync: false
-        value: gpt-5.6-luna
 
   - type: web
     name: carflip-copilot-telegram
@@ -43,7 +42,6 @@ services:
           type: web
           envVarKey: COPILOT_TOKEN
         sync: false
-        value: gpt-5.6-luna
       - key: GAME_BOT_USERNAME
         value: m0dsbeamngbot
       - key: BRIDGE_PORT
