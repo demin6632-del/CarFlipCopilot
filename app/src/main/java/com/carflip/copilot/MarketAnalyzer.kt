@@ -86,7 +86,7 @@ object MarketAnalyzer {
         } else risk += 8
         if(v.owners!=null) risk += max(0,(v.owners-2)*5) else risk += 4
         if(v.paintedParts!=null) risk += min(20,v.paintedParts*4) else risk += 3
-        if(expected==null) risk += 22
+        if(expected==null) risk += 22 else if(h.isEmpty()) risk += 12
         risk=min(100,risk)
 
         val confidence=min(95,sale.second + if(v.mileage!=null)5 else 0 + if(v.owners!=null)5 else 0 + if(v.paintedParts!=null)3 else 0)
