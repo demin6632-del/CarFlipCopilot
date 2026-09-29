@@ -240,7 +240,8 @@ function createConnectServer(bridge, port=8787) {
       res.writeHead(200,{"content-type":"application/json"});
       res.end(JSON.stringify({ok:true,service:"carflip-copilot-telegram"}));
       return;
-    }\n    if(u.pathname==="/connect") {
+    }
+    if(u.pathname==="/connect") {
       res.writeHead(200,{"content-type":"text/html; charset=utf-8"});
       res.end(connectHtml());
       return;
@@ -270,7 +271,8 @@ function createConnectServer(bridge, port=8787) {
     }
     res.writeHead(404);res.end("not found");
   });
-  const listenPort=Number(process.env.PORT||port||8787);\n  server.listen(listenPort,"0.0.0.0",()=>console.log("Telegram user bridge web listening on",listenPort));
+  const listenPort=Number(process.env.PORT||port||8787);
+  server.listen(listenPort,"0.0.0.0",()=>console.log("Telegram user bridge web listening on",listenPort));
   return server;
 }
 
