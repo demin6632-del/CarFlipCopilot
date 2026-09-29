@@ -19,6 +19,49 @@ const pendingGameProbes = new Map();
 let lastBridgeNotice = 0;
 let lastBridgeFingerprint = "";
 const gameButtonMap = new Map();
+
+function normalizeButtonText(s) {
+  return String(s||"").toLowerCase().replace(/ё/g,"е").replace(/[^a-zа-я0-9]+/gi," ").trim();
+}
+
+function recommendGameButton(decision, buttons) {
+  const list=Array.isArray(buttons)?buttons.filter(Boolean):[];
+  if(!decision || !list.length) return null;
+  const source=normalizeButtonText([decision.action,decision.title,decision.reason].filter(Boolean).join(" "));
+  const aliases=[
+    ["куп","покуп","приобр","взять"],
+    ["прод","продаж","сбыть"],
+    ["осмотр","провер","диагност","оцен"],
+    ["назад","вернуться","отмена"],
+    ["гараж","машин","авто"],
+    ["номер","госномер","аукцион"],
+    ["ремонт","почин"],
+    ["тюнинг","улучш"],
+    ["работ","контракт","заказ"],
+    ["награ","получить"],
+    ["подтверд","оформ","готово"]
+  ];
+  let best=null;
+  for(const label of list){
+    const n=normalizeButtonText(label);
+    let score=0;
+    for(const group of aliases){
+      const inSource=group.some(x=>source.includes(x));
+      const inButton=group.some(x=>n.includes(x));
+      if(inSource&&inButton) score+=3;
+    }
+    const words=source.split(/\s+/).filter(x=>x.length>=4);
+    for(const w of words) if(n.includes(w)) score+=1;
+    if(score && (!best || score>best.score)) best={label,score};
+  }
+  return best && best.score>=3 ? best.label : null;
+}
+
+function actionRisk(action) {
+  const s=normalizeButtonText(action);
+  return /(куп|покуп|прод|продаж|аукцион|номер|ремонт|тюнинг|оплат|подтверд|оформ)/i.test(s);
+}
+
 async function notifyBridgeState(state) {
   const chat=userBridge.boundChatId;
   if(!chat || !state || !state.received_at) return;
@@ -263,8 +306,23 @@ async function state(chat) {
 async function advice(chat) {
   try {
     const r=await relay("/telegram/advice",{chat_id:chat});
-    const buttons=(r.game_buttons||[]).slice(0,8).map(label=>{const id=require("crypto").randomBytes(8).toString("hex");gameButtonMap.set(id,{chat:String(chat),label,expires:Date.now()+5*60*1000});return [{text:"▶️ "+label,callback_data:"gamebtn:"+id}];});
-    return send(chat,r.text||"Пока нет актуального решения. Передай состояние игры или скриншот.",buttons.length?{reply_markup:{inline_keyboard:buttons}}:{});
+    const observed=(r.game_buttons||[]).slice(0,8);
+    const recommended=recommendGameButton(r.decision,observed);
+    const rows=[];
+    if(recommended){
+      const id=require("crypto").randomBytes(8).toString("hex");
+      const risk=actionRisk(r.decision?.action||recommended);
+      gameButtonMap.set(id,{chat:String(chat),label:recommended,expires:Date.now()+5*60*1000,confirmed:false});
+      rows.push([{text:(risk?"⚠️ Подтвердить: ":"🤖 Выполнить: ")+recommended,callback_data:"confirmbtn:"+id}]);
+    }
+    for(const label of observed){
+      const id=require("crypto").randomBytes(8).toString("hex");
+      gameButtonMap.set(id,{chat:String(chat),label,expires:Date.now()+5*60*1000,confirmed:false});
+      rows.push([{text:"▶️ "+label,callback_data:"gamebtn:"+id}]);
+    }
+    let out=r.text||"Пока нет актуального решения. Передай состояние игры или скриншот.";
+    if(recommended) out+="\n\n🤖 ИИ сопоставил действие с кнопкой игры: «"+recommended+"».\nНажатие выполняется только после твоего подтверждения.";
+    return send(chat,out,rows.length?{reply_markup:{inline_keyboard:rows}}:{});
   } catch(e) {
     return send(chat,"⚠️ Помощник пока не получил состояние игры: "+e.message);
   }
@@ -289,7 +347,24 @@ async function callback(q) {
   const chat=q.message?.chat?.id;
   const data=q.data;
   try { await tg("answerCallbackQuery",{callback_query_id:q.id}); } catch {}
-  if(data.startsWith("gamebtn:")) { const id=data.slice(8); const item=gameButtonMap.get(id); if(!item || item.chat!==String(chat) || item.expires<Date.now()) return send(chat,"⚠️ Эта кнопка устарела. Нажми /game ещё раз."); try { await userBridge.clickGameButton(item.label); gameButtonMap.delete(id); return send(chat,"✅ Нажал: "+item.label); } catch(e) { return send(chat,"❌ Не удалось нажать «"+item.label+"»: "+e.message); } }
+  if(data.startsWith("confirmbtn:")) {
+    const id=data.slice(11);
+    const item=gameButtonMap.get(id);
+    if(!item || item.chat!==String(chat) || item.expires<Date.now()) return send(chat,"⚠️ Рекомендация устарела. Нажми /advice ещё раз.");
+    if(!item.confirmed) {
+      item.confirmed=true;
+      gameButtonMap.set(id,item);
+      return send(chat,"⚠️ Подтверждение получено. Нажимаю «"+item.label+"» в игре…");
+    }
+    try { await userBridge.clickGameButton(item.label); gameButtonMap.delete(id); return send(chat,"✅ Нажал в игре: "+item.label); }
+    catch(e) { return send(chat,"❌ Не удалось нажать «"+item.label+"»: "+e.message); }
+  }
+  if(data.startsWith("gamebtn:")) {
+    const id=data.slice(8); const item=gameButtonMap.get(id);
+    if(!item || item.chat!==String(chat) || item.expires<Date.now()) return send(chat,"⚠️ Эта кнопка устарела. Нажми /game ещё раз.");
+    try { await userBridge.clickGameButton(item.label); gameButtonMap.delete(id); return send(chat,"✅ Нажал: "+item.label); }
+    catch(e) { return send(chat,"❌ Не удалось нажать «"+item.label+"»: "+e.message); }
+  }
   if(data==="connect") return connect(chat);
   if(data==="state") return state(chat);
   if(data==="advice") return advice(chat);
