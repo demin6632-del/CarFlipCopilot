@@ -8,6 +8,7 @@
   },
   "dependencies": {
     "qrcode": "^1.5.4",
+    "sharp": "^0.34.3",
     "telegram": "^2.26.22",
     "tesseract.js": "^7.0.0",
     "@tesseract.js-data/rus": "^1.0.0",
