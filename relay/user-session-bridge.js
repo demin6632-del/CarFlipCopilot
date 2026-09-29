@@ -16,6 +16,7 @@ class TelegramUserBridge {
     this.publicUrl = String(opts.publicUrl || "").replace(/\/$/,"");
     this.relayUrl = String(opts.relayUrl || "").replace(/\/$/,"");
     this.relayToken = String(opts.relayToken || "");
+    this.onState = typeof opts.onState === "function" ? opts.onState : null;
     this.client = null;
     this.sessions = new Map();
     this.boundChatId = null;
@@ -142,6 +143,7 @@ class TelegramUserBridge {
     state.received_at=Date.now();
     this.state=Object.assign({},this.state,state);
     await this.publishState(this.state);
+    if (this.onState) await this.onState(this.state);
   }
 
   async publishState(state) {
