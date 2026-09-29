@@ -110,10 +110,13 @@ object GameMechanics {
     private fun resourceDelta(before: JSONObject, after: Map<String, Long>): String {
         val parts = mutableListOf<String>()
         val keys = mutableSetOf<String>()
-        val beforeKeys = before.keys()
-        while (beforeKeys.hasNext()) keys += beforeKeys.next()
-        val afterKeys = after.keys()
-        while (afterKeys.hasNext()) keys += afterKeys.next()
+        val beforeKeys = before.names()
+        if (beforeKeys != null) {
+            for (i in 0 until beforeKeys.length()) {
+                keys += beforeKeys.optString(i)
+            }
+        }
+        keys.addAll(after.keys)
         for (key in keys) {
             val b = before.optLong(key, Long.MIN_VALUE)
             val a = after[key] ?: Long.MIN_VALUE
