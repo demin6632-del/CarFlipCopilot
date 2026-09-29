@@ -1,7 +1,8 @@
 const { createWorker } = require("tesseract.js");
 const sharp = require("sharp");
 
-let workerPromise;\nlet analysisQueue = Promise.resolve();
+let workerPromise;
+let analysisQueue = Promise.resolve();
 async function getWorker() {
   if (!workerPromise) {
     workerPromise = createWorker("rus+eng").catch(err => {
@@ -15,10 +16,13 @@ async function getWorker() {
 function normalizeText(value) {
   return String(value || "")
     .replace(/\u00a0/g, " ")
-    .replace(/\r/g, "\n")
+    .replace(/\r/g, "
+")
     .replace(/[|]/g, " ")
     .replace(/[ \t]+/g, " ")
-    .replace(/\n{3,}/g, "\n")
+    .replace(/
+{3,}/g, "
+")
     .trim();
 }
 
@@ -53,7 +57,8 @@ function numberCandidates(text) {
 
 function lineInfo(text) {
   return String(text || "")
-    .split(/\n+/)
+    .split(/
++/)
     .map(x => x.trim())
     .filter(Boolean)
     .map((text, index) => ({ text, index }));
@@ -344,4 +349,8 @@ function analyzeImage(input) {
   return analyzeImageQueued(input);
 }
 
-async function warmup() {\n  try { await getWorker(); return true; } catch (e) { console.log("OCR WARMUP ERROR:", e.message); return false; }\n}\n\nmodule.exports = { analyzeImage, parseState, decide, warmup };
+async function warmup() {
+  try { await getWorker(); return true; } catch (e) { console.log("OCR WARMUP ERROR:", e.message); return false; }
+}
+
+module.exports = { analyzeImage, parseState, decide, warmup };
