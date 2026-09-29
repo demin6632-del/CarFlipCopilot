@@ -21,6 +21,7 @@ class TelegramUserBridge {
     this.boundChatId = null;
     this.state = { connected:false, game_bot:this.gameUsername };
     this.authPromise = null;
+    this.tickets = new Map();
   }
 
   configured() {
@@ -75,8 +76,15 @@ class TelegramUserBridge {
     }
   }
 
+  createTicket(chatId) {
+    const ticket=crypto.randomBytes(24).toString("hex");
+    this.tickets.set(ticket,{chatId:String(chatId),expires:Date.now()+10*60*1000});
+    return ticket;
+  }
+
   async startAuth(chatId) {
     if (!this.configured()) throw new Error("Сначала настрой TELEGRAM_API_ID и TELEGRAM_API_HASH на сервере");
+    if (this.boundChatId && String(this.boundChatId)!==String(chatId)) throw new Error("Мост уже привязан к другому Telegram-пользователю");
     await this.ensureClient();
     if (this.state.connected) {
       this.boundChatId = chatId;
@@ -95,7 +103,7 @@ class TelegramUserBridge {
               record.qr = "tg://login?token="+token.toString("base64url");
               record.expires = Number(expires||0)*1000;
             },
-            password: async ()=>{ throw new Error("Для этого подключения требуется 2FA-пароль; добавь его через безопасную серверную настройку."); },
+            password: async ()=>{ if(process.env.TELEGRAM_2FA_PASSWORD) return process.env.TELEGRAM_2FA_PASSWORD; throw new Error("Для этого подключения требуется 2FA-пароль. Настрой TELEGRAM_2FA_PASSWORD на сервере."); },
             onError: async err=>{ record.error=err.message; return false; }
           }
         );
@@ -232,8 +240,8 @@ function connectHtml() {
 <style>body{font-family:system-ui;margin:0;background:#111;color:#fff;text-align:center;padding:24px}main{max-width:520px;margin:auto}button{padding:12px 18px;border:0;border-radius:12px;font-size:16px}#qr{width:360px;max-width:90vw;background:#fff;padding:8px;border-radius:12px;display:none}a{color:#7dc4ff;word-break:break-all}</style>
 <main><h2>🔗 Подключение игры</h2><p id="status">Подготавливаю защищённую сессию…</p><img id="qr"><p id="link"></p><button id="open" style="display:none">Открыть Telegram</button></main>
 <script>
-const p=new URLSearchParams(location.search),chat=p.get("chat_id");let id="";
-async function start(){const r=await fetch("/connect/start",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({chat_id:chat})});const j=await r.json();if(j.error){status.textContent="Ошибка: "+j.error;return}if(j.connected){status.textContent="✅ Уже подключено";return}id=j.id;poll()}
+const p=new URLSearchParams(location.search),ticket=p.get("ticket");let id="";
+async function start(){const r=await fetch("/connect/start",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({ticket})});const j=await r.json();if(j.error){status.textContent="Ошибка: "+j.error;return}if(j.connected){status.textContent="✅ Уже подключено";return}id=j.id;poll()}
 async function poll(){const j=await (await fetch("/connect/status?id="+encodeURIComponent(id))).json();if(j.error){status.textContent=j.error;return}if(j.connected){status.textContent="✅ Telegram-сессия подключена. Можно вернуться в бота.";qr.style.display="none";return}if(j.qr){qr.src="/connect/qr?id="+encodeURIComponent(id)+"&t="+Date.now();qr.style.display="inline-block";link.innerHTML="Если используешь другое устройство, отсканируй QR в Telegram.<br><small>"+j.qr+"</small>";open.style.display="inline-block";open.onclick=()=>location.href=j.qr}status.textContent="Открой Telegram на другом устройстве и отсканируй QR-код. Код обновляется автоматически.";setTimeout(poll,2500)}
 start();
 </script>`;
