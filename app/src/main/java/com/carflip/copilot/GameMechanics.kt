@@ -19,6 +19,8 @@ object GameMechanics {
     private const val PENDING_ACTION = "pending_action"
     private const val LAST_ACTION = "last_action"
     private const val ACTION_WINDOW_MS = 60_000L
+    private const val RULES = "rules"
+    private const val RULE_MIN_CONFIRMATIONS = 2
 
     data class Observation(
         val domain: String,
@@ -166,9 +168,11 @@ object GameMechanics {
         val label = listOf(action.takeIf { it.isNotBlank() }, event.takeIf { it.isNotBlank() })
             .filterNotNull().joinToString(" / ")
 
-        recordTransition(c, "economy", "ACTION_RESULT: $label -> ${parts.joinToString("; ")}", screen, now)
+        val resultText = parts.joinToString("; ")
+        recordTransition(c, "economy", "ACTION_RESULT: $label -> $resultText", screen, now)
+        if (label.isNotBlank()) recordRuleEvidence(c, actionRuleKey(label, parts), "economy", "ACTION_RESULT: $label -> $resultText", screen, now)
         if (garageChanged || vehicleChanged) {
-            recordTransition(c, "cars", "ACTION_RESULT: $label -> ${parts.joinToString("; ")}", screen, now)
+            recordTransition(c, "cars", "ACTION_RESULT: $label -> $resultText", screen, now)
         }
         p.edit().remove(PENDING_ACTION).apply()
     }
@@ -203,6 +207,30 @@ object GameMechanics {
             .put("resources", resourcesJson(resources))
         p.edit().putString(PENDING_ACTION, pending.toString()).putString(LAST_ACTION, label).apply()
     }
+
+
+    private fun recordRuleEvidence(c: Context, ruleKey: String, domain: String, evidence: String, screen: String, now: Long) {
+        val p = prefs(c)
+        val a = try { JSONArray(p.getString(RULES, "[]")) } catch (_: Exception) { JSONArray() }
+        var found: JSONObject? = null
+        for (i in 0 until a.length()) {
+            val x = a.optJSONObject(i) ?: continue
+            if (x.optString("key") == ruleKey) { found = x; break }
+        }
+        val rule = found ?: JSONObject().put("key", ruleKey).put("domain", domain).put("confirmations", 0).put("first_seen", now)
+        val confirmations = rule.optInt("confirmations", 0) + 1
+        rule.put("confirmations", confirmations)
+            .put("last_seen", now)
+            .put("evidence", evidence.take(500))
+            .put("screen", screen)
+            .put("status", if (confirmations >= RULE_MIN_CONFIRMATIONS) "CONFIRMED" else "OBSERVED_ONCE")
+        if (found == null) a.put(rule)
+        while (a.length() > 200) a.remove(0)
+        p.edit().putString(RULES, a.toString()).apply()
+    }
+
+    private fun actionRuleKey(label: String, parts: List<String>): String =
+        normalize(label) + " -> " + parts.joinToString("; ") { normalize(it).replace(Regex("\d+"), "#") }
 
     fun observe(
         c: Context,
@@ -320,6 +348,9 @@ object GameMechanics {
         o.put("observed_domains", domains.count { seen(c, it.id) > 0 })
         o.put("total_domains", domains.size)
         o.put("facts", a.length())
+        val rules = try { JSONArray(prefs(c).getString(RULES, "[]")) } catch (_: Exception) { JSONArray() }
+        o.put("rules", rules)
+        o.put("confirmed_rules", (0 until rules.length()).count { rules.optJSONObject(it)?.optString("status") == "CONFIRMED" })
         return o
     }
 
