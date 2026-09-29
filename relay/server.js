@@ -228,6 +228,7 @@ const server=http.createServer((req,res)=>{
  if(req.url==="/state")return json(res,200,latest||{});
  if(req.url==="/attachments")return json(res,200,[...uploads.values()].map(({file,...x})=>x));
  if(req.url==="/bridge/state" && req.method==="POST"){
+  if(!auth(req)) return json(res,401,{error:"unauthorized"});
   let body="";req.on("data",x=>body+=x);req.on("end",()=>{try{latest=JSON.parse(body||"{}");latest.source=latest.source||"telegram_user_session";broadcast({type:"state",...latest});return json(res,200,{ok:true})}catch(e){return json(res,400,{error:e.message})}});return;
  }
  if(req.url==="/telegram/advice" && req.method==="POST"){
