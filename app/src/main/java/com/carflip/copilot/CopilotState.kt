@@ -12,7 +12,12 @@ data class PlateRecord(val plate:String,val state:String,val value:Long?,val upd
 object CopilotState {
  private const val PREF="copilot_state";private const val BALANCE_VERIFIED="balance_verified"
  private fun p(c:Context)=c.getSharedPreferences(PREF,Context.MODE_PRIVATE)
- private fun arr(c:Context,k:String)=JSONArray(p(c).getString(k,"[]"))
+ private fun arr(c:Context,k:String):JSONArray {
+  return try { JSONArray(p(c).getString(k,"[]")) } catch (_:Exception) {
+    p(c).edit().remove(k).apply()
+    JSONArray()
+  }
+}
  private fun append(c:Context,k:String,o:JSONObject,max:Int=200){val a=arr(c,k);a.put(o);while(a.length()>max)a.remove(0);p(c).edit().putString(k,a.toString()).apply()}
  fun balance(c:Context):Long?=if(p(c).getBoolean(BALANCE_VERIFIED,false)) p(c).getLong("balance",0L).takeIf{it>0L} else null
  fun setBalance(c:Context,v:Long){if(v<=0L)return;p(c).edit().putLong("balance",v).putBoolean(BALANCE_VERIFIED,true).apply()}
@@ -62,7 +67,7 @@ object CopilotState {
  fun addBuyerOffer(c:Context,plate:String,name:String,condition:String,amount:Long,buyer:String="",notes:String=""){append(c,"buyer_offers",JSONObject().put("plate",plate).put("name",name).put("condition",condition).put("amount",amount).put("buyer",buyer).put("notes",notes).put("time",System.currentTimeMillis()))}
  fun buyerOffers(c:Context,plate:String=""):List<String>{val a=arr(c,"buyer_offers");return(0 until a.length()).mapNotNull{val o=a.optJSONObject(it)?:return@mapNotNull null;if(plate.isNotEmpty()&&o.optString("plate")!=plate)return@mapNotNull null;"• "+o.optString("condition")+" → "+o.optLong("amount")+" ₽"+(if(o.optString("buyer").isNotBlank())" • "+o.optString("buyer") else "")}.reversed()}
  fun addLedger(c:Context,type:String,amount:Long?,note:String){if(amount!=null)append(c,"ledger",JSONObject().put("type",type).put("amount",amount).put("note",note).put("time",System.currentTimeMillis()),500)}
- fun ledger(c:Context):List<LedgerEvent>{val a=arr(c,"ledger");return(0 until a.length()).map{val o=a.getJSONObject(it);LedgerEvent(o.optString("type"),o.optLong("amount"),o.optString("note"),o.optLong("time"))}.reversed()}
+ fun ledger(c:Context):List<LedgerEvent>{val a=arr(c,"ledger");return(0 until a.length()).mapNotNull{val o=a.optJSONObject(it)?:return@mapNotNull null;LedgerEvent(o.optString("type"),o.optLong("amount"),o.optString("note"),o.optLong("time"))}.reversed()}
  fun recordPurchase(c:Context,v:VehicleSnapshot,amount:Long){append(c,"deals",JSONObject().put("id",(v.plate.ifBlank{v.name})+"|"+System.currentTimeMillis()).put("name",v.name).put("plate",v.plate).put("buy",amount).put("fees",0).put("opened",System.currentTimeMillis()));addLedger(c,"ПОКУПКА",-amount,v.name)}
  fun recordSale(c:Context,v:VehicleSnapshot,amount:Long){val a=arr(c,"deals");var idx=-1;for(i in a.length()-1 downTo 0){val o=a.optJSONObject(i)?:continue;if(!o.has("sell")&&((v.plate.isNotEmpty()&&o.optString("plate")==v.plate)||(v.plate.isEmpty()&&o.optString("name")==v.name))){idx=i;break}};var profit:Long?=null;if(idx>=0){val o=a.getJSONObject(idx);profit=amount-o.optLong("buy")-o.optLong("fees");o.put("sell",amount).put("closed",System.currentTimeMillis())}else a.put(JSONObject().put("id",(v.plate.ifBlank{v.name})+"|"+System.currentTimeMillis()).put("name",v.name).put("plate",v.plate).put("sell",amount).put("fees",0).put("opened",System.currentTimeMillis()).put("closed",System.currentTimeMillis()));while(a.length()>200)a.remove(0);p(c).edit().putString("deals",a.toString()).apply();if(profit!=null){LearningMemory.recordAllActionOutcomes(c,v,amount,"",v.plate);LearningMemory.learn(c,v,profit);ModelFeatureLearning.learn(c,v,profit);RecommendationLearning.outcome(c,v,profit);addEvent(c,"ОБУЧЕНИЕ • продажа "+amount+" ₽ • прибыль "+profit+" ₽")};addLedger(c,"ПРОДАЖА",amount,v.name)}
  fun addFee(c:Context,amount:Long,note:String){
@@ -93,7 +98,7 @@ object CopilotState {
   if(serviceSignals.none{label.contains(it)})return
   addFee(c,-delta,"Подтверждённый расход по текущей машине: "+(action?:event?:"услуга"))
  }
- fun deals(c:Context):List<Deal>{val a=arr(c,"deals");return(0 until a.length()).map{val o=a.getJSONObject(it);Deal(o.optString("id"),o.optString("name"),o.optString("plate"),if(o.has("buy"))o.optLong("buy")else null,if(o.has("sell"))o.optLong("sell")else null,o.optLong("fees"),o.optLong("opened"),if(o.has("closed"))o.optLong("closed")else null)}.reversed()}
+ fun deals(c:Context):List<Deal>{val a=arr(c,"deals");return(0 until a.length()).mapNotNull{val o=a.optJSONObject(it)?:return@mapNotNull null;Deal(o.optString("id"),o.optString("name"),o.optString("plate"),if(o.has("buy"))o.optLong("buy")else null,if(o.has("sell"))o.optLong("sell")else null,o.optLong("fees"),o.optLong("opened"),if(o.has("closed"))o.optLong("closed")else null)}.reversed()}
  fun savePlateBid(c:Context,plate:String,amount:Long,buyer:String="",source:String=""){if(plate.isBlank()||amount<=0)return;append(c,"plate_bids",JSONObject().put("plate",plate).put("amount",amount).put("buyer",buyer).put("source",source).put("time",System.currentTimeMillis()))}
  fun plateBids(c:Context,plate:String=""):List<String>{val a=arr(c,"plate_bids");return(0 until a.length()).mapNotNull{val o=a.optJSONObject(it)?:return@mapNotNull null;if(plate.isNotBlank()&&o.optString("plate")!=plate)return@mapNotNull null;"• "+o.optString("plate")+" → "+o.optLong("amount")+" ₽"}.reversed()}
  fun hasPlateBid(c:Context,plate:String,amount:Long)=plateBids(c,plate).any{it.contains("→ $amount ₽")}
