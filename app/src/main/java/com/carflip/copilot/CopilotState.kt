@@ -50,6 +50,7 @@ object CopilotState {
   o.put("market", MarketAnalyzer.snapshot(c))
   o.put("capital", CapitalAnalyzer.snapshot(c))
   o.put("capital_efficiency", DealEfficiencyAnalyzer.snapshot(c))
+  o.put("model_feature_learning", ModelFeatureLearning.snapshot(c))
   o.put("local_plan", GamePlanner.snapshot(c))
   return o
  }
@@ -60,7 +61,7 @@ object CopilotState {
  fun addLedger(c:Context,type:String,amount:Long?,note:String){if(amount!=null)append(c,"ledger",JSONObject().put("type",type).put("amount",amount).put("note",note).put("time",System.currentTimeMillis()),500)}
  fun ledger(c:Context):List<LedgerEvent>{val a=arr(c,"ledger");return(0 until a.length()).map{val o=a.getJSONObject(it);LedgerEvent(o.optString("type"),o.optLong("amount"),o.optString("note"),o.optLong("time"))}.reversed()}
  fun recordPurchase(c:Context,v:VehicleSnapshot,amount:Long){append(c,"deals",JSONObject().put("id",(v.plate.ifBlank{v.name})+"|"+System.currentTimeMillis()).put("name",v.name).put("plate",v.plate).put("buy",amount).put("fees",0).put("opened",System.currentTimeMillis()));addLedger(c,"ПОКУПКА",-amount,v.name)}
- fun recordSale(c:Context,v:VehicleSnapshot,amount:Long){val a=arr(c,"deals");var idx=-1;for(i in a.length()-1 downTo 0){val o=a.optJSONObject(i)?:continue;if(!o.has("sell")&&((v.plate.isNotEmpty()&&o.optString("plate")==v.plate)||(v.plate.isEmpty()&&o.optString("name")==v.name))){idx=i;break}};var profit:Long?=null;if(idx>=0){val o=a.getJSONObject(idx);profit=amount-o.optLong("buy")-o.optLong("fees");o.put("sell",amount).put("closed",System.currentTimeMillis())}else a.put(JSONObject().put("id",(v.plate.ifBlank{v.name})+"|"+System.currentTimeMillis()).put("name",v.name).put("plate",v.plate).put("sell",amount).put("fees",0).put("opened",System.currentTimeMillis()).put("closed",System.currentTimeMillis()));while(a.length()>200)a.remove(0);p(c).edit().putString("deals",a.toString()).apply();if(profit!=null){LearningMemory.recordAllActionOutcomes(c,v,amount,"",v.plate);LearningMemory.learn(c,v,profit);addEvent(c,"ОБУЧЕНИЕ • продажа "+amount+" ₽ • прибыль "+profit+" ₽")};addLedger(c,"ПРОДАЖА",amount,v.name)}
+ fun recordSale(c:Context,v:VehicleSnapshot,amount:Long){val a=arr(c,"deals");var idx=-1;for(i in a.length()-1 downTo 0){val o=a.optJSONObject(i)?:continue;if(!o.has("sell")&&((v.plate.isNotEmpty()&&o.optString("plate")==v.plate)||(v.plate.isEmpty()&&o.optString("name")==v.name))){idx=i;break}};var profit:Long?=null;if(idx>=0){val o=a.getJSONObject(idx);profit=amount-o.optLong("buy")-o.optLong("fees");o.put("sell",amount).put("closed",System.currentTimeMillis())}else a.put(JSONObject().put("id",(v.plate.ifBlank{v.name})+"|"+System.currentTimeMillis()).put("name",v.name).put("plate",v.plate).put("sell",amount).put("fees",0).put("opened",System.currentTimeMillis()).put("closed",System.currentTimeMillis()));while(a.length()>200)a.remove(0);p(c).edit().putString("deals",a.toString()).apply();if(profit!=null){LearningMemory.recordAllActionOutcomes(c,v,amount,"",v.plate);LearningMemory.learn(c,v,profit);ModelFeatureLearning.learn(c,v,profit);addEvent(c,"ОБУЧЕНИЕ • продажа "+amount+" ₽ • прибыль "+profit+" ₽")};addLedger(c,"ПРОДАЖА",amount,v.name)}
  fun addFee(c:Context,amount:Long,note:String){
   if(amount<=0)return
   val a=arr(c,"deals")
