@@ -11,7 +11,7 @@ object StrategySequenceLearning {
     private fun p(c:Context)=c.getSharedPreferences(PREF,Context.MODE_PRIVATE)
     private fun norm(s:String)=s.trim().uppercase().take(60)
     private fun arr(c:Context)=try{JSONArray(p(c).getString(DATA,"[]"))}catch(_:Exception){JSONArray()}
-    fun learnDeal(c:Context,v:VehicleSnapshot,dealId:String,plate:String=""){
+    fun learnDeal(c:Context,v:VehicleSnapshot,dealId:String,plate:String="",profitable:Boolean=false){
         val history=try{JSONArray(c.getSharedPreferences("copilot_learning",Context.MODE_PRIVATE).getString("action_history","[]"))}catch(_:Exception){JSONArray()}
         val actions=mutableListOf<Pair<Long,String>>()
         for(i in 0 until history.length()){
@@ -31,8 +31,8 @@ object StrategySequenceLearning {
                 var o:JSONObject?=null
                 for(i in 0 until a.length()){val x=a.optJSONObject(i);if(x?.optString("key")==key){o=x;break}}
                 if(o==null)o=JSONObject().put("key",key).put("steps",JSONArray(seq)).put("confirmations",0).put("successes",0).put("last_seen",0)
-                o.put("confirmations",o.optInt("confirmations")+1)
-                if(o.optBoolean("deal_profitable",false))o.put("successes",o.optInt("successes")+1)
+                o.put("confirmations",o.optInt("confirmations")+1).put("deal_profitable",profitable)
+                if(profitable)o.put("successes",o.optInt("successes")+1)
                 o.put("last_seen",System.currentTimeMillis()).put("status",if(o.optInt("confirmations")>=MIN)"CONFIRMED":"OBSERVED_ONCE")
                 var replaced=false
                 for(i in 0 until a.length())if(a.optJSONObject(i)?.optString("key")==key){a.put(i,o);replaced=true;break}
