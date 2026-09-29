@@ -50,16 +50,16 @@ class ScreenMonitorService : Service() {
     private var lastAiStatus = "Жду анализа ChatGPT…"
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        if (intent?.action == "SHOW_OVERLAY") { showOverlay(); return START_STICKY }
+        if (intent?.action == "SHOW_OVERLAY") { try { showOverlay() } catch (e: Exception) { CopilotState.addEvent(this, "OVERLAY • ошибка • ${e.message}") }; return START_STICKY }
         if (intent?.action == "HIDE_OVERLAY") { hideOverlay(); return START_STICKY }
         if (projection != null && captureReady) { showOverlay(); return START_STICKY }
         CopilotState.setMonitoring(this, false); createChannel()
-        commandServer = CommandServer(this).also { it.start() }
-        remotePoller = RemoteCommandPoller(this).also { it.start() }
-        liveBridge = LiveBridge(this) { command -> handleCommand(command) }.also { it.start() }
+        try { commandServer = CommandServer(this).also { it.start() } } catch (e: Exception) { CopilotState.addEvent(this, "LOCAL • CommandServer ошибка • ${e.message}") }
+        try { remotePoller = RemoteCommandPoller(this).also { it.start() } } catch (e: Exception) { CopilotState.addEvent(this, "REMOTE • poller ошибка • ${e.message}") }
+        try { liveBridge = LiveBridge(this) { command -> handleCommand(command) }.also { it.start() } } catch (e: Exception) { CopilotState.addEvent(this, "LIVE • bridge ошибка • ${e.message}") }
         val notification = Notification.Builder(this, "copilot").setContentTitle("Перекуп Copilot").setContentText("Захват экрана и OCR активны").setSmallIcon(android.R.drawable.ic_menu_view).setOngoing(true).build()
         if (Build.VERSION.SDK_INT >= 29) startForeground(10, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION) else startForeground(10, notification)
-        showOverlay()
+        try { showOverlay() } catch (e: Exception) { CopilotState.addEvent(this, "OVERLAY • ошибка • ${e.message}") }
         val code = intent?.getIntExtra("resultCode", Activity.RESULT_CANCELED) ?: Activity.RESULT_CANCELED
         val data = if (Build.VERSION.SDK_INT >= 33) intent?.getParcelableExtra("data", Intent::class.java) else { @Suppress("DEPRECATION") intent?.getParcelableExtra<Intent>("data") }
         if (code != Activity.RESULT_OK || data == null) { lastOcrError = "Разрешение MediaProjection не получено"; showStatusPreservingDecision(lastOcrError); stopSelf(); return START_NOT_STICKY }
