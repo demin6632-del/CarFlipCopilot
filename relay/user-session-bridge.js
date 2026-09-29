@@ -236,7 +236,7 @@ function createConnectServer(bridge, port=8787) {
   const server=http.createServer(async(req,res)=>{
     const u=new URL(req.url,"http://localhost");
     res.setHeader("cache-control","no-store");
-    if(u.pathname==="/connect") {
+    if(u.pathname==="/health") {\n      res.writeHead(200,{"content-type":"application/json"});\n      res.end(JSON.stringify({ok:true,service:"carflip-copilot-telegram"}));\n      return;\n    }\n    if(u.pathname==="/connect") {
       res.writeHead(200,{"content-type":"text/html; charset=utf-8"});
       res.end(connectHtml());
       return;
@@ -266,7 +266,7 @@ function createConnectServer(bridge, port=8787) {
     }
     res.writeHead(404);res.end("not found");
   });
-  server.listen(port,"0.0.0.0",()=>console.log("Telegram user bridge web listening on",port));
+  const listenPort=Number(process.env.PORT||port||8787);\n  server.listen(listenPort,"0.0.0.0",()=>console.log("Telegram user bridge web listening on",listenPort));
   return server;
 }
 
