@@ -10,9 +10,7 @@ services:
     envVars:
       - key: COPILOT_TOKEN
         generateValue: true
-      - key: OPENAI_API_KEY
         sync: false
-      - key: OPENAI_MODEL
         value: gpt-5.6-luna
 
   - type: web
@@ -44,9 +42,7 @@ services:
           name: carflip-copilot-relay
           type: web
           envVarKey: COPILOT_TOKEN
-      - key: OPENAI_API_KEY
         sync: false
-      - key: OPENAI_MODEL
         value: gpt-5.6-luna
       - key: GAME_BOT_USERNAME
         value: m0dsbeamngbot
