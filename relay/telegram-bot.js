@@ -43,7 +43,7 @@ const userBridge = new TelegramUserBridge({
   publicUrl: BRIDGE_PUBLIC_URL,
   sessionFile: process.env.TELEGRAM_SESSION_FILE || require("path").join(process.cwd(),"data","telegram-user-session.txt")
 });
-if (BRIDGE_PUBLIC_URL) createConnectServer(userBridge,BRIDGE_PORT);
+createConnectServer(userBridge,BRIDGE_PORT);
 
 function tg(method, body) {
   return new Promise((resolve, reject) => {
