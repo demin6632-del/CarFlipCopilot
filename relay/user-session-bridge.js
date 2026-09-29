@@ -236,7 +236,11 @@ function createConnectServer(bridge, port=8787) {
   const server=http.createServer(async(req,res)=>{
     const u=new URL(req.url,"http://localhost");
     res.setHeader("cache-control","no-store");
-    if(u.pathname==="/health") {\n      res.writeHead(200,{"content-type":"application/json"});\n      res.end(JSON.stringify({ok:true,service:"carflip-copilot-telegram"}));\n      return;\n    }\n    if(u.pathname==="/connect") {
+    if(u.pathname==="/health") {
+      res.writeHead(200,{"content-type":"application/json"});
+      res.end(JSON.stringify({ok:true,service:"carflip-copilot-telegram"}));
+      return;
+    }\n    if(u.pathname==="/connect") {
       res.writeHead(200,{"content-type":"text/html; charset=utf-8"});
       res.end(connectHtml());
       return;
