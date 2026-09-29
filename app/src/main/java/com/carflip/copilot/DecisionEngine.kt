@@ -36,6 +36,7 @@ object DecisionEngine {
     fun decide(c: Context, text: String, v: VehicleSnapshot, balance: Long?, garage: Int?): Opportunity {
         WholeGameEventEngine.observe(c, text, GameScreenClassifier.classify(text), v)
         val brain = GameAiBrain.decide(c, text, v, balance, garage ?: CopilotState.garage(c))
+        val localPlan = GamePlanner.plan(c, text)
         val forecast = CopilotState.dealForecast(c, v)
         val sale = forecast.optLong("sale_price", 0L).takeIf { it > 0L }
         val profit = if (forecast.has("expected_profit") && !forecast.isNull("expected_profit")) {
@@ -45,6 +46,7 @@ object DecisionEngine {
             forecast.optDouble("roi_percent")
         } else null
         CopilotState.saveForecast(c, sale, profit, roi, brain.opportunity.confidence)
-        return stableDecision(brain.opportunity, brain.urgent)
+        val selected = if (brain.opportunity.action.isBlank() || brain.opportunity.action == "ОЖИДАЙ") Opportunity(localPlan.action, localPlan.title, localPlan.reason, localPlan.confidence) else brain.opportunity
+        return stableDecision(selected, brain.urgent)
     }
 }

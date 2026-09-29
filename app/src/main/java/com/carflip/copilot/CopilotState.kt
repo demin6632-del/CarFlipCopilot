@@ -47,6 +47,7 @@ object CopilotState {
   val ar=JSONArray(); actionRoi(c).take(30).forEach { ar.put(it) }; o.put("action_roi",ar)
   o.put("mechanics", GameMechanics.snapshot(c))
   o.put("mechanics_recent", GameMechanics.recent(c, 30))
+  o.put("local_plan", GamePlanner.snapshot(c))
   return o
  }
  fun saveActionRoi(c:Context,action:String,cost:Long,delta:Long,reason:String="",dealId:String="",plate:String="",beforeSale:Long?=null){append(c,"action_roi",JSONObject().put("action",action).put("cost",cost).put("delta",delta).put("roi",roi(cost,delta)).put("reason",reason).put("deal_id",dealId).put("plate",plate).put("before_sale",beforeSale).put("time",System.currentTimeMillis()))}

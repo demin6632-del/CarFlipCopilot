@@ -7,7 +7,7 @@ const clients=new Set();
 const token=process.env.COPILOT_TOKEN||"";
 const openaiKey=process.env.OPENAI_API_KEY||"";
 const model=process.env.OPENAI_MODEL||"gpt-5.6-luna";
-const BUILD_ID="whole-game-mechanics-2026-09-29-1";
+const BUILD_ID="whole-game-planner-2026-09-29-1";
 const uploadDir=process.env.UPLOAD_DIR||path.join(process.cwd(),"uploads");
 fs.mkdirSync(uploadDir,{recursive:true});
 let latest=null;
@@ -131,6 +131,7 @@ async function analyzeLiveFrame(){
    "Текущая структурированная информация: "+JSON.stringify(state),
    "Полная сохранённая память игры (факты, сделки, предложения, номера, журнал, ROI): "+JSON.stringify(state.memory||{}),
    "Карта механик игры: "+JSON.stringify(state.mechanics||state.memory?.mechanics||{}),
+   "Локальный планировщик (используй как evidence-backed fallback, но не выдумывай данные): "+JSON.stringify(state.memory?.local_plan||state.local_plan||{}),
    "Важно: карта механик содержит только наблюдавшиеся системы. Поля observed=false означают неизвестное, а не отсутствие механики. Не выдумывай скрытые правила.",
    "Рассматривай игру целиком: текущую цель игрока, капитал, прогрессию, гараж, автомобили, покупку, продажу, переговоры, проверки, ремонт/тюнинг, номера, аукцион номеров, контракты, награды, импорт, финансы, бизнесы, работу, соревнования, кланы, рефералы, социальные разделы и рынки.",
    "Предыдущие решения ChatGPT: "+JSON.stringify(history)
