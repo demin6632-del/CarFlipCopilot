@@ -1,6 +1,6 @@
 const https = require("https");
 const { TelegramUserBridge, createConnectServer } = require("./user-session-bridge");
-const { analyzeImage } = require("./free-analyzer");
+const { analyzeImage, warmup } = require("./free-analyzer");
 
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || "";
 const RELAY_TOKEN = process.env.COPILOT_TOKEN || "";
@@ -161,4 +161,5 @@ async function loop(){
   while(true){try{const updates=await tg("getUpdates",{offset,timeout:25,allowed_updates:["message","callback_query"]});for(const u of updates){offset=u.update_id+1;if(u.callback_query)await callback(u.callback_query);else if(u.message)await handle(u.message);}}catch(e){console.log("Telegram polling error:",e.message);await new Promise(r=>setTimeout(r,3000));}}
 }
 if(process.env.TELEGRAM_API_ID&&process.env.TELEGRAM_API_HASH)userBridge.ensureClient().then(()=>console.log("Telegram user bridge initialized")).catch(e=>console.log("Telegram user bridge init:",e.message));
+warmup().then(ok=>console.log("OCR worker warmup:",ok?"ready":"failed")).catch(e=>console.log("OCR warmup error:",e.message));
 loop();
