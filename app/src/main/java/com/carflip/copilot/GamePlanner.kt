@@ -34,6 +34,13 @@ object GamePlanner {
   if(hasCar&&profit!=null&&profit<=0)return PlanDecision("НЕ ПОКУПАЙ_РАСХОДЫ","Не увеличивай вложения в эту машину","Последний расчёт не показывает положительной прибыли. Сначала получи новое предложение или новое подтверждение цены/затрат.",82,listOf("Не добавляй необязательные расходы","Проверь новое предложение покупателя","Пересчитай сделку после изменения данных"),listOf("expected_profit="+profit+" ₽"))
   if(garage>=3)return PlanDecision("ОСВОБОДИ_ГАРАЖ","Сначала освободи место","Гараж заполнен: новая покупка может быть недоступна до освобождения слота.",91,listOf("Проверь все машины в гараже","Выбери действие с подтверждённым результатом","После освобождения места пересчитай рынок"),listOf("garage=3/3"))
   if(balance!=null&&balance>0&&!hasCar){
+   val market=MarketAnalyzer.best(c)
+   if(market!=null&&market.price<=balance){
+    val profit=market.expectedProfit?:0L
+    val roi=market.roi?:0.0
+    val risk=market.risk
+    return PlanDecision("КУПИ_ОБЪЕКТ","Нашёл конкретную машину для покупки","Рынок накоплен из распознанных объявлений. "+market.name+" за "+market.price+" ₽; ожидаемая цена продажи "+(market.expectedSale?:0L)+" ₽; расчётная прибыль "+profit+" ₽; ROI "+String.format("%.1f",roi)+"%; риск "+risk+"/100.",min(92,max(65,market.confidence)),listOf("Открой карточку "+market.name,"Проверь актуальную цену "+market.price+" ₽","Перед покупкой сверяй состояние и дополнительные расходы"),listOf("market_candidate="+market.name,"expected_profit="+profit+" ₽","roi="+String.format("%.1f",roi)+"%","risk="+risk+"/100"))
+   }
    val edge=confirmed.firstOrNull()
    val reason=if(edge==null)"Свободный гараж и известный текущий капитал. Нужны свежие данные рынка, прежде чем выбирать объект." else "Свободный гараж и капитал. Подтверждена повторяющаяся цепочка "+edge.optString("from")+" → "+edge.optString("to")+"."
    return PlanDecision("ИЩИ_СЛЕДУЮЩИЙ_ОБЪЕКТ","Открой актуальный рынок",reason,min(86,60+confirmed.size*4),listOf("Открой рынок/список доступных машин","Дождись свежих цены и характеристик","После распознавания посчитай прибыль, риск и замороженный капитал"),if(edge==null)emptyList()else listOf("confirmed_dependencies="+confirmed.size))

@@ -47,6 +47,8 @@ object CopilotState {
   val ar=JSONArray(); actionRoi(c).take(30).forEach { ar.put(it) }; o.put("action_roi",ar)
   o.put("mechanics", GameMechanics.snapshot(c))
   o.put("mechanics_recent", GameMechanics.recent(c, 30))
+  o.put("market", MarketAnalyzer.snapshot(c))
+    o.put("market", MarketAnalyzer.snapshot(c))
   o.put("local_plan", GamePlanner.snapshot(c))
   return o
  }
