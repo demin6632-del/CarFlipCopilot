@@ -58,7 +58,15 @@ class ScreenMonitorService : Service() {
         try { remotePoller = RemoteCommandPoller(this).also { it.start() } } catch (e: Exception) { CopilotState.addEvent(this, "REMOTE • poller ошибка • ${e.message}") }
         try { liveBridge = LiveBridge(this) { command -> handleCommand(command) }.also { it.start() } } catch (e: Exception) { CopilotState.addEvent(this, "LIVE • bridge ошибка • ${e.message}") }
         val notification = Notification.Builder(this, "copilot").setContentTitle("Перекуп Copilot").setContentText("Захват экрана и OCR активны").setSmallIcon(android.R.drawable.ic_menu_view).setOngoing(true).build()
-        if (Build.VERSION.SDK_INT >= 29) startForeground(10, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION) else startForeground(10, notification)
+        try {
+            if (Build.VERSION.SDK_INT >= 29) startForeground(10, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION) else startForeground(10, notification)
+        } catch (e: Exception) {
+            val msg = "Системный сервис не запустился: ${e.message ?: e.javaClass.simpleName}"
+            CopilotState.addEvent(this, "CAPTURE • $msg")
+            CopilotState.setMonitoring(this, false)
+            stopSelf()
+            return START_NOT_STICKY
+        }
         try { showOverlay() } catch (e: Exception) { CopilotState.addEvent(this, "OVERLAY • ошибка • ${e.message}") }
         val code = intent?.getIntExtra("resultCode", Activity.RESULT_CANCELED) ?: Activity.RESULT_CANCELED
         val data = if (Build.VERSION.SDK_INT >= 33) intent?.getParcelableExtra("data", Intent::class.java) else { @Suppress("DEPRECATION") intent?.getParcelableExtra<Intent>("data") }
@@ -234,7 +242,10 @@ class ScreenMonitorService : Service() {
         val manager=getSystemService(WINDOW_SERVICE) as WindowManager
         val type=if(Build.VERSION.SDK_INT>=26) WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY else WindowManager.LayoutParams.TYPE_PHONE
         val params=WindowManager.LayoutParams(WindowManager.LayoutParams.WRAP_CONTENT,WindowManager.LayoutParams.WRAP_CONTENT,type,WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,PixelFormat.TRANSLUCENT)
-        manager.addView(overlay,params)
+        try { manager.addView(overlay,params) } catch (e: Exception) {
+            overlay = null
+            CopilotState.addEvent(this, "OVERLAY • панель не добавлена • ${e.message ?: e.javaClass.simpleName}")
+        }
     }
     private fun hideOverlay() { overlay?.visibility = View.GONE }
     private fun createChannel() { if(Build.VERSION.SDK_INT>=26){val manager=getSystemService(NOTIFICATION_SERVICE) as NotificationManager; manager.createNotificationChannel(NotificationChannel("copilot","Copilot",NotificationManager.IMPORTANCE_LOW))} }
