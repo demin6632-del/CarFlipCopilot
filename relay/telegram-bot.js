@@ -92,7 +92,7 @@ async function analyzePhotoFree(bytes){
   ];
   return lines.filter(Boolean).join("\n");
 }
-async function handlePhoto(chat,photo){try{const best=photo[photo.length-1],bytes=await downloadTelegramFile(best.file_id),result=await analyzePhotoFree(bytes);return send(chat,"📸 Анализ скриншота\n\n"+result);}catch(e){return send(chat,"⚠️ Не удалось разобрать скриншот: "+e.message);}}
+async function handlePhoto(chat,photo){\n  const best=photo[photo.length-1];\n  try {\n    await send(chat,"📥 Скриншот получил. Начинаю бесплатный локальный анализ — это может занять до пары минут.");\n  } catch(e) { console.log("PHOTO ACK ERROR:",e.message); }\n  try {\n    const bytes=await downloadTelegramFile(best.file_id);\n    const result=await analyzePhotoFree(bytes);\n    return send(chat,"📸 Анализ скриншота\\n\\n"+result);\n  } catch(e) {\n    console.log("PHOTO ANALYSIS ERROR:",e.stack||e.message);\n    return send(chat,"⚠️ Не удалось разобрать скриншот.\\n\\nПричина: "+String(e.message||e).slice(0,500));\n  }\n}
 
 async function handle(m){
   const chat=m.chat?.id;if(!chat)return;const text=String(m.text||"").trim();
