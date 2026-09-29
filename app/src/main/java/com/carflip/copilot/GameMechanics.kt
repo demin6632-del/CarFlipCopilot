@@ -21,6 +21,9 @@ object GameMechanics {
     private const val ACTION_WINDOW_MS = 60_000L
     private const val RULES = "rules"
     private const val RULE_MIN_CONFIRMATIONS = 2
+    private const val SEQUENCES = "sequences"
+    private const val SEQUENCE_MIN_CONFIRMATIONS = 2
+    private const val LAST_RESULT = "last_result"
 
     data class Observation(
         val domain: String,
@@ -170,7 +173,10 @@ object GameMechanics {
 
         val resultText = parts.joinToString("; ")
         recordTransition(c, "economy", "ACTION_RESULT: $label -> $resultText", screen, now)
-        if (label.isNotBlank()) recordRuleEvidence(c, actionRuleKey(label, parts), "economy", "ACTION_RESULT: $label -> $resultText", screen, now)
+        if (label.isNotBlank()) {
+            recordRuleEvidence(c, actionRuleKey(label, parts), "economy", "ACTION_RESULT: $label -> $resultText", screen, now)
+            recordObservedResult(c, label, resultText, screen, now)
+        }
         if (garageChanged || vehicleChanged) {
             recordTransition(c, "cars", "ACTION_RESULT: $label -> $resultText", screen, now)
         }
@@ -230,7 +236,48 @@ object GameMechanics {
     }
 
     private fun actionRuleKey(label: String, parts: List<String>): String =
-        normalize(label) + " -> " + parts.joinToString("; ") { normalize(it).replace(Regex("\d+"), "#") }
+        normalize(label) + " -> " + parts.joinToString("; ") { normalize(it).replace(Regex("\\d+"), "#") }
+
+    private fun sequenceKey(from: String, to: String): String =
+        normalize(from).replace(Regex("\\d+"), "#") + " -> " + normalize(to).replace(Regex("\\d+"), "#")
+
+    private fun recordSequenceEvidence(c: Context, from: String, to: String, domain: String, evidence: String, screen: String, now: Long) {
+        val p = prefs(c)
+        val a = try { JSONArray(p.getString(SEQUENCES, "[]")) } catch (_: Exception) { JSONArray() }
+        val key = sequenceKey(from, to)
+        var found: JSONObject? = null
+        for (i in 0 until a.length()) {
+            val x = a.optJSONObject(i) ?: continue
+            if (x.optString("key") == key) { found = x; break }
+        }
+        val seq = found ?: JSONObject()
+            .put("key", key)
+            .put("from", normalize(from))
+            .put("to", normalize(to))
+            .put("domain", domain)
+            .put("confirmations", 0)
+            .put("first_seen", now)
+        val confirmations = seq.optInt("confirmations", 0) + 1
+        seq.put("confirmations", confirmations)
+            .put("last_seen", now)
+            .put("evidence", evidence.take(500))
+            .put("screen", screen)
+            .put("status", if (confirmations >= SEQUENCE_MIN_CONFIRMATIONS) "DEPENDENCY_CONFIRMED" else "SEQUENCE_OBSERVED")
+        if (found == null) a.put(seq)
+        while (a.length() > 300) a.remove(0)
+        p.edit().putString(SEQUENCES, a.toString()).apply()
+    }
+
+    private fun recordObservedResult(c: Context, label: String, resultText: String, screen: String, now: Long) {
+        if (label.isBlank()) return
+        val current = normalize(label)
+        val previous = prefs(c).getString(LAST_RESULT, "") ?: ""
+        if (previous.isNotBlank() && previous != current) {
+            recordSequenceEvidence(c, previous, current, "sequence",
+                "observed result sequence: $previous -> $current; result=$resultText", screen, now)
+        }
+        prefs(c).edit().putString(LAST_RESULT, current).apply()
+    }
 
     fun observe(
         c: Context,
@@ -351,6 +398,9 @@ object GameMechanics {
         val rules = try { JSONArray(prefs(c).getString(RULES, "[]")) } catch (_: Exception) { JSONArray() }
         o.put("rules", rules)
         o.put("confirmed_rules", (0 until rules.length()).count { rules.optJSONObject(it)?.optString("status") == "CONFIRMED" })
+        val sequences = try { JSONArray(prefs(c).getString(SEQUENCES, "[]")) } catch (_: Exception) { JSONArray() }
+        o.put("sequences", sequences)
+        o.put("confirmed_dependencies", (0 until sequences.length()).count { sequences.optJSONObject(it)?.optString("status") == "DEPENDENCY_CONFIRMED" })
         return o
     }
 
