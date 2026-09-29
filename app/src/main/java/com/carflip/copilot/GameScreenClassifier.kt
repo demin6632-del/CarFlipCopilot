@@ -45,7 +45,6 @@ object GameScreenClassifier {
         }
         if (match != null) return match.type
         if (GameParser.plateAuction(text)) return "АУКЦИОН_НОМЕРОВ"
-        if (GameParser.carAuction(text)) return "АУКЦИОН_АВТО"
         if (GameParser.name(text).isNotBlank() || GameParser.price(text) != null || GameParser.hp(text) != null || GameParser.plate(text).isNotBlank()) return "АВТО"
         return "ОБЗОР"
     }
