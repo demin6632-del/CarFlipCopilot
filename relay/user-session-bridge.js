@@ -23,6 +23,8 @@ class TelegramUserBridge {
     this.state = { connected:false, game_bot:this.gameUsername };
     this.authPromise = null;
     this.tickets = new Map();
+    this.lastGameMessage = null;
+    this.gameMessages = [];
   }
 
   configured() {
@@ -137,7 +139,19 @@ class TelegramUserBridge {
   async handleGameMessage(msg) {
     const text=String(msg.message||"").trim();
     const state=parseGameText(text);
+    const buttons=[];
+    try {
+      const rows=msg.replyMarkup && msg.replyMarkup.rows ? msg.replyMarkup.rows : [];
+      for (const row of rows) for (const b of (row.buttons||[])) {
+        const label=String(b.text||"").trim();
+        if(label) buttons.push(label);
+      }
+    } catch {}
+    state.buttons=buttons;
     state.raw_message=text.slice(0,12000);
+    this.lastGameMessage={text:state.raw_message,buttons,received_at:Date.now()};
+    this.gameMessages.push(this.lastGameMessage);
+    if(this.gameMessages.length>20) this.gameMessages.shift();
     state.game_bot="@"+this.gameUsername;
     state.connected=true;
     state.received_at=Date.now();
@@ -165,7 +179,11 @@ class TelegramUserBridge {
   }
 
   status() {
-    return Object.assign({},this.state,{game_bot:"@"+this.gameUsername,auth_in_progress:!!this.authPromise});
+    return Object.assign({},this.state,{game_bot:"@"+this.gameUsername,auth_in_progress:!!this.authPromise,last_game_message:this.lastGameMessage});
+  }
+
+  recentGameMessages(limit=10) {
+    return this.gameMessages.slice(-Math.max(1,Math.min(20,Number(limit)||10)));
   }
 }
 
