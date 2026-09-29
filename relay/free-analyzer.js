@@ -16,16 +16,12 @@ async function getWorker() {
 function normalizeText(value) {
   return String(value || "")
     .replace(/\u00a0/g, " ")
-    .replace(/\r/g, "
-")
+    .replace(/\r/g, "\n")
     .replace(/[|]/g, " ")
     .replace(/[ \t]+/g, " ")
-    .replace(/
-{3,}/g, "
-")
+    .replace(/\n{3,}/g, "\n\n")
     .trim();
 }
-
 function normalizeOcrDigits(value) {
   return String(value || "")
     .replace(/[ОоО]/g, "0")
@@ -57,13 +53,11 @@ function numberCandidates(text) {
 
 function lineInfo(text) {
   return String(text || "")
-    .split(/
-+/)
+    .split(/\n+/)
     .map(x => x.trim())
     .filter(Boolean)
     .map((text, index) => ({ text, index }));
 }
-
 function findLabeledNumber(lines, labels, options = {}) {
   const pattern = new RegExp(labels.join("|"), "i");
   const maxDistance = options.maxDistance ?? 2;
