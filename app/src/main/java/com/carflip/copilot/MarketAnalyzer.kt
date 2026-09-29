@@ -30,12 +30,36 @@ object MarketAnalyzer {
     private const val MAX = 80
 
     private fun p(c:Context)=c.getSharedPreferences(PREF,Context.MODE_PRIVATE)
-    private fun norm(s:String)=s.lowercase().replace('ё','е').replace(Regex("\s+")," ").trim()
+    private fun norm(s:String)=s.lowercase().replace('ё','е').replace(Regex("\\s+")," ").trim()
     private fun arr(c:Context)=try{JSONArray(p(c).getString(CANDIDATES,"[]"))}catch(_:Exception){JSONArray()}
 
     private fun history(c:Context,name:String):List<Deal>{
         val target=norm(name)
         return CopilotState.deals(c).filter{norm(it.name)==target && it.buy!=null && it.sell!=null}
+    }
+
+    private fun tokens(name:String):Set<String> =
+        norm(name).split(Regex("[^a-zа-я0-9]+")).filter{it.length>=3}.toSet()
+
+    private fun similarHistory(c:Context,name:String):List<Deal>{
+        val target=tokens(name)
+        if(target.isEmpty()) return emptyList()
+        return CopilotState.deals(c).filter{d->
+            d.sell!=null && tokens(d.name).let{other->
+                val common=target.intersect(other).size
+                common>=2 || (target.size==1 && common==1)
+            }
+        }
+    }
+
+    private fun saleEstimate(c:Context,v:VehicleSnapshot,exact:List<Deal>):Pair<Long?,Int>{
+        if(exact.isNotEmpty()) return Pair(exact.mapNotNull{it.sell}.average().toLong(), min(90,60+exact.size*10))
+        val similar=similarHistory(c,v.name)
+        if(similar.isEmpty()) return Pair(null,45)
+        val sales=similar.mapNotNull{it.sell}
+        if(sales.isEmpty()) return Pair(null,45)
+        val estimate=sales.average().toLong()
+        return Pair(estimate,min(72,45+similar.size*7))
     }
 
     fun observe(c:Context,v:VehicleSnapshot,screen:String){
@@ -44,9 +68,9 @@ object MarketAnalyzer {
         if(!(s.contains("покуп")||s.contains("авто")||s.contains("рын")||s.contains("market"))) return
 
         val h=history(c,v.name)
-        val expected=h.mapNotNull{it.sell}.takeIf{it.isNotEmpty()}?.average()?.toLong()
-        val averageBuy=h.mapNotNull{it.buy}.takeIf{it.isNotEmpty()}?.average()?.toLong()
-        val baseline=expected ?: averageBuy
+        val sale= saleEstimate(c,v,h)
+        val expected=sale.first
+        val baseline=expected
         val profit=baseline?.let{it-v.price}
         val roi=profit?.let{if(v.price>0)it.toDouble()/v.price*100.0 else null}
 
@@ -62,10 +86,10 @@ object MarketAnalyzer {
         } else risk += 8
         if(v.owners!=null) risk += max(0,(v.owners-2)*5) else risk += 4
         if(v.paintedParts!=null) risk += min(20,v.paintedParts*4) else risk += 3
-        if(expected==null) risk += 22
+        if(expected==null) risk += 22 else if(h.isEmpty()) risk += 12
         risk=min(100,risk)
 
-        val confidence=min(95,45 + h.size*12 + if(v.mileage!=null)5 else 0 + if(v.owners!=null)5 else 0)
+        val confidence=min(95,sale.second + if(v.mileage!=null)5 else 0 + if(v.owners!=null)5 else 0 + if(v.paintedParts!=null)3 else 0)
         val key=norm(v.name)+"|"+v.price+"|"+v.plate
         val o=JSONObject().put("key",key).put("name",v.name).put("price",v.price)
             .put("plate",v.plate).put("origin",v.origin).put("risk",risk)
