@@ -10,7 +10,7 @@ data class MarketCandidate(
     val key:String,val name:String,val price:Long,val hp:Int?,val mileage:Long?,val owners:Int?,val paintedParts:Int?,
     val plate:String,val origin:String,val expectedSale:Long?,val fees:Long,val expectedProfit:Long?,val roi:Double?,
     val risk:Int,val confidence:Int,val capitalLocked:Long,val capitalUtilizationPercent:Double,
-    val holdingDaysEstimate:Double?,val turnoverConfidence:Int,val capitalPressure:Int,val garagePressure:Int,val updatedAt:Long
+    val holdingDaysEstimate:Double?,val turnoverConfidence:Int,val capitalPressure:Int,val garagePressure:Int,val profitPerDay:Double?,val turnoverVsHistory:Double?,val updatedAt:Long
 )
 
 object MarketAnalyzer {
@@ -47,11 +47,12 @@ object MarketAnalyzer {
         risk=min(100,risk)
         val confidence=min(95,sale.second+if(v.mileage!=null)5 else 0+if(v.owners!=null)5 else 0+if(v.paintedParts!=null)3 else 0)
         val cap=CapitalAnalyzer.profile(c,v.price,fees,v.name)
+        val efficiency=profit?.let{DealEfficiencyAnalyzer.candidateScore(c,v.name,it,cap.locked,cap.holdingDays)}
         val key=norm(v.name)+"|"+v.price+"|"+v.plate
         val o=JSONObject().put("key",key).put("name",v.name).put("price",v.price).put("plate",v.plate).put("origin",v.origin)
             .put("fees",fees).put("risk",risk).put("confidence",confidence).put("capitalLocked",cap.locked)
             .put("capitalUtilizationPercent",cap.utilizationPercent).put("holdingDaysEstimate",cap.holdingDays)
-            .put("turnoverConfidence",cap.turnoverConfidence).put("capitalPressure",cap.pressure).put("garagePressure",cap.garagePressure)
+            .put("turnoverConfidence",cap.turnoverConfidence).put("capitalPressure",cap.pressure).put("garagePressure",cap.garagePressure).put("profitPerDay",efficiency?.optDouble("profit_per_day",Double.NaN)).put("turnoverVsHistory",efficiency?.optDouble("turnover_vs_history",Double.NaN))
             .put("updatedAt",System.currentTimeMillis())
         v.hp?.let{o.put("hp",it)};v.mileage?.let{o.put("mileage",it)};v.owners?.let{o.put("owners",it)};v.paintedParts?.let{o.put("paintedParts",it)}
         expected?.let{o.put("expectedSale",it)};profit?.let{o.put("expectedProfit",it)};roi?.let{o.put("roi",it)}
@@ -71,7 +72,7 @@ object MarketAnalyzer {
                 if(o.has("roi"))o.optDouble("roi")else null,o.optInt("risk",50),o.optInt("confidence",45),
                 o.optLong("capitalLocked",o.optLong("price")),o.optDouble("capitalUtilizationPercent",0.0),
                 if(o.has("holdingDaysEstimate")&&!o.isNull("holdingDaysEstimate"))o.optDouble("holdingDaysEstimate")else null,
-                o.optInt("turnoverConfidence",0),o.optInt("capitalPressure",50),o.optInt("garagePressure",0),o.optLong("updatedAt"))
+                o.optInt("turnoverConfidence",0),o.optInt("capitalPressure",50),o.optInt("garagePressure",0),if(o.has("profitPerDay"))o.optDouble("profitPerDay").takeIf{!it.isNaN()}else null,if(o.has("turnoverVsHistory"))o.optDouble("turnoverVsHistory").takeIf{!it.isNaN()}else null,o.optLong("updatedAt"))
         }.sortedByDescending{score(it)}
     }
     private fun score(x:MarketCandidate):Double{
@@ -84,7 +85,7 @@ object MarketAnalyzer {
         list.take(10).forEach{v->out.put(JSONObject().put("name",v.name).put("price",v.price).put("expected_sale",v.expectedSale).put("fees",v.fees)
             .put("expected_profit",v.expectedProfit).put("roi_percent",v.roi).put("risk",v.risk).put("confidence",v.confidence)
             .put("capital_locked",v.capitalLocked).put("capital_utilization_percent",v.capitalUtilizationPercent).put("holding_days_estimate",v.holdingDaysEstimate)
-            .put("turnover_confidence",v.turnoverConfidence).put("capital_pressure",v.capitalPressure).put("garage_pressure",v.garagePressure).put("plate",v.plate)
+            .put("turnover_confidence",v.turnoverConfidence).put("capital_pressure",v.capitalPressure).put("garage_pressure",v.garagePressure).put("profit_per_day",v.profitPerDay).put("turnover_vs_history",v.turnoverVsHistory).put("plate",v.plate)
             .put("mileage",v.mileage).put("owners",v.owners).put("painted_parts",v.paintedParts))}
         val b=best(c)
         return JSONObject().put("count",list.size).put("candidates",out).put("best",b?.let{JSONObject().put("name",it.name).put("price",it.price)
