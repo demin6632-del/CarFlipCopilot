@@ -1,9 +1,14 @@
 const { createWorker } = require("tesseract.js");
 const sharp = require("sharp");
 
-let workerPromise;
+let workerPromise;\nlet analysisQueue = Promise.resolve();
 async function getWorker() {
-  if (!workerPromise) workerPromise = createWorker("rus+eng");
+  if (!workerPromise) {
+    workerPromise = createWorker("rus+eng").catch(err => {
+      workerPromise = null;
+      throw err;
+    });
+  }
   return workerPromise;
 }
 
@@ -270,48 +275,73 @@ async function recognize(worker, image) {
   };
 }
 
-async function analyzeImage(input) {
+async function analyzeImageQueued(input) {
+  const previous = analysisQueue;
+  let release;
+  analysisQueue = new Promise(resolve => { release = resolve; });
+  await previous;
+  try {
+    return await analyzeImageInternal(input);
+  } finally {
+    release();
+  }
+}
+
+async function analyzeImageInternal(input) {
   const worker = await getWorker();
   const passes = [];
-
-  for (const mode of ["normal", "sharp", "threshold"]) {
+  const run = async mode => {
     try {
       passes.push(await recognize(worker, await preprocess(input, mode)));
-    } catch (_) {}
+    } catch (e) {
+      console.log("OCR PASS ERROR", mode, e.message);
+    }
+  };
+
+  // Fast path: one OCR pass first. Extra passes are used only when the first
+  // result is weak or misses important game labels.
+  await run("normal");
+  let best = passes[0] || { text: "", confidence: 0 };
+  const needsSecondPass =
+    best.confidence < 62 ||
+    !/баланс|гараж|цена|стоимость|покуп|продаж|аукцион|номер|пробег|л\.?\s*с\.?/i.test(best.text);
+  if (needsSecondPass) {
+    await run("sharp");
+    best = passes.slice().sort((a, b) =>
+      (Number(b.confidence || 0) + Math.min(25, b.text.length / 80)) -
+      (Number(a.confidence || 0) + Math.min(25, a.text.length / 80))
+    )[0] || best;
   }
+  const needsThirdPass =
+    !best.text.trim() ||
+    best.confidence < 45 ||
+    !/баланс|гараж|цена|стоимость|покуп|продаж|аукцион|номер/i.test(best.text);
+  if (needsThirdPass) await run("threshold");
 
-  try {
-    passes.push(await recognize(worker, input));
-  } catch (_) {}
-
-  const usable = passes.filter(x => x.text.trim());
-  const best = usable.sort((a, b) => {
+  best = passes.filter(x => x.text.trim()).sort((a, b) => {
     const score = x => Number(x.confidence || 0) + Math.min(25, x.text.length / 80);
     return score(b) - score(a);
   })[0] || { text: "", confidence: 0 };
 
   const state = parseState(best.text);
-
-  // Защита от очевидных ложных балансов: баланс должен быть найден рядом
-  // с подписью, а не выбран как случайное число из всего OCR.
   const balanceLabelPresent = /баланс|сч[её]т|денег|наличн/i.test(best.text);
-  const suspiciousBalance = balanceLabelPresent && (
-    state.balance == null ||
-    state.balance < 10000
-  );
-
+  const suspiciousBalance = balanceLabelPresent && (state.balance == null || state.balance < 10000);
   if (suspiciousBalance) state.balance = null;
 
   return {
     ...state,
     decision: decide(state, best.confidence),
     ocr_confidence: Math.round(best.confidence),
-    engine: "Tesseract.js local OCR + multi-pass preprocessing",
+    engine: "Tesseract.js local OCR + adaptive multi-pass preprocessing",
     paid_api: false,
     warning: suspiciousBalance
       ? "Баланс распознан ненадёжно — бот не будет показывать предположительную сумму."
       : null
   };
+}
+
+function analyzeImage(input) {
+  return analyzeImageQueued(input);
 }
 
 module.exports = { analyzeImage, parseState, decide };
