@@ -61,7 +61,7 @@ async function registerBotCommands(){
     {command:"probe",description:"Проверить связь с игрой"},
     {command:"help",description:"Помощь и список команд"}
   ];
-  try{ await tg("setMyCommands",{commands}); console.log("Telegram commands registered"); }
+  try{ await tg("setMyCommands",{commands,scope:{type:"all_private_chats"}}); console.log("Telegram commands registered"); }
   catch(e){ console.log("COMMANDS REGISTER ERROR:",e.message); }
 }
 function tg(method,body){return new Promise((resolve,reject)=>{
@@ -163,7 +163,7 @@ async function handle(m){
   const chat=m.chat?.id;if(!chat)return;const text=String(m.text||"").trim();
   if(text==="/start"){users.set(chat,{connected:false});return send(chat,"🚗 CarFlipCopilot\n\nЯ работаю прямо внутри Telegram. Android-приложение для общения со мной не нужно.\n\nМоя задача — смотреть состояние «Симулятора Перекупа», учитывать историю сделок и говорить одно конкретное следующее действие.\n\nНачни с «🔗 Подключить игру».");}
   if(text==="/connect")return connect(chat);if(text==="/state")return state(chat);if(text==="/advice")return advice(chat);if(text==="/probe")return probe(chat);if(text==="/bridge")return bridgeStatus(chat);if(text==="/game")return gameDebug(chat);
-  if(text==="/help")return send(chat,"Команды:\n/connect — подключение игры\n/state — состояние\n/advice — что делать сейчас\n/probe — проверить связь с игровым ботом\n\nМожно прислать скриншот текущей ситуации — бот разберёт его прямо здесь.");
+  if(text==="/help")return send(chat,"Команды:\n/connect — подключение игры\n/state — состояние\n/advice — что делать сейчас\n/probe — проверить связь с игрой\n/bridge — статус Telegram-моста\n/game — последнее сообщение игры и кнопки\n/help — эта справка\n\nМожно прислать скриншот текущей ситуации — бот разберёт его прямо здесь.");
   const forwarded=forwardedInfo(m);
   const forwardedImage=imageFileId(m);
   if(forwardedImage){
@@ -200,7 +200,22 @@ async function advice(chat){
     return send(chat,out,rows.length?{reply_markup:{inline_keyboard:rows}}:{});
   }catch(e){return send(chat,"⚠️ Помощник пока не получил состояние игры: "+e.message);}
 }
-async function probe(chat){try{await tg("sendMessage",{chat_id:"@"+GAME_USERNAME,text:"/start"});pendingGameProbes.set(chat,Date.now());return send(chat,"🧪 Запрос отправлен в @"+GAME_USERNAME+".\n\nЭто только тест Telegram-связи между ботами. Он не означает, что CarFlipCopilot получил доступ к твоему игровому аккаунту. Для этого нужен отдельный пользовательский игровой мост.");}catch(e){return send(chat,"⚠️ Telegram не разрешил отправить тест в @"+GAME_USERNAME+".\n\nЭто нормально, если у игрового бота не включён Bot-to-Bot Communication Mode.");}}
+async function probe(chat){
+  const s=userBridge.status();
+  if(!userBridge.configured()){
+    return send(chat,"🧪 Проверка связи\n\n❌ Пользовательский Telegram-мост не настроен.\n\nПроверка через Bot API отключена: Telegram не позволяет одному боту писать другому боту. Для доступа к твоей игре нужен пользовательский Telegram-мост.");
+  }
+  if(!s.connected){
+    return send(chat,"🧪 Проверка связи\n\n❌ Игровая Telegram-сессия пока не подключена.\n\nСначала нажми «🔗 Подключить игру» и заверши авторизацию. После этого эта кнопка будет проверять именно связь с @"+GAME_USERNAME+".");
+  }
+  try{
+    await userBridge.sendGameMessage("/start");
+    pendingGameProbes.set(chat,Date.now());
+    return send(chat,"🧪 Проверка связи\n\n✅ Запрос /start отправлен в @"+GAME_USERNAME+" от твоей подключённой Telegram-сессии.\n\nЖду ответ игры и обновление состояния.");
+  }catch(e){
+    return send(chat,"⚠️ Не удалось проверить связь с игрой.\n\nПричина: "+String(e.message||e).slice(0,500));
+  }
+}
 async function callback(q){
   const chat=q.message?.chat?.id,data=q.data;try{await tg("answerCallbackQuery",{callback_query_id:q.id});}catch{}
   if(data.startsWith("confirmbtn:")){const id=data.slice(11),item=gameButtonMap.get(id);if(!item||item.chat!==String(chat)||item.expires<Date.now())return send(chat,"⚠️ Рекомендация устарела. Нажми /advice ещё раз.");try{await userBridge.clickGameButton(item.label);gameButtonMap.delete(id);return send(chat,"✅ Выполнено в игре: "+item.label);}catch(e){return send(chat,"❌ Не удалось выполнить «"+item.label+"»: "+e.message);}}
@@ -213,5 +228,6 @@ async function loop(){
   while(true){try{const updates=await tg("getUpdates",{offset,timeout:25,allowed_updates:["message","callback_query"]});for(const u of updates){offset=u.update_id+1;if(u.callback_query)await callback(u.callback_query);else if(u.message)await handle(u.message);}}catch(e){console.log("Telegram polling error:",e.message);await new Promise(r=>setTimeout(r,3000));}}
 }
 if(process.env.TELEGRAM_API_ID&&process.env.TELEGRAM_API_HASH)userBridge.ensureClient().then(()=>console.log("Telegram user bridge initialized")).catch(e=>console.log("Telegram user bridge init:",e.message));
+registerBotCommands().catch(e=>console.log("Telegram command registration:",e.message));
 warmup().then(ok=>console.log("OCR worker warmup:",ok?"ready":"failed")).catch(e=>console.log("OCR warmup error:",e.message));
 loop();
