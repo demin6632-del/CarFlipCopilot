@@ -228,6 +228,7 @@ class TelegramUserBridge {
       const rows=msg.replyMarkup && msg.replyMarkup.rows ? msg.replyMarkup.rows : [];
       for (const row of rows) for (const button of (row.buttons||[])) {
         if (String(button.text||"").trim()!==target) continue;
+        if (typeof msg.click==="function") return msg.click({text:target});
         if (typeof msg.clickButton==="function") return msg.clickButton(button);
       }
     }
