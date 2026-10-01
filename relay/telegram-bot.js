@@ -15,6 +15,8 @@ let offset=0,polling=false;
 process.on("unhandledRejection",e=>console.log("UNHANDLED REJECTION:",e?.stack||e?.message||e));
 process.on("uncaughtException",e=>console.log("UNCAUGHT EXCEPTION:",e?.stack||e?.message||e));
 const users=new Map(),pendingGameProbes=new Map(),gameButtonMap=new Map();
+const photoFingerprints=new Map();
+const processingChats=new Set();
 let lastBridgeNotice=0,lastBridgeFingerprint="";
 
 function normalizeButtonText(s){return String(s||"").toLowerCase().replace(/ё/g,"е").replace(/[^a-zа-я0-9]+/gi," ").trim();}
@@ -146,12 +148,23 @@ async function analyzeForwardedText(chat,text){
 }
 
 async function handlePhoto(chat,photo){
+  if(processingChats.has(String(chat))){
+    return send(chat,"⏳ Предыдущий скриншот ещё анализируется. Дождись результата — новый запуск сейчас не нужен.");
+  }
+  processingChats.add(String(chat));
   try {
     const best = Array.isArray(photo) ? photo[photo.length - 1] : photo;
     if (!best || !best.file_id) throw new Error("Telegram не передал file_id");
     await send(chat, "📥 Скриншот получил. Анализирую локально...");
     const bytes = await downloadTelegramFile(best.file_id);
     if (!bytes || !bytes.length) throw new Error("Telegram вернул пустой файл");
+    const crypto=require("crypto");
+    const fingerprint=crypto.createHash("sha256").update(bytes).digest("hex");
+    const seen=photoFingerprints.get(String(chat));
+    if(seen && seen.fingerprint===fingerprint && Date.now()-seen.time<60000){
+      return send(chat,"ℹ️ Это тот же скриншот, который уже был разобран. Отправь новый экран игры.");
+    }
+    photoFingerprints.set(String(chat),{fingerprint,time:Date.now()});
     const analysis = await analyzeImage(bytes);
     const r = analysis || {};
     try { await relay("/bridge/state", { ...r, source: "telegram_screenshot", received_at: Date.now(), local_decision: r.decision || null }); } catch (e) { console.log("SCREEN STATE PUBLISH ERROR:", e.message); }
@@ -160,6 +173,8 @@ async function handlePhoto(chat,photo){
   } catch (e) {
     console.log("PHOTO ANALYSIS ERROR:", e && (e.stack || e.message || e));
     return send(chat, "⚠️ Анализ не выполнен.\n\nПричина: " + String(e && (e.message || e) || "неизвестная ошибка").slice(0, 700));
+  } finally {
+    processingChats.delete(String(chat));
   }
 }
 
@@ -235,7 +250,7 @@ async function callback(q){
 async function loop(){
   if(polling)return;polling=true;if(!BOT_TOKEN){console.log("Telegram bot disabled: TELEGRAM_BOT_TOKEN missing");return;}
   console.log("Telegram bot starting for @"+GAME_USERNAME);
-  while(true){try{const updates=await tg("getUpdates",{offset,timeout:25,allowed_updates:["message","callback_query"]});for(const u of updates){offset=u.update_id+1;if(u.callback_query)await callback(u.callback_query);else if(u.message)await handle(u.message);}}catch(e){console.log("Telegram polling error:",e.message);await new Promise(r=>setTimeout(r,3000));}}
+  while(true){try{const updates=await tg("getUpdates",{offset,timeout:25,allowed_updates:["message","callback_query"]});for(const u of updates){offset=u.update_id+1;if(u.callback_query)await callback(u.callback_query);else if(u.message)await handle(u.message);}}catch(e){const msg=String(e.message||e);console.log("Telegram polling error:",msg);const delay=/Conflict: terminated by other getUpdates/i.test(msg)?15000:3000;await new Promise(r=>setTimeout(r,delay));}}
 }
 if(process.env.TELEGRAM_API_ID&&process.env.TELEGRAM_API_HASH)userBridge.ensureClient().then(()=>console.log("Telegram user bridge initialized")).catch(e=>console.log("Telegram user bridge init:",e.message));
 registerBotCommands().catch(e=>console.log("Telegram command registration:",e.message));
