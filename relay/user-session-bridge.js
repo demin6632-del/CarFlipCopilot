@@ -26,6 +26,7 @@ class TelegramUserBridge {
     this.tickets = new Map();
     this.lastGameMessage = null;
     this.gameMessages = [];
+    this.webhookHandler = null;
   }
 
   configured() {
@@ -278,6 +279,23 @@ function createConnectServer(bridge, port=8787) {
   const server=http.createServer(async(req,res)=>{
     const u=new URL(req.url,"http://localhost");
     res.setHeader("cache-control","no-store");
+    if(u.pathname==="/telegram/webhook" && req.method==="POST") {
+      let body="";
+      req.on("data",chunk=>{ if(body.length<2*1024*1024) body+=chunk.toString(); });
+      req.on("end",async()=>{
+        try {
+          const update=JSON.parse(body||"{}");
+          if(typeof bridge.webhookHandler==="function") await bridge.webhookHandler(update);
+          res.writeHead(200,{"content-type":"application/json"});
+          res.end(JSON.stringify({ok:true}));
+        } catch(e) {
+          console.log("TELEGRAM WEBHOOK ERROR:",e.stack||e.message||e);
+          res.writeHead(200,{"content-type":"application/json"});
+          res.end(JSON.stringify({ok:false}));
+        }
+      });
+      return;
+    }
     if(u.pathname==="/health") {
       res.writeHead(200,{"content-type":"application/json"});
       res.end(JSON.stringify({ok:true,service:"carflip-copilot-telegram"}));
