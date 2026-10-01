@@ -48,10 +48,18 @@ function setAiStatus(message){lastAiStatus=String(message||"");broadcast({type:"
 function safeName(s){return String(s||"attachment").replace(/[^a-zA-Z0-9._-]/g,"_").slice(0,120)}
 function json(res,status,obj){res.writeHead(status,{"content-type":"application/json"});res.end(JSON.stringify(obj))}
 function broadcast(obj,except){
- try{
-  const data=frame(obj);
-  for(const c of clients)if(c!==except)c.write(data);
- }catch{}
+ let data;
+ try { data=frame(obj); } catch(e) { log("WS FRAME ERROR",e.message); return; }
+ for(const c of [...clients]){
+  if(c===except || c.destroyed || c.writableEnded){ clients.delete(c); continue; }
+  try {
+   c.write(data);
+  } catch(e) {
+   clients.delete(c);
+   try { c.destroy(); } catch {}
+   log("WS WRITE ERROR",e.message);
+  }
+ }
 }
 function frame(obj){
  const p=Buffer.from(JSON.stringify(obj));
