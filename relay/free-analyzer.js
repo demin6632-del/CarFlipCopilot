@@ -286,13 +286,33 @@ async function withTimeout(promise, ms, label) {
   }
 }
 
+async function resetWorker() {
+  const current = workerPromise;
+  workerPromise = null;
+  if (!current) return;
+  try {
+    const worker = await Promise.race([
+      current,
+      new Promise((_, reject) => setTimeout(() => reject(new Error("worker resolve timeout")), 2000))
+    ]);
+    if (worker && typeof worker.terminate === "function") await worker.terminate();
+  } catch (e) {
+    console.log("OCR WORKER RESET:", e.message);
+  }
+}
+
 async function analyzeImageQueued(input) {
   const previous = analysisQueue;
   let release;
   analysisQueue = new Promise(resolve => { release = resolve; });
-  await withTimeout(previous, 15000, "OCR queue");
   try {
+    await withTimeout(previous, 15000, "OCR queue");
     return await withTimeout(analyzeImageInternal(input), 15000, "OCR analysis");
+  } catch (e) {
+    if (/OCR (queue|analysis) timeout/i.test(String(e.message || ""))) {
+      await resetWorker();
+    }
+    throw e;
   } finally {
     release();
   }
