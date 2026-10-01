@@ -181,8 +181,14 @@ async function handle(m){
   if(text)return send(chat,"Используй кнопки ниже или пришли скриншот игры или пересланное сообщение из игры.");
 }
 async function connect(chat){
-  if(CONNECT_URL||BRIDGE_PUBLIC_URL){const url=CONNECT_URL||(BRIDGE_PUBLIC_URL+"/connect?ticket="+encodeURIComponent(userBridge.createTicket(chat)));return send(chat,"🔗 Открываю защищённое подключение.\n\nПосле авторизации мост привяжет твой Telegram-профиль к состоянию игры.",{reply_markup:{inline_keyboard:[[{text:"🎮 Подключить игру",web_app:{url}}],[{text:"🧪 Проверить связь",callback_data:"probe"}],[{text:"↩️ Назад",callback_data:"menu"}]]}});}
-  return send(chat,"🔗 Подключение игры\n\nИгра: @"+GAME_USERNAME+"\n\nПользовательский Telegram-мост: "+(userBridge.configured()?"готов":"не настроен")+"\n\nБот уже готов к игровому мосту, но URL авторизации пока не настроен. Я не буду просить пароль или код Telegram в сообщении.\n\nПока можно нажать «🧪 Проверить связь» или присылать скриншоты — они анализируются прямо через Telegram.");
+  if(CONNECT_URL||BRIDGE_PUBLIC_URL){
+    const url=CONNECT_URL||(BRIDGE_PUBLIC_URL+"/connect?ticket="+encodeURIComponent(userBridge.createTicket(chat)));
+    if(!userBridge.configured()){
+      return send(chat,"🔗 Подключение игры\n\nАвтоматический мост сейчас не активирован: на сервере отсутствуют TELEGRAM_API_ID и TELEGRAM_API_HASH.\n\n📸 Скриншотный режим уже доступен — просто пришли экран игры или перешли сообщение из неё.\n\n🔐 API-данные не отправляй в чат.",{reply_markup:{inline_keyboard:[[{text:"📸 Использовать скриншотный режим",callback_data:"photo"}],[{text:"↩️ Назад",callback_data:"menu"}]]}});
+    }
+    return send(chat,"🔗 Открываю защищённое подключение.\n\nПосле авторизации мост привяжет твой Telegram-профиль к состоянию игры.",{reply_markup:{inline_keyboard:[[{text:"🎮 Подключить игру",web_app:{url}}],[{text:"🧪 Проверить связь",callback_data:"probe"}],[{text:"↩️ Назад",callback_data:"menu"}]]}});
+  }
+  return send(chat,"🔗 Подключение игры\n\nИгра: @"+GAME_USERNAME+"\n\nПользовательский Telegram-мост: "+(userBridge.configured()?"готов":"не настроен")+"\n\n📸 Скриншотный режим уже работает без API-данных. Пришли скриншот или перешли сообщение из игры — бот разберёт его прямо в Telegram.\n\n🔐 Не отправляй API hash, коды входа, пароль 2FA или сессию в чат.");
 }
 async function gameDebug(chat){
   const s=userBridge.status(),m=s.last_game_message;if(!m)return send(chat,"🎮 Пока нет сообщения от игрового бота. Сначала подключи игру и нажми «Проверить связь с игрой».");
@@ -203,7 +209,7 @@ async function advice(chat){
 async function probe(chat){
   const s=userBridge.status();
   if(!userBridge.configured()){
-    return send(chat,"🧪 Проверка связи\n\n❌ Пользовательский Telegram-мост не настроен.\n\nПроверка через Bot API отключена: Telegram не позволяет одному боту писать другому боту. Для доступа к твоей игре нужен пользовательский Telegram-мост.");
+    return send(chat,"🧪 Проверка связи\n\nℹ️ Автоматический мост пока не настроен: для входа в твой личный Telegram нужен TELEGRAM_API_ID + TELEGRAM_API_HASH.\n\n📸 Но бот уже работает без них: пришли скриншот игры или перешли сообщение из игры — я распознаю состояние и дам одно конкретное следующее действие.\n\n🔐 API-данные не нужно отправлять мне в чат.");
   }
   if(!s.connected){
     return send(chat,"🧪 Проверка связи\n\n❌ Игровая Telegram-сессия пока не подключена.\n\nСначала нажми «🔗 Подключить игру» и заверши авторизацию. После этого эта кнопка будет проверять именно связь с @"+GAME_USERNAME+".");
