@@ -126,6 +126,7 @@ function imageFileId(m){
 async function analyzeForwardedText(chat,text){
   const state=parseState(text);
   const decision=decide(state,100);
+  try { await relay("/bridge/state", { ...state, source: "telegram_forward", received_at: Date.now(), local_decision: decision }); } catch (e) { console.log("FORWARD STATE PUBLISH ERROR:", e.message); }
   const lines=[
     "📨 ПЕРЕСЛАННОЕ СООБЩЕНИЕ ИЗ ИГРЫ","",
     state.balance!=null?"💰 Баланс: "+state.balance.toLocaleString("ru-RU")+" ₽":"",
@@ -151,6 +152,9 @@ async function handlePhoto(chat,photo){
     await send(chat, "📥 Скриншот получил. Анализирую локально...");
     const bytes = await downloadTelegramFile(best.file_id);
     if (!bytes || !bytes.length) throw new Error("Telegram вернул пустой файл");
+    const analysis = await analyzeImage(bytes);
+    const r = analysis || {};
+    try { await relay("/bridge/state", { ...r, source: "telegram_screenshot", received_at: Date.now(), local_decision: r.decision || null }); } catch (e) { console.log("SCREEN STATE PUBLISH ERROR:", e.message); }
     const result = await analyzePhotoFree(bytes);
     return send(chat, "📸 Анализ скриншота\n\n" + result);
   } catch (e) {
