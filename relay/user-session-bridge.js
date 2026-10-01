@@ -393,7 +393,7 @@ function createConnectServer(bridge, port=8787) {
 }
 
 function connectHtml() {
-  return \`<!doctype html><meta name="viewport" content="width=device-width,initial-scale=1"><title>CarFlipCopilot — подключение</title>
+  return `<!doctype html><meta name="viewport" content="width=device-width,initial-scale=1"><title>CarFlipCopilot — подключение</title>
 <style>body{font-family:system-ui;margin:0;background:#111;color:#fff;text-align:center;padding:24px}main{max-width:520px;margin:auto}input,button{box-sizing:border-box;width:100%;padding:13px;margin:7px 0;border:0;border-radius:12px;font-size:16px}input{background:#222;color:#fff;border:1px solid #444}button{background:#fff;color:#111;font-weight:600}#qr{width:360px;max-width:90vw;background:#fff;padding:8px;border-radius:12px;display:none}.box{margin-top:18px;padding:16px;background:#1a1a1a;border-radius:16px}</style>
 <main><h2>🔗 Подключение игры</h2><p id="status">Подключение Telegram</p>
 <div class="box"><input id="phone" inputmode="tel" autocomplete="tel" placeholder="+79991234567"><button id="send">Получить код в Telegram</button></div>
@@ -405,7 +405,7 @@ async function post(url,data){const r=await fetch(url,{method:"POST",headers:{"c
 send.onclick=async()=>{status.textContent="Отправляю код…";const j=await post("/connect/phone/start",{ticket,phone:phone.value});if(j.error){status.textContent="Ошибка: "+j.error;return}id=j.id;codeBox.style.display="block";status.textContent="Код отправлен в Telegram. Введи его здесь.";};
 verify.onclick=async()=>{status.textContent="Проверяю…";const j=await post("/connect/phone/verify",{id,code:code.value,password:password.value});if(j.error){status.textContent="Ошибка: "+j.error;return}if(j.needsPassword){status.textContent="Нужен пароль 2FA — введи его выше и снова нажми кнопку.";return}if(j.connected){status.textContent="✅ Telegram-сессия подключена. Можно вернуться в бота.";codeBox.style.display="none";}};
 async function qr(){const j=await post("/connect/start",{ticket});if(j.error)return;if(j.connected){status.textContent="✅ Уже подключено";return}const qid=j.id;async function poll(){const s=await (await fetch("/connect/status?id="+encodeURIComponent(qid))).json();if(s.connected){status.textContent="✅ Telegram-сессия подключена. Можно вернуться в бота.";qrEl.style.display="none";return}if(s.qr){qrEl.src="/connect/qr?id="+encodeURIComponent(qid)+"&t="+Date.now();qrEl.style.display="inline-block";open.style.display="inline-block";open.onclick=()=>location.href=s.qr}setTimeout(poll,2500)}poll()}
-const qrEl=document.getElementById("qr");qr();</script>\`;
+const qrEl=document.getElementById("qr");qr();</script>`;
 }
 
 module.exports={TelegramUserBridge,createConnectServer,parseGameText};
