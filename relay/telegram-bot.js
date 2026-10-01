@@ -107,7 +107,7 @@ function forwardedInfo(m){
 }
 function imageFileId(m){
   if(Array.isArray(m?.photo) && m.photo.length) return m.photo[m.photo.length-1]?.file_id || null;
-  if(m?.document && /^image\\//i.test(String(m.document.mime_type||""))) return m.document.file_id || null;
+  if(m?.document && /^image\//i.test(String(m.document.mime_type||""))) return m.document.file_id || null;
   return null;
 }
 async function analyzeForwardedText(chat,text){
