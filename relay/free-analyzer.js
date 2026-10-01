@@ -260,7 +260,7 @@ function decide(state, ocr = 0) {
 
 async function preprocess(input, mode = "normal") {
   const base = Buffer.isBuffer(input) ? input : await sharp(input).png().toBuffer();
-  let image = sharp(base).rotate().resize({ width: 2000, withoutEnlargement: false }).grayscale().normalize();
+  let image = sharp(base).rotate().resize({ width: 1200, withoutEnlargement: false }).grayscale().normalize();
   if (mode === "sharp") image = image.sharpen({ sigma: 1.2 });
   if (mode === "threshold") image = image.sharpen({ sigma: 1.5 }).linear(1.25, -20);
   return image.png().toBuffer();
@@ -274,13 +274,25 @@ async function recognize(worker, image) {
   };
 }
 
+async function withTimeout(promise, ms, label) {
+  let timer;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise((_, reject) => { timer = setTimeout(() => reject(new Error(label + " timeout")), ms); })
+    ]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 async function analyzeImageQueued(input) {
   const previous = analysisQueue;
   let release;
   analysisQueue = new Promise(resolve => { release = resolve; });
-  await previous;
+  await withTimeout(previous, 15000, "OCR queue");
   try {
-    return await analyzeImageInternal(input);
+    return await withTimeout(analyzeImageInternal(input), 15000, "OCR analysis");
   } finally {
     release();
   }
