@@ -11,7 +11,7 @@ const BRIDGE_PUBLIC_URL = String(process.env.BRIDGE_PUBLIC_URL || process.env.RE
 const BRIDGE_PORT = Number(process.env.BRIDGE_PORT || 8787);
 const API = "https://api.telegram.org/bot" + BOT_TOKEN;
 
-let offset=0,polling=false;
+let offset=0,polling=false,webhookEnabled=false;
 process.on("unhandledRejection",e=>console.log("UNHANDLED REJECTION:",e?.stack||e?.message||e));
 process.on("uncaughtException",e=>console.log("UNCAUGHT EXCEPTION:",e?.stack||e?.message||e));
 const users=new Map(),pendingGameProbes=new Map(),gameButtonMap=new Map();
@@ -247,11 +247,36 @@ async function callback(q){
   if(data.startsWith("gamebtn:")){const id=data.slice(8),item=gameButtonMap.get(id);if(!item||item.chat!==String(chat)||item.expires<Date.now())return send(chat,"⚠️ Эта кнопка устарела. Нажми /game ещё раз.");try{await userBridge.clickGameButton(item.label);gameButtonMap.delete(id);return send(chat,"✅ Нажал: "+item.label);}catch(e){return send(chat,"❌ Не удалось нажать «"+item.label+"»: "+e.message);}}
   if(data==="connect")return connect(chat);if(data==="state")return state(chat);if(data==="advice")return advice(chat);if(data==="probe")return probe(chat);if(data==="photo")return send(chat,"📸 Просто отправь сюда скриншот игры.");if(data==="menu")return send(chat,"Главное меню:");
 }
-async function loop(){
-  if(polling)return;polling=true;if(!BOT_TOKEN){console.log("Telegram bot disabled: TELEGRAM_BOT_TOKEN missing");return;}
-  console.log("Telegram bot starting for @"+GAME_USERNAME);
-  while(true){try{const updates=await tg("getUpdates",{offset,timeout:25,allowed_updates:["message","callback_query"]});for(const u of updates){offset=u.update_id+1;if(u.callback_query)await callback(u.callback_query);else if(u.message)await handle(u.message);}}catch(e){const msg=String(e.message||e);console.log("Telegram polling error:",msg);const delay=/Conflict: terminated by other getUpdates/i.test(msg)?15000:3000;await new Promise(r=>setTimeout(r,delay));}}
+async function processUpdate(u){
+  if(!u || typeof u!=="object") return;
+  if(u.update_id!=null) offset=Math.max(offset,Number(u.update_id)+1);
+  if(u.callback_query) return callback(u.callback_query);
+  if(u.message) return handle(u.message);
 }
+async function setupWebhook(){
+  if(!BOT_TOKEN){console.log("Telegram bot disabled: TELEGRAM_BOT_TOKEN missing");return false;}
+  const base=(BRIDGE_PUBLIC_URL||process.env.RENDER_EXTERNAL_URL||"").replace(/\/$/,"");
+  if(!base){console.log("Telegram webhook disabled: public URL missing");return false;}
+  const url=base+"/telegram/webhook";
+  try{
+    await tg("deleteWebhook",{drop_pending_updates:false});
+    await tg("setWebhook",{url,allowed_updates:["message","callback_query"],drop_pending_updates:false});
+    const info=await tg("getWebhookInfo",{});
+    webhookEnabled=!!info?.url;
+    console.log("Telegram webhook:",webhookEnabled?info.url:"not enabled", "pending:",info?.pending_update_count??0);
+    return webhookEnabled;
+  }catch(e){
+    console.log("Telegram webhook setup error:",e.message);
+    return false;
+  }
+}
+async function loop(){
+  if(polling)return;polling=true;
+  const ok=await setupWebhook();
+  if(ok) return;
+  console.log("Telegram bot fallback polling is disabled to prevent 409 conflicts.");
+}
+userBridge.webhookHandler=processUpdate;
 if(process.env.TELEGRAM_API_ID&&process.env.TELEGRAM_API_HASH)userBridge.ensureClient().then(()=>console.log("Telegram user bridge initialized")).catch(e=>console.log("Telegram user bridge init:",e.message));
 registerBotCommands().catch(e=>console.log("Telegram command registration:",e.message));
 warmup().then(ok=>console.log("OCR worker warmup:",ok?"ready":"failed")).catch(e=>console.log("OCR warmup error:",e.message));
