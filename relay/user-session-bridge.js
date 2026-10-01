@@ -45,12 +45,25 @@ class TelegramUserBridge {
   async ensureClient() {
     if (!this.configured()) throw new Error("TELEGRAM_API_ID/TELEGRAM_API_HASH не настроены");
     if (this.client) return this.client;
-    this.client = new TelegramClient(new StringSession(this.loadSession()),this.apiId,this.apiHash,{connectionRetries:5});
-    await this.client.connect();
-    if (await this.client.checkAuthorization()) {
-      await this.attach();
+    const client=new TelegramClient(new StringSession(this.loadSession()),this.apiId,this.apiHash,{connectionRetries:2});
+    this.client=client;
+    try {
+      await Promise.race([
+        client.connect(),
+        new Promise((_,reject)=>setTimeout(()=>reject(new Error("Подключение Telegram не ответило за 15 секунд")),15000))
+      ]);
+      if (await Promise.race([
+        client.checkAuthorization(),
+        new Promise((_,reject)=>setTimeout(()=>reject(new Error("Проверка авторизации Telegram превысила 10 секунд")),10000))
+      ])) {
+        await this.attach();
+      }
+      return client;
+    } catch (e) {
+      try { await client.disconnect(); } catch {}
+      if (this.client===client) this.client=null;
+      throw e;
     }
-    return this.client;
   }
 
   async attach() {
@@ -86,10 +99,25 @@ class TelegramUserBridge {
     return ticket;
   }
 
-  async startAuth(chatId) {
+  resolveChatId(value) {
+    const key=String(value||"").trim();
+    if (!key) throw new Error("Не указан Telegram chat_id или ticket");
+    const ticket=this.tickets.get(key);
+    if (ticket) {
+      if (ticket.expires < Date.now()) {
+        this.tickets.delete(key);
+        throw new Error("Ссылка подключения устарела. Открой «Подключить игру» ещё раз.");
+      }
+      this.tickets.delete(key);
+      return ticket.chatId;
+    }
+    return key;
+  }
+
+  async startAuth(chatIdOrTicket) {
     if (!this.configured()) throw new Error("Сначала настрой TELEGRAM_API_ID и TELEGRAM_API_HASH на сервере");
+    const chatId=this.resolveChatId(chatIdOrTicket);
     if (this.boundChatId && String(this.boundChatId)!==String(chatId)) throw new Error("Мост уже привязан к другому Telegram-пользователю");
-    await this.ensureClient();
     if (this.state.connected) {
       this.boundChatId = chatId;
       return {id:null,connected:true};
@@ -100,7 +128,8 @@ class TelegramUserBridge {
     if (this.authPromise) return {id,connected:false};
     this.authPromise=(async()=>{
       try {
-        await this.client.signInUserWithQrCode(
+        await Promise.race([
+          this.client.signInUserWithQrCode(
           {apiId:this.apiId,apiHash:this.apiHash},
           {
             qrCode: async ({token,expires})=>{
@@ -110,7 +139,9 @@ class TelegramUserBridge {
             password: async ()=>{ if(process.env.TELEGRAM_2FA_PASSWORD) return process.env.TELEGRAM_2FA_PASSWORD; throw new Error("Для этого подключения требуется 2FA-пароль. Настрой TELEGRAM_2FA_PASSWORD на сервере."); },
             onError: async err=>{ record.error=err.message; return false; }
           }
-        );
+        ),
+          new Promise((_,reject)=>setTimeout(()=>reject(new Error("Авторизация по QR не завершилась за 10 минут")),10*60*1000))
+        ]);
         this.saveSession(this.client.session.save());
         record.done=true;
         record.qr=null;
@@ -254,7 +285,7 @@ function createConnectServer(bridge, port=8787) {
       let body="";req.on("data",c=>body+=c);req.on("end",async()=>{
         try{
           const j=JSON.parse(body||"{}");
-          const r=await bridge.startAuth(String(j.chat_id||""));
+          const r=await bridge.startAuth(String(j.ticket||j.chat_id||""));
           res.writeHead(200,{"content-type":"application/json"});res.end(JSON.stringify(r));
         }catch(e){res.writeHead(400,{"content-type":"application/json"});res.end(JSON.stringify({error:e.message}))}
       });return;
