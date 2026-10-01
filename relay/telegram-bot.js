@@ -277,6 +277,7 @@ async function loop(){
   console.log("Telegram bot fallback polling is disabled to prevent 409 conflicts.");
 }
 userBridge.webhookHandler=processUpdate;
+console.log("Telegram bridge env:",{apiIdPresent:!!process.env.TELEGRAM_API_ID,apiHashPresent:!!process.env.TELEGRAM_API_HASH});
 if(process.env.TELEGRAM_API_ID&&process.env.TELEGRAM_API_HASH)userBridge.ensureClient().then(()=>console.log("Telegram user bridge initialized")).catch(e=>console.log("Telegram user bridge init:",e.message));
 registerBotCommands().catch(e=>console.log("Telegram command registration:",e.message));
 warmup().then(ok=>console.log("OCR worker warmup:",ok?"ready":"failed")).catch(e=>console.log("OCR warmup error:",e.message));
