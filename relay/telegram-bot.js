@@ -92,8 +92,8 @@ async function downloadTelegramFile(fileId){const file=await tg("getFile",{file_
   req.on("error",reject);});
 }
 
-async function analyzePhotoFree(bytes){
-  const r=await analyzeImage(bytes),v=r.vehicle||{},d=r.decision||{};
+async function analyzePhotoFree(bytes, precomputed=null){
+  const r=precomputed || await analyzeImage(bytes),v=r.vehicle||{},d=r.decision||{};
   const lines=[
     "📸 БЕСПЛАТНЫЙ АНАЛИЗ СКРИНШОТА","",
     "💰 Баланс: "+(r.balance!=null?r.balance.toLocaleString("ru-RU")+" ₽":"не распознан"),
@@ -155,7 +155,7 @@ async function handlePhoto(chat,photo){
     const analysis = await analyzeImage(bytes);
     const r = analysis || {};
     try { await relay("/bridge/state", { ...r, source: "telegram_screenshot", received_at: Date.now(), local_decision: r.decision || null }); } catch (e) { console.log("SCREEN STATE PUBLISH ERROR:", e.message); }
-    const result = await analyzePhotoFree(bytes);
+    const result = await analyzePhotoFree(bytes, analysis);
     return send(chat, "📸 Анализ скриншота\n\n" + result);
   } catch (e) {
     console.log("PHOTO ANALYSIS ERROR:", e && (e.stack || e.message || e));
