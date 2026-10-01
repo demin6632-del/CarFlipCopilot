@@ -47,6 +47,7 @@ async function notifyBridgeState(state){
 const userBridge=new TelegramUserBridge({
   apiId:process.env.TELEGRAM_API_ID,apiHash:process.env.TELEGRAM_API_HASH,gameUsername:GAME_USERNAME,
   relayUrl:RELAY_URL,relayToken:RELAY_TOKEN,publicUrl:BRIDGE_PUBLIC_URL,
+  onState:notifyBridgeState,
   sessionFile:process.env.TELEGRAM_SESSION_FILE||require("path").join(process.cwd(),"data","telegram-user-session.txt")
 });
 createConnectServer(userBridge,BRIDGE_PORT);
