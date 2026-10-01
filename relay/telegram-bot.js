@@ -52,6 +52,18 @@ const userBridge=new TelegramUserBridge({
 });
 createConnectServer(userBridge,BRIDGE_PORT);
 
+async function registerBotCommands(){
+  const commands=[
+    {command:"start",description:"Открыть главное меню"},
+    {command:"connect",description:"Подключить игру"},
+    {command:"state",description:"Показать состояние игры"},
+    {command:"advice",description:"Что делать сейчас"},
+    {command:"probe",description:"Проверить связь с игрой"},
+    {command:"help",description:"Помощь и список команд"}
+  ];
+  try{ await tg("setMyCommands",{commands}); console.log("Telegram commands registered"); }
+  catch(e){ console.log("COMMANDS REGISTER ERROR:",e.message); }
+}
 function tg(method,body){return new Promise((resolve,reject)=>{
   const data=JSON.stringify(body||{}),u=new URL(API+"/"+method);
   const req=https.request({hostname:u.hostname,path:u.pathname,method:"POST",headers:{"content-type":"application/json","content-length":Buffer.byteLength(data)}},res=>{
