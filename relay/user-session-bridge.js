@@ -128,6 +128,12 @@ class TelegramUserBridge {
     if (this.authPromise) return {id,connected:false};
     this.authPromise=(async()=>{
       try {
+        await this.ensureClient();
+        if (this.state.connected) {
+          record.done=true;
+          this.boundChatId=chatId;
+          return;
+        }
         await Promise.race([
           this.client.signInUserWithQrCode(
           {apiId:this.apiId,apiHash:this.apiHash},
