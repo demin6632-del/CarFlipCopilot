@@ -18,3 +18,5 @@ jobs:
         run: npm install
       - name: Run safety guard regression tests
         run: node relay/safety-guard.test.js
+      - name: Run diagnostics regression tests
+        run: node relay/diagnostics.test.js
