@@ -148,6 +148,7 @@ async function registerBotCommands(){
     {command:"connect",description:"Подключить игру"},
     {command:"state",description:"Показать состояние игры"},
     {command:"advice",description:"Что делать сейчас"},
+    {command:"game",description:"Открыть игру в Telegram"},
     {command:"probe",description:"Проверить связь с игрой"},
     {command:"help",description:"Помощь и список команд"}
   ];
