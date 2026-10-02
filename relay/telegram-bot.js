@@ -44,51 +44,32 @@ function classifyGameButton(label){
 function buttonChoiceAnalysis(decision,state,buttons){
   const list=[...new Set((Array.isArray(buttons)?buttons:[]).map(x=>String(x||"").trim()).filter(Boolean))];
   if(!list.length)return [];
-  const source=normalizeButtonText([decision?.action,decision?.title,decision?.reason,state?.raw_message,state?.raw_text].filter(Boolean).join(" "));
   const action=normalizeButtonText(decision?.action||"");
   const type=action.includes("куп")?"buy":action.includes("прод")?"sell":action.includes("осмотр")||action.includes("провер")?"inspect":action.includes("номер")||action.includes("аукцион")?"plate":action.includes("ремонт")?"repair":action.includes("тюнинг")?"tune":action.includes("работ")?"work":action.includes("гараж")?"garage":action.includes("отмен")?"cancel":action.includes("продолж")||action.includes("далее")?"continue":null;
-  const financial=!!(state&&(state.price!=null||state.balance!=null||state.vehicle?.name));
+  // A generic "check current deal/state" is not a button recommendation.
+  // Never invent a winner when the current decision does not identify an action.
+  if(!type)return [];
   const raw=String(state?.raw_message||state?.raw_text||"").toLowerCase();
+  const source=normalizeButtonText([decision?.title,decision?.reason,raw].filter(Boolean).join(" "));
   const weights=list.map(label=>{
-    const bt=classifyGameButton(label), n=normalizeButtonText(label);
-    let score=30;
-    if(type&&bt===type)score+=65;
-    if(type&&bt==="confirm"&&["buy","sell","plate","repair","tune"].includes(type))score+=18;
-    if(type&&bt==="cancel")score-=28;
-    if(bt==="inspect"&&(!financial||/провер|осмотр|оцен/i.test(source)))score+=18;
-    if(bt==="sell"&&/предлож|покупател|по\s*рукам|торг/i.test(raw))score+=28;
-    if(bt==="renew"&&/объяв|продл|ставк|предлож/i.test(raw))score+=16;
-    if(bt==="buy"&&/куп|покуп/i.test(raw))score+=18;
-    if(bt==="continue"&&/след|далее|продолж|исслед/i.test(source))score+=16;
-    if(bt==="cancel"&&/отмен|назад|выйти/i.test(source))score+=12;
-    if(bt==="work"&&/работ|контракт|заказ/i.test(source))score+=16;
-    if(bt==="garage"&&/гараж|машин|авто/i.test(source))score+=12;
-    for(const w of source.split(/\s+/).filter(x=>x.length>=4))if(n.includes(w))score+=1;
-    if(!financial&&["buy","sell","repair","tune"].includes(bt))score-=12;
-    const reasons=[];
-    if(type&&bt===type) reasons.push("соответствует текущему решению ИИ");
-    if(bt==="sell"&&/предлож|покупател|по\s*рукам|торг/i.test(raw)) reasons.push("есть признаки предложения покупателя");
-    if(bt==="buy"&&/куп|покуп/i.test(raw)) reasons.push("экран связан с покупкой");
-    if(bt==="renew"&&/объяв|продл|ставк|предлож/i.test(raw)) reasons.push("объявление или предложение можно продолжить");
-    if(bt==="inspect"&&/провер|осмотр|оцен/i.test(source)) reasons.push("сначала стоит получить больше данных");
-    if(bt==="cancel") reasons.push(type==="cancel"?"соответствует отмене":"отказ снижает риск, но не продвигает сделку");
-    if(!financial&&["buy","sell","repair","tune"].includes(bt)) reasons.push("не хватает финансовых данных");
-    if(!reasons.length) reasons.push("совпадение с распознанным контекстом слабее других вариантов");
-    return {label,type:bt,score:Math.max(1,score),reason:reasons.join("; ")};
-  });
-  const max=Math.max(...weights.map(x=>x.score));
-  const exp=weights.map(x=>({...x,weight:Math.exp((x.score-max)/14)}));
-  const total=exp.reduce((s,x)=>s+x.weight,0)||1;
-  const rawPerc=exp.map(x=>x.weight/total*100);
-  const base=rawPerc.map(x=>Math.floor(x));
-  let remaining=100-base.reduce((s,x)=>s+x,0);
-  const order=rawPerc.map((v,i)=>({i,f:v-Math.floor(v)})).sort((a,b)=>b.f-a.f);
-  for(let i=0;i<remaining;i++)base[order[i%order.length].i]+=1;
-  return weights.map((x,i)=>({...x,percent:base[i]})).sort((a,b)=>b.percent-a.percent);
+    const bt=classifyGameButton(label);
+    let score=0;
+    if(bt===type)score=100;
+    if(bt==="confirm"&&["buy","sell","plate","repair","tune"].includes(type))score=80;
+    if(bt==="cancel"&&type!=="cancel")score=10;
+    if(bt==="sell"&&/предлож|покупател|по\\s*рукам|торг/i.test(raw))score+=20;
+    if(bt==="inspect"&&/провер|осмотр|оцен/i.test(source))score+=20;
+    if(bt==="renew"&&/объяв|продл|ставк|предлож/i.test(raw))score+=15;
+    return {label,type:bt,score,reason:score>=100?"соответствует конкретному действию ИИ":score>0?"может выполнить часть текущего действия":"не относится к текущему действию"};
+  }).filter(x=>x.score>0);
+  if(!weights.length)return [];
+  const total=weights.reduce((sum,x)=>sum+x.score,0)||1;
+  return weights.sort((a,b)=>b.score-a.score).map(x=>({...x,percent:Math.round(x.score/total*100)}));
 }
 function buttonScoreText(ranked){
   if(!ranked.length)return "";
-  return ranked.map((x,i)=>(i===0?"⭐ ":"")+String(i+1)+". «"+x.label+"» — "+x.percent+"%\n   └ "+x.reason).join("\n");
+  return ranked.map((x,i)=>(i===0?"⭐ ":"")+String(i+1)+". «"+x.label+"» — "+x.percent+"%
+   └ "+x.reason).join("\n");
 }
 function recommendGameButton(decision,buttons,state){
   const ranked=buttonChoiceAnalysis(decision,state,buttons);
@@ -318,19 +299,17 @@ async function advice(chat){
     const r=await relay("/telegram/advice",{chat_id:chat});
     const current=userBridge.status().last_game_message;
     const relayButtons=Array.isArray(r.game_buttons)?r.game_buttons:[];
-    const observed=(current?.buttons?.length?current.buttons:relayButtons).slice(0,8);
+    const observed=current?.buttons?.length?current.buttons:relayButtons;
     const sourceMessageId=current?.message_id||null;
-    const ranked=buttonChoiceAnalysis(r.decision,{...r.state,...(current||{}),raw_message:current?.text||r.state?.raw_message},observed),recommended=ranked[0]?.label||null,rows=[];
+    const ranked=buttonChoiceAnalysis(r.decision,{...r.state,...(current||{}),raw_message:current?.text||r.state?.raw_message},observed);
+    const recommended=ranked[0]?.label||null;
+    const rows=[];
     if(recommended && sourceMessageId){
       const risk=actionRisk(r.decision?.action||recommended);
       rows.push([{text:(risk?"⚠️ Подтвердить: ":"🤖 Выполнить: ")+recommended,callback_data:confirmButtonData(recommended,sourceMessageId)}]);
     }
-    if(sourceMessageId){
-      for(const label of observed) rows.push([{text:"▶️ "+label,callback_data:gameButtonData(label,sourceMessageId)}]);
-    }
-    let out=r.text||"Пока нет актуального решения. Передай состояние игры или скриншот.";
-    if(recommended && sourceMessageId) out+="\n\n🤖 ЛУЧШИЙ ВЫБОР: «"+recommended+"» — "+(ranked[0]?.percent||0)+"%\n\n📊 Оценка кнопок:\n"+ranked.slice(0,5).map((x,i)=>(i+1)+". «"+x.label+"» — "+x.percent+"%").join("\n")+"\n\nНажатие выполняется только после твоего подтверждения.";
-    else if(recommended) out+="\n\nℹ️ Решение построено по сохранённому состоянию игры. Кнопки можно восстановить через «🧪 Проверить связь с игрой» или /game.";
+    let out=r.text||"Пока нет актуального решения.";
+    if(recommended) out+="\n\n➡️ Нажать: «"+recommended+"» — "+ranked[0].percent+"%\n💬 "+ranked[0].reason;
     return send(chat,out,rows.length?{reply_markup:{inline_keyboard:rows}}:{});
   }catch(e){return send(chat,"⚠️ Помощник пока не получил состояние игры: "+e.message);}
 }
