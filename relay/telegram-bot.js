@@ -209,6 +209,17 @@ async function handle(m){
   if(text)return send(chat,"Используй кнопки ниже или пришли скриншот игры или пересланное сообщение из игры.");
 }
 async function connect(chat){
+  if(userBridge.configured()){
+    try{
+      await userBridge.ensureClient();
+      if(userBridge.status().connected){
+        userBridge.saveBinding(chat);
+        return send(chat,"🔗 Игра уже подключена к твоему Telegram.\n\nНажми «🧪 Проверить связь с игрой» — новое подключение не требуется.");
+      }
+    }catch(e){
+      console.log("CONNECT RESTORE CHECK:",e.message);
+    }
+  }
   if(CONNECT_URL||BRIDGE_PUBLIC_URL){
     const url=CONNECT_URL||(BRIDGE_PUBLIC_URL+"/connect?ticket="+encodeURIComponent(userBridge.createTicket(chat)));
     if(!userBridge.configured()){
@@ -235,14 +246,15 @@ async function advice(chat){
   }catch(e){return send(chat,"⚠️ Помощник пока не получил состояние игры: "+e.message);}
 }
 async function probe(chat){
-  const s=userBridge.status();
   if(!userBridge.configured()){
     return send(chat,"🧪 Проверка связи\n\nℹ️ Автоматический мост пока не настроен: для входа в твой личный Telegram нужен TELEGRAM_API_ID + TELEGRAM_API_HASH.\n\n📸 Но бот уже работает без них: пришли скриншот игры или перешли сообщение из игры — я распознаю состояние и дам одно конкретное следующее действие.\n\n🔐 API-данные не нужно отправлять мне в чат.");
   }
-  if(!s.connected){
-    return send(chat,"🧪 Проверка связи\n\n❌ Игровая Telegram-сессия пока не подключена.\n\nСначала нажми «🔗 Подключить игру» и заверши авторизацию. После этого эта кнопка будет проверять именно связь с @"+GAME_USERNAME+".");
-  }
   try{
+    await userBridge.ensureClient();
+    const s=userBridge.status();
+    if(!s.connected){
+      return send(chat,"🧪 Проверка связи\n\n❌ Сохранённой Telegram-сессии нет. Однократно нажми «🔗 Подключить игру» и заверши вход. После этого бот больше не должен запрашивать подключение после перезапуска.");
+    }
     // The probe comes from the real bot chat, so make this chat the active
     // notification target even if an older connection ticket was used.
     userBridge.saveBinding(chat);
