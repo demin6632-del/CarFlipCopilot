@@ -19,6 +19,7 @@ const users=new Map(),pendingGameProbes=new Map();
 const activeGameChats=new Map();
 const gameActionChats=new Set();
 const gameRenderQueues=new Map();
+const lastRenderedGameFingerprints=new Map();
 const replyKeyboardClearedChats=new Set();
 const photoFingerprints=new Map();
 const photoFileIds=new Map();
@@ -365,6 +366,12 @@ async function renderGameNow(chat,options={}){
   const latest=userBridge.status().last_game_message;
   if(!latest)return send(chat,"🎮 ИГРА\n\n⚠️ Игра ещё не передала экран. Подключи игру и нажми «🧪 Проверить связь с игрой».");
   activeGameChats.set(String(chat),true);
+  // One visible screen per unique game state. Telegram/game events and a button click can both request a render.
+  const gameFingerprint=JSON.stringify({text:String(latest.text||""),buttons:Array.isArray(latest.buttons)?latest.buttons:[]});
+  const currentMessageId=activeGameChats.get(String(chat)+"_message_id");
+  if(lastRenderedGameFingerprints.get(String(chat))===gameFingerprint && currentMessageId){
+    return {message_id:currentMessageId,deduplicated:true};
+  }
   const text="🎮 ИГРА\n\n"+String(latest.text||"—").slice(0,10000);
   const markup=await gameKeyboard(latest);
   const messageId=options.messageId||activeGameChats.get(String(chat)+"_message_id");
@@ -374,7 +381,10 @@ async function renderGameNow(chat,options={}){
     }catch(e){console.log("GAME SCREEN DELETE ERROR:",e.message);}
   }
   const sent=await send(chat,text,{reply_markup:markup});
-  if(sent?.message_id)activeGameChats.set(String(chat)+"_message_id",sent.message_id);
+  if(sent?.message_id){
+    activeGameChats.set(String(chat)+"_message_id",sent.message_id);
+    lastRenderedGameFingerprints.set(String(chat),gameFingerprint);
+  }
   return sent;
 }
 async function renderGame(chat,options={}){
