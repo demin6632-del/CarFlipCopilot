@@ -16,6 +16,7 @@ let offset=0,polling=false,webhookEnabled=false;
 process.on("unhandledRejection",e=>console.log("UNHANDLED REJECTION:",e?.stack||e?.message||e));
 process.on("uncaughtException",e=>console.log("UNCAUGHT EXCEPTION:",e?.stack||e?.message||e));
 const users=new Map(),pendingGameProbes=new Map();
+const activeGameChats=new Map();
 const photoFingerprints=new Map();
 const photoFileIds=new Map();
 const processingChats=new Set();
@@ -89,6 +90,7 @@ function gameButtonRef(data,prefix){const p=String(data||"").split(":");if(p.len
 
 async function notifyBridgeState(state){
   const chat=userBridge.boundChatId;if(!chat||!state||!state.received_at)return;
+  if(activeGameChats.get(String(chat))){try{const id=activeGameChats.get(String(chat)+"_message_id");if(id)await renderGame(chat,{messageId:id});else await renderGame(chat);}catch(e){console.log("GAME SCREEN PUSH ERROR:",e.message);}return;}
   const fingerprint=JSON.stringify({balance:state.balance,garage:state.garage,vehicle:state.vehicle,raw_message:state.raw_message});
   if(fingerprint===lastBridgeFingerprint)return;lastBridgeFingerprint=fingerprint;
   if(Date.now()-lastBridgeNotice<5000)return;lastBridgeNotice=Date.now();
@@ -131,7 +133,7 @@ function tg(method,body){return new Promise((resolve,reject)=>{
   });req.on("error",reject);req.setTimeout(35000,()=>{req.destroy(new Error("Telegram API timeout"));});req.write(data);req.end();
 });}
 function kb(chatId){
-  const rows=[[{text:"🧠 Что делать сейчас",callback_data:"advice"}],[{text:"📊 Состояние",callback_data:"state"},{text:"📸 Анализ скрина",callback_data:"photo"}],[{text:"🔗 Подключить игру",callback_data:"connect"}],[{text:"🧪 Проверить связь с игрой",callback_data:"probe"}]];
+  const rows=[[{text:"🎮 Играть",callback_data:"game"}],[{text:"🧠 Что делать сейчас",callback_data:"advice"}],[{text:"📊 Состояние",callback_data:"state"},{text:"📸 Анализ скрина",callback_data:"photo"}],[{text:"🔗 Подключить игру",callback_data:"connect"}],[{text:"🧪 Проверить связь с игрой",callback_data:"probe"}]];
   const connectBase=CONNECT_URL||(BRIDGE_PUBLIC_URL?BRIDGE_PUBLIC_URL+"/connect":"");
   const connectUrl=connectBase&&chatId ? connectBase+(connectBase.includes("?")?"&":"?")+"ticket="+encodeURIComponent(userBridge.createTicket(chatId)) : "";
   if(connectUrl)rows.push([{text:"🎮 Открыть подключение",web_app:{url:connectUrl}}]);
@@ -247,7 +249,7 @@ async function handle(m){
   const chat=m.chat?.id;if(!chat)return;const text=String(m.text||"").trim();
   if(text==="/start"){users.set(chat,{connected:false});return send(chat,"🚗 CarFlipCopilot\n\nЯ работаю прямо внутри Telegram. Android-приложение для общения со мной не нужно.\n\nМоя задача — смотреть состояние «Симулятора Перекупа», учитывать историю сделок и говорить одно конкретное следующее действие.\n\nНачни с «🔗 Подключить игру».");}
   if(text==="/connect")return connect(chat);if(text==="/state")return state(chat);if(text==="/advice")return advice(chat);if(text==="/probe")return probe(chat);if(text==="/bridge")return bridgeStatus(chat);if(text==="/game")return gameDebug(chat);
-  if(text==="/help")return send(chat,"Команды:\n/connect — подключение игры\n/state — состояние\n/advice — что делать сейчас\n/probe — проверить связь с игрой\n/bridge — статус Telegram-моста\n/game — последнее сообщение игры и кнопки\n/help — эта справка\n\nМожно прислать скриншот текущей ситуации — бот разберёт его прямо здесь.");
+  if(text==="/help")return send(chat,"Команды:\n/connect — подключение игры\n/state — состояние\n/advice — что делать сейчас\n/probe — проверить связь с игрой\n/bridge — статус Telegram-моста\n/game — открыть игру прямо в чате\n/help — эта справка\n\nМожно прислать скриншот текущей ситуации — бот разберёт его прямо здесь.");
   const forwarded=forwardedInfo(m);
   const forwardedImage=imageFileId(m);
   if(forwardedImage){
@@ -285,12 +287,40 @@ async function connect(chat){
   }
   return send(chat,"🔗 Подключение игры\n\nИгра: @"+GAME_USERNAME+"\n\nПользовательский Telegram-мост: "+(userBridge.configured()?"готов":"не настроен")+"\n\n📸 Скриншотный режим уже работает без API-данных. Пришли скриншот или перешли сообщение из игры — бот разберёт его прямо в Telegram.\n\n🔐 Не отправляй API hash, коды входа, пароль 2FA или сессию в чат.");
 }
-async function gameDebug(chat){
-  const s=userBridge.status(),m=s.last_game_message;if(!m)return send(chat,"🎮 Пока нет сообщения от игрового бота. Сначала подключи игру и нажми «Проверить связь с игрой».");
-  const buttons=m.buttons&&m.buttons.length?"\n\n🔘 Кнопки:\n"+m.buttons.map((x,i)=>(i+1)+". "+x).join("\n"):"";
-  const rows=(m.buttons||[]).map(label=>[{text:"▶️ "+label,callback_data:gameButtonData(label,userBridge.status()?.last_game_message?.message_id)}]);
-  return send(chat,"🎮 Последнее сообщение игры:\n\n"+String(m.text||"—").slice(0,6000)+buttons,{reply_markup:{inline_keyboard:rows}});
+async function gameKeyboard(message){
+  const rows=(message?.buttons||[]).map(label=>[{text:"▶️ "+label,callback_data:gameButtonData(label,message.message_id)}]);
+  rows.push([{text:"🔄 Обновить игру",callback_data:"game_refresh"},{text:"🚪 Выйти из игры",callback_data:"game_exit"}]);
+  return {inline_keyboard:rows};
 }
+async function renderGame(chat,options={}){
+  const s=userBridge.status();
+  if(!s.last_game_message && userBridge.configured() && s.connected){
+    try{userBridge.saveBinding(chat);await userBridge.sendGameMessage("/start");}catch(e){return send(chat,"🎮 ИГРА\n\n❌ Не удалось получить экран игры:\n"+String(e.message||e).slice(0,700));}
+  }
+  const latest=userBridge.status().last_game_message;
+  if(!latest)return send(chat,"🎮 ИГРА\n\n⚠️ Игра ещё не передала экран. Подключи игру и нажми «🧪 Проверить связь с игрой».");
+  activeGameChats.set(String(chat),true);
+  const text="🎮 ИГРА\n\n"+String(latest.text||"—").slice(0,10000);
+  const markup=await gameKeyboard(latest);
+  const messageId=options.messageId||activeGameChats.get(String(chat)+"_message_id");
+  if(messageId){
+    try{return await tg("editMessageText",{chat_id:chat,message_id:messageId,text,reply_markup:markup,disable_web_page_preview:true});}
+    catch(e){console.log("GAME SCREEN EDIT ERROR:",e.message);}
+  }
+  const sent=await send(chat,text,{reply_markup:markup});
+  if(sent?.message_id)activeGameChats.set(String(chat)+"_message_id",sent.message_id);
+  return sent;
+}
+async function waitForGameUpdate(previousId,timeoutMs=10000){
+  const started=Date.now();
+  while(Date.now()-started<timeoutMs){
+    const m=userBridge.status().last_game_message;
+    if(m && String(m.message_id)!==String(previousId||""))return m;
+    await new Promise(r=>setTimeout(r,350));
+  }
+  return userBridge.status().last_game_message||null;
+}
+async function gameDebug(chat){try{return await renderGame(chat);}catch(e){return send(chat,"⚠️ Игровой режим не открылся: "+String(e.message||e).slice(0,700));}}
 async function bridgeStatus(chat){const s=userBridge.status();return send(chat,"🔗 Telegram-мост\n\nСтатус: "+(s.connected?"✅ подключён":"❌ не подключён")+"\nИгровой бот: @"+GAME_USERNAME+"\nПользователь: "+(s.username?"@"+s.username:"не определён")+(s.last_error?"\n\n⚠️ "+s.last_error:""));}
 async function state(chat){
   try{
@@ -380,21 +410,46 @@ async function probe(chat){
   }
 }
 async function callback(q){
-  const chat=q.message?.chat?.id,data=String(q.data||"");try{await tg("answerCallbackQuery",{callback_query_id:q.id});}catch{}
-  if(data.startsWith("confirmbtn:")||data.startsWith("gamebtn:")){
-    const prefix=data.startsWith("confirmbtn:")?"confirmbtn":"gamebtn",ref=gameButtonRef(data,prefix),s=userBridge.status(),latest=s.last_game_message;
-    if(!ref)return send(chat,"⚠️ Кнопка повреждена. Нажми /game или /advice ещё раз.");
-    if(!latest)return send(chat,"⚠️ Нет актуального экрана игры. Нажми /game или /advice ещё раз.");
-    // The callback is tied to the exact source message. A newer game
-    // message must not invalidate a still-clickable older button.
-    let label=null;
-    if(ref.legacy) label=(latest.buttons||[]).find(x=>gameButtonKey(x)===ref.key);
-    else { try { label=await userBridge.getGameButton(ref.messageId,ref.key); } catch(e) { console.log("GAME BUTTON LOOKUP ERROR:",e.message); } }
-    if(!label)return send(chat,"⚠️ Эта кнопка больше отсутствует на исходном экране игры. Обнови кнопки.");
-    try{await userBridge.clickGameButton(label,ref.messageId);return send(chat,(prefix==="confirmbtn"?"✅ Выполнено в игре: ":"✅ Нажал: ")+label);}catch(e){return send(chat,"❌ Не удалось выполнить «"+label+"»: "+e.message);}
+  const chat=q.message?.chat?.id,data=String(q.data||"");
+  try{await tg("answerCallbackQuery",{callback_query_id:q.id});}catch{}
+  if(data==="game")return renderGame(chat,{messageId:q.message?.message_id});
+  if(data==="game_refresh")return renderGame(chat,{messageId:q.message?.message_id});
+  if(data==="game_exit"){
+    activeGameChats.delete(String(chat));activeGameChats.delete(String(chat)+"_message_id");
+    return send(chat,"🚪 Игровой режим закрыт. Нажми «🎮 Играть», чтобы продолжить.");
   }
-  if(data==="connect")return connect(chat);if(data==="state")return state(chat);if(data==="advice")return advice(chat);if(data==="probe")return probe(chat);if(data==="photo")return send(chat,"📸 Просто отправь сюда скриншот игры.");if(data==="menu")return send(chat,"Главное меню:");
+  if(data.startsWith("confirmbtn:")||data.startsWith("gamebtn:")){
+    const prefix=data.startsWith("confirmbtn:")?"confirmbtn":"gamebtn",ref=gameButtonRef(data,prefix);
+    const latest=userBridge.status().last_game_message;
+    if(!ref||!latest)return send(chat,"⚠️ Экран игры устарел. Нажми «🎮 Играть» ещё раз.");
+    let label=null;
+    if(ref.legacy)label=(latest.buttons||[]).find(x=>gameButtonKey(x)===ref.key);
+    else{try{label=await userBridge.getGameButton(ref.messageId,ref.key);}catch(e){console.log("GAME BUTTON LOOKUP ERROR:",e.message);}}
+    if(!label)return send(chat,"⚠️ Эта кнопка больше отсутствует. Нажми «🔄 Обновить игру».");
+    try{
+      await userBridge.clickGameButton(label,ref.messageId);
+      if(activeGameChats.get(String(chat))){
+        const next=await waitForGameUpdate(ref.messageId,10000);
+        const screenId=q.message?.message_id||activeGameChats.get(String(chat)+"_message_id");
+        if(screenId)activeGameChats.set(String(chat)+"_message_id",screenId);
+        if(next){
+          const markup=await gameKeyboard(next);
+          try{await tg("editMessageText",{chat_id:chat,message_id:screenId,text:"🎮 ИГРА\n\n"+String(next.text||"—").slice(0,10000),reply_markup:markup,disable_web_page_preview:true});}
+          catch(e){console.log("GAME SCREEN AFTER CLICK ERROR:",e.message);}
+        }else await renderGame(chat,{messageId:screenId});
+        return;
+      }
+      return send(chat,"✅ Нажал: "+label);
+    }catch(e){return send(chat,"❌ Не удалось выполнить «"+label+"»: "+String(e.message||e).slice(0,700));}
+  }
+  if(data==="connect")return connect(chat);
+  if(data==="state")return state(chat);
+  if(data==="advice")return advice(chat);
+  if(data==="probe")return probe(chat);
+  if(data==="photo")return send(chat,"📸 Просто отправь сюда скриншот игры.");
+  if(data==="menu")return send(chat,"Главное меню:");
 }
+
 async function processUpdate(u){
   if(!u || typeof u!=="object") return;
   if(u.update_id!=null) offset=Math.max(offset,Number(u.update_id)+1);
