@@ -248,7 +248,7 @@ server.on("upgrade",(req,socket)=>{
       if(msg.ocr){
         try{
           const parsed=parseState(msg.ocr);
-          const d=decide(parsed,0.85);
+          const d=decide(parsed,85);
           const decision={
             action:d.action||"УТОЧНИ СИТУАЦИЮ",
             title:d.title||"Локальный анализ",
