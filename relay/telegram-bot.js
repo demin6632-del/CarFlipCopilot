@@ -317,7 +317,26 @@ async function handle(m){
     const e=await economySummary(chat,200);
     if(!e.transactions.length)return send(chat,"💰 ЭКОНОМИКА\n\nИстория финансовых изменений пока пуста.");
     const k=e.byKind||{};
-    return send(chat,"💰 ЭКОНОМИКА\n\n📈 Чистое изменение баланса: "+Math.round(e.net)+" ₽\n📤 Расходы: "+Math.round(e.spent)+" ₽\n📥 Поступления: "+Math.round(e.received)+" ₽\n\n🛒 Покупки: "+Math.round(k.purchase||0)+" ₽\n💵 Продажи: "+Math.round(k.sale||0)+" ₽\n🔄 Продления: "+Math.round(k.renewal||0)+" ₽\n🔧 Ремонт: "+Math.round(k.repair||0)+" ₽\n⚙️ Тюнинг: "+Math.round(k.tuning||0)+" ₽\n🔢 Номера: "+Math.round((k.plate||0)+(k.plate_removal||0))+" ₽");
+    const lines=["💰 ЭКОНОМИКА","",
+      "📈 Чистое изменение баланса: "+Math.round(e.net)+" ₽",
+      "📤 Расходы: "+Math.round(e.spent)+" ₽",
+      "📥 Поступления: "+Math.round(e.received)+" ₽","",
+      "🛒 Покупки: "+Math.round(k.purchase||0)+" ₽",
+      "💵 Продажи: "+Math.round(k.sale||0)+" ₽",
+      "🔄 Продления: "+Math.round(k.renewal||0)+" ₽",
+      "🔧 Ремонт: "+Math.round(k.repair||0)+" ₽",
+      "⚙️ Тюнинг: "+Math.round(k.tuning||0)+" ₽",
+      "🔢 Номера: "+Math.round((k.plate||0)+(k.plate_removal||0))+" ₽"];
+    if(Array.isArray(e.vehicles)&&e.vehicles.length){
+      lines.push("","🚗 СЕБЕСТОИМОСТЬ И ПРИБЫЛЬ");
+      e.vehicles.slice(0,8).forEach((v,i)=>{
+        lines.push("",(i+1)+". "+(v.vehicle_name||"Автомобиль")+(v.plate?" · "+v.plate:""));
+        lines.push("   Себестоимость: "+Math.round(v.full_cost||0)+" ₽");
+        if(v.status==="sold") lines.push("   Реализовано: "+Math.round(v.realized_proceeds||0)+" ₽","   Комиссии: "+Math.round(v.fees||0)+" ₽","   Итог: "+Math.round(v.realized_profit||0)+" ₽");
+        else lines.push("   Вложено дополнительно: "+Math.round(v.extra_cost||0)+" ₽","   Статус: в гараже");
+      });
+    }
+    return send(chat,lines.join("\n"));
   }
   if(text==="📜 История"){
     const rows=await recentMemory(chat,20);
@@ -370,7 +389,8 @@ async function handle(m){
         const updated=await waitForGameUpdate(latest.message_id,latest.text||"",latest.buttons||[],2500);
         if(updated){
           const afterState=Object.assign({},userBridge.status());
-          recordMemoryAction(chat,beforeState,target,afterState); recordEconomyTransition(chat,beforeState,target,afterState).catch(e=>console.log("GAME ECONOMY ERROR:",e.message)); recordEconomyTransition(chat,beforeState,target,afterState).catch(e=>console.log("GAME ECONOMY ERROR:",e.message)).catch(e=>console.log("GAME MEMORY ACTION ERROR:",e.message));
+          recordMemoryAction(chat,beforeState,target,afterState).catch(e=>console.log("GAME MEMORY ACTION ERROR:",e.message));
+          recordEconomyTransition(chat,beforeState,target,afterState).catch(e=>console.log("GAME ECONOMY ERROR:",e.message));
           return renderGame(chat,{messageId:activeGameChats.get(String(chat)+"_message_id")});
         }
         const screenId=activeGameChats.get(String(chat)+"_message_id");
@@ -634,13 +654,15 @@ async function callback(q){
       await userBridge.clickGameButton(label,ref.messageId);
       recordClick(chat,latest.text||"",latest.buttons||[],label,userBridge.status().last_game_message?.text||"").catch(e=>console.log("BUTTON STRATEGY CALLBACK ERROR:",e.message));
       if(activeGameChats.get(String(chat))){
-        const beforeScreen=userBridge.status().last_game_message;
+        const beforeState=Object.assign({},userBridge.status());
+        const beforeScreen=beforeState.last_game_message;
         const next=await waitForGameUpdate(ref.messageId,beforeScreen?.text||"",beforeScreen?.buttons||[],10000);
         const screenId=q.message?.message_id||activeGameChats.get(String(chat)+"_message_id");
         if(screenId)activeGameChats.set(String(chat)+"_message_id",screenId);
         if(next){
           const afterState=Object.assign({},userBridge.status());
           recordMemoryAction(chat,beforeState,label,afterState).catch(e=>console.log("GAME MEMORY CALLBACK ERROR:",e.message));
+          recordEconomyTransition(chat,beforeState,label,afterState).catch(e=>console.log("GAME ECONOMY CALLBACK ERROR:",e.message));
           const markup=await gameKeyboard(next);
           try{
             if(screenId) await tg("deleteMessage",{chat_id:chat,message_id:screenId});
