@@ -483,6 +483,7 @@ async function gameKeyboard(message){
     rows.push(row);
   }
   rows.push([{text:"🧠 Стратегия"},{text:"📊 Состояние"}]);
+  rows.push([{text:"📜 История"},{text:"💰 Экономика"}]);
   rows.push([{text:"🔄 Обновить игру"},{text:"⬅️ Назад"}]);
   rows.push([{text:"🚪 Выйти из игры"}]);
   return {keyboard:rows,resize_keyboard:true,one_time_keyboard:false,is_persistent:true};
