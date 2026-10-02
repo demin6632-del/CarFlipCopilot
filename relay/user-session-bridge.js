@@ -504,7 +504,7 @@ class TelegramUserBridge {
   }
 
   status() {
-    return Object.assign({},this.state,{game_bot:"@"+this.gameUsername,auth_in_progress:!!this.authPromise,last_game_message:this.lastGameMessage});
+    return Object.assign({},this.state,{game_bot:"@"+this.gameUsername,auth_in_progress:!!this.authPromise,last_game_message:this.lastGameMessage,diagnostics:diagnostics.snapshot()});
   }
 
   async shutdown() {
