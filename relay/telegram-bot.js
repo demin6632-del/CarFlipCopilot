@@ -49,31 +49,34 @@ function classifyGameButton(label){
 function buttonChoiceAnalysis(decision,state,buttons){
   const list=[...new Set((Array.isArray(buttons)?buttons:[]).map(x=>String(x||"").trim()).filter(Boolean))];
   if(!list.length)return [];
-  const action=normalizeButtonText(decision?.action||"");
-  const type=action.includes("куп")?"buy":action.includes("прод")?"sell":action.includes("осмотр")||action.includes("провер")?"inspect":action.includes("номер")||action.includes("аукцион")?"plate":action.includes("ремонт")?"repair":action.includes("тюнинг")?"tune":action.includes("работ")?"work":action.includes("гараж")?"garage":action.includes("отмен")?"cancel":action.includes("продолж")||action.includes("далее")?"continue":null;
   const raw=String(state?.raw_message||state?.raw_text||"").toLowerCase();
+  const dataQuality=Math.max(0,Math.min(1,Number(decision?.confidence||0)/100));
+  const explicit=String(decision?.action||"").toLowerCase();
+  const type=explicit.includes("куп")?"buy":explicit.includes("прод")?"sell":explicit.includes("осмотр")||explicit.includes("провер")?"inspect":explicit.includes("номер")||explicit.includes("аукцион")?"plate":explicit.includes("ремонт")?"repair":explicit.includes("тюнинг")?"tune":explicit.includes("работ")?"work":explicit.includes("гараж")?"garage":explicit.includes("отмен")?"cancel":explicit.includes("продолж")||explicit.includes("далее")?"continue":null;
   const source=normalizeButtonText([decision?.title,decision?.reason,raw].filter(Boolean).join(" "));
-  const weights=list.map(label=>{
+  const hasFinance=state?.price!=null||state?.balance!=null;
+  const hasVehicle=!!state?.vehicle?.name;
+  const hasCondition=state?.mileage!=null||state?.hp!=null||state?.plate;
+  if(!type || dataQuality<0.25) return [];
+  const scores=list.map(label=>{
     const bt=classifyGameButton(label);
-    let score=10; // Every visible button gets a percentage; never hide the alternatives.
-    if(type && bt===type)score+=100;
-    if(type && bt==="confirm"&&["buy","sell","plate","repair","tune"].includes(type))score+=70;
-    if(type==="inspect" && bt==="inspect")score+=55;
-    if(type==="garage" && bt==="garage")score+=55;
-    if(type==="continue" && bt==="continue")score+=45;
-    if(type==="cancel" && bt==="cancel")score+=80;
-    if(bt==="cancel" && type && type!=="cancel")score=Math.max(2,score-5);
-    if(bt==="sell"&&/предлож|покупател|по\s*рукам|торг|продаж/i.test(raw))score+=30;
-    if(bt==="inspect"&&/провер|осмотр|оцен/i.test(source))score+=25;
-    if(bt==="renew"&&/объяв|продл|ставк|предлож/i.test(raw))score+=20;
-    if(bt==="garage"&&/гараж|авто|машин/i.test(raw))score+=15;
-    return {label,type:bt,score,reason:
-      type && bt===type ? "наиболее соответствует текущему решению ИИ" :
-      bt==="cancel" ? "отмена действия" :
-      "альтернативный вариант на текущем экране"};
+    let evidence=0;
+    const evidenceParts=[];
+    if(bt===type){evidence+=6;evidenceParts.push("соответствие цели решения");}
+    if(bt==="confirm"&&["buy","sell","plate","repair","tune"].includes(type)){evidence+=4;evidenceParts.push("подтверждение выбранного действия");}
+    if(bt==="cancel"&&type!=="cancel"){evidence-=2;evidenceParts.push("отмена текущего действия");}
+    if(bt==="sell"&&/предлож|покупател|по\s*рукам|торг|продаж/i.test(raw)){evidence+=3;evidenceParts.push("контекст продажи");}
+    if(bt==="inspect"&&/провер|осмотр|оцен/i.test(source)){evidence+=3;evidenceParts.push("необходимость проверки");}
+    if(bt==="renew"&&/объяв|продл|ставк|предлож/i.test(raw)){evidence+=3;evidenceParts.push("контекст объявления");}
+    if(hasFinance&&["buy","sell","confirm"].includes(bt)){evidence+=1;evidenceParts.push("финансовые данные распознаны");}
+    if(hasVehicle&&hasCondition&&["inspect","sell","buy"].includes(bt)){evidence+=1;evidenceParts.push("данные автомобиля распознаны");}
+    return {label,type:bt,evidence,evidenceParts};
   });
-  const total=weights.reduce((sum,x)=>sum+x.score,0)||1;
-  return weights.sort((a,b)=>b.score-a.score).map(x=>({...x,percent:Math.max(1,Math.round(x.score/total*100))}));
+  const positive=scores.map(x=>Math.max(0,x.evidence));
+  const total=positive.reduce((a,b)=>a+b,0);
+  if(total<=0)return [];
+  return scores.map((x,i)=>({...x,percent:Math.round(positive[i]/total*100),reason:x.evidenceParts.length?x.evidenceParts.join(", "):"нет подтверждающих данных"}))
+    .sort((a,b)=>b.percent-a.percent);
 }
 function buttonScoreText(ranked){
   if(!ranked.length)return "";
