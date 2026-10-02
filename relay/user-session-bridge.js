@@ -453,6 +453,21 @@ class TelegramUserBridge {
     throw new Error("Кнопка не найдена в сообщении игры: "+target);
   }
 
+  async getGameMedia(messageId) {
+    if (!this.client || messageId == null) return null;
+    try {
+      const msgs=await this.client.getMessages(this.gameUsername,{ids:[Number(messageId)]});
+      const msg=Array.isArray(msgs)?msgs[0]:msgs;
+      if (!msg || !msg.media || typeof msg.downloadMedia !== "function") return null;
+      const buffer=await msg.downloadMedia({workers:1});
+      if (!buffer || !Buffer.isBuffer(buffer) || !buffer.length) return null;
+      return buffer;
+    } catch(e) {
+      console.log("GAME MEDIA ERROR:",e.message);
+      return null;
+    }
+  }
+
   status() {
     return Object.assign({},this.state,{game_bot:"@"+this.gameUsername,auth_in_progress:!!this.authPromise,last_game_message:this.lastGameMessage});
   }
