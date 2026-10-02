@@ -267,10 +267,23 @@ async function handle(m){
   if(activeGameChats.get(String(chat))){
     const latest=userBridge.status().last_game_message;
     const labels=Array.isArray(latest?.buttons)?latest.buttons:[];
-    if(text==="🔄 Обновить игру") return renderGame(chat);
-    if(text==="🚪 Выйти из игры"){
+    if(text==="⬅️ Назад"){
+      const screenId=activeGameChats.get(String(chat)+"_message_id");
       activeGameChats.delete(String(chat));
       activeGameChats.delete(String(chat)+"_message_id");
+      if(screenId){
+        try{await tg("deleteMessage",{chat_id:chat,message_id:screenId});}catch(e){console.log("GAME SCREEN BACK DELETE ERROR:",e.message);}
+      }
+      return send(chat,"Главное меню:");
+    }
+    if(text==="🔄 Обновить игру") return renderGame(chat);
+    if(text==="🚪 Выйти из игры"){
+      const screenId=activeGameChats.get(String(chat)+"_message_id");
+      activeGameChats.delete(String(chat));
+      activeGameChats.delete(String(chat)+"_message_id");
+      if(screenId){
+        try{await tg("deleteMessage",{chat_id:chat,message_id:screenId});}catch(e){console.log("GAME SCREEN EXIT DELETE ERROR:",e.message);}
+      }
       return send(chat,"🚪 Игровой режим закрыт.");
     }
     const target=labels.find(x=>String(x).trim()===text.trim());
@@ -330,6 +343,7 @@ async function connect(chat){
 }
 async function gameKeyboard(message){
   const rows=(message?.buttons||[]).map(label=>[{text:String(label)}]);
+  rows.push([{text:"⬅️ Назад"}]);
   rows.push([{text:"🔄 Обновить игру"},{text:"🚪 Выйти из игры"}]);
   return {keyboard:rows,resize_keyboard:true,one_time_keyboard:false,is_persistent:true};
 }
