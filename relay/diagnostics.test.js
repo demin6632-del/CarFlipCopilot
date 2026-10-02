@@ -1,0 +1,12 @@
+const assert=require("assert");
+const diagnostics=require("./diagnostics");
+diagnostics.inc("screen.received");
+diagnostics.inc("screen.received");
+diagnostics.observe("screen.pipeline",12);
+diagnostics.observe("screen.pipeline",8);
+const s=diagnostics.snapshot();
+assert.equal(s.counters["screen.received"],2);
+assert.equal(s.timings["screen.pipeline"].count,2);
+assert.equal(s.timings["screen.pipeline"].avg_ms,10);
+assert.equal(typeof s.uptime_ms,"number");
+console.log("DIAGNOSTICS TESTS: PASS");
