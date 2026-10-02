@@ -17,6 +17,7 @@ process.on("unhandledRejection",e=>console.log("UNHANDLED REJECTION:",e?.stack||
 process.on("uncaughtException",e=>console.log("UNCAUGHT EXCEPTION:",e?.stack||e?.message||e));
 const users=new Map(),pendingGameProbes=new Map();
 const activeGameChats=new Map();
+const replyKeyboardClearedChats=new Set();
 const photoFingerprints=new Map();
 const photoFileIds=new Map();
 const processingChats=new Set();
@@ -140,9 +141,12 @@ function kb(chatId){
   return {inline_keyboard:rows};
 }
 async function clearReplyKeyboard(chat){
+  const key=String(chat);
+  if(replyKeyboardClearedChats.has(key)) return;
   try{
-    const r=await tg("sendMessage",{chat_id:chat,text:"Удаляю старую клавиатуру…",reply_markup:{remove_keyboard:true},disable_notification:true,disable_web_page_preview:true});
-    if(r?.message_id) setTimeout(()=>tg("deleteMessage",{chat_id:chat,message_id:r.message_id}).catch(()=>{}),350);
+    const r=await tg("sendMessage",{chat_id:chat,text:"🔄 Интерфейс обновлён.",reply_markup:{remove_keyboard:true,selective:false},disable_notification:true,disable_web_page_preview:true});
+    replyKeyboardClearedChats.add(key);
+    if(r?.message_id) setTimeout(()=>tg("deleteMessage",{chat_id:chat,message_id:r.message_id}).catch(()=>{}),2500);
   }catch(e){console.log("REPLY KEYBOARD CLEANUP ERROR:",e.message);}
 }
 async function send(chat_id,text,extra={}){
@@ -311,6 +315,9 @@ async function gameKeyboard(message){
   return {inline_keyboard:rows};
 }
 async function renderGame(chat,options={}){
+  // Game can be opened by an inline callback, so do not rely on send().
+  // Remove any legacy ReplyKeyboard before rendering the game screen.
+  await clearReplyKeyboard(chat);
   const s=userBridge.status();
   if(!s.last_game_message && userBridge.configured() && s.connected){
     try{userBridge.saveBinding(chat);await userBridge.sendGameMessage("/start");}catch(e){return send(chat,"🎮 ИГРА\n\n❌ Не удалось получить экран игры:\n"+String(e.message||e).slice(0,700));}
