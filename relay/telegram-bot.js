@@ -506,7 +506,12 @@ async function renderGameNow(chat,options={}){
   const adviceLines=["🎮 ИГРА","",""+String(latest.text||"—").slice(0,7000),"","🧠 КАК ПОСТУПИТЬ: "+(ranked.length?"АНАЛИЗ КНОПОК":"НЕТ КНОПОК"),"🔎 Распознавание кнопок: "+screenConfidence+"%"];
   if(ranked.length){
     adviceLines.push("💡 Проценты — стратегическая оценка по текущему экрану, сохранённой истории твоей игры и финансовому контексту.");
-    adviceLines.push("","👉 РЕКОМЕНДАЦИЯ: «"+ranked[0].label+"» — "+ranked[0].percent+"%","📊 ВСЕ КНОПКИ:\n"+buttonScoreText(ranked));
+    if(strategy.actionable){
+      adviceLines.push("","👉 РЕКОМЕНДАЦИЯ: «"+ranked[0].label+"» — "+ranked[0].percent+"%");
+    }else{
+      adviceLines.push("","👉 РЕКОМЕНДАЦИЯ: нет — текущий экран не подтверждает, что нужно нажимать кнопку.");
+    }
+    adviceLines.push("📊 ВСЕ КНОПКИ:\n"+buttonScoreText(ranked));
     const top=strategy.alternatives.find(x=>x.label===ranked[0].label);
     if(top){
       adviceLines.push("⚠️ Риск действия: "+top.risk+"%"+(top.reasons.length?"\n   └ "+top.reasons.join("; "):""));
@@ -645,7 +650,7 @@ async function advice(chat){
     const ranked=await rankButtons(chat,adviceState,observed);
     const economy=await economySummary(chat,120);
     const strategy=buildStrategy(adviceState,ranked,economy);
-    const recommended=ranked[0]?.label||null;
+    const recommended=strategy.actionable ? (ranked[0]?.label||null) : null;
     const rows=[];
     if(recommended && sourceMessageId){
       const risk=actionRisk(r.decision?.action||recommended);
