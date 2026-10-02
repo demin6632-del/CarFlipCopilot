@@ -409,8 +409,11 @@ async function renderGameNow(chat,options={}){
   if(!options.force && lastRenderedGameFingerprints.get(String(chat))===gameFingerprint && currentMessageId){
     return {message_id:currentMessageId,deduplicated:true};
   }
-  const decision=decide(latest,90);
-  const ranked=buttonChoiceAnalysis(decision,latest,latest.buttons||[]);
+  // The game screen already contains text; parse it before asking the decision engine.
+  // Passing the raw bridge object directly makes decide() miss raw_text and fall back to OCR advice.
+  const parsedGame=parseState(String(latest.text||""));
+  const decision=decide(Object.assign({},parsedGame,{raw_text:parsedGame.raw_text,raw_message:latest.text,buttons:latest.buttons}),90);
+  const ranked=buttonChoiceAnalysis(decision,Object.assign({},parsedGame,{raw_text:parsedGame.raw_text,raw_message:latest.text}),latest.buttons||[]);
   const adviceLines=["🎮 ИГРА","",""+String(latest.text||"—").slice(0,7000),"","🧠 КАК ПОСТУПИТЬ: "+decision.action,"🎯 Уверенность: "+decision.confidence+"%"];
   if(decision.reason) adviceLines.push("💬 "+decision.reason);
   if(ranked.length) adviceLines.push("","👉 НАЖАТЬ: «"+ranked[0].label+"» — "+ranked[0].percent+"%","📊 Варианты:\n"+buttonScoreText(ranked));
