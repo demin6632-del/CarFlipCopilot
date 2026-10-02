@@ -243,6 +243,9 @@ async function probe(chat){
     return send(chat,"🧪 Проверка связи\n\n❌ Игровая Telegram-сессия пока не подключена.\n\nСначала нажми «🔗 Подключить игру» и заверши авторизацию. После этого эта кнопка будет проверять именно связь с @"+GAME_USERNAME+".");
   }
   try{
+    // The probe comes from the real bot chat, so make this chat the active
+    // notification target even if an older connection ticket was used.
+    userBridge.saveBinding(chat);
     await userBridge.sendGameMessage("/start");
     pendingGameProbes.set(chat,Date.now());
     return send(chat,"🧪 Проверка связи\n\n✅ Запрос /start отправлен в @"+GAME_USERNAME+" от твоей подключённой Telegram-сессии.\n\nЖду ответ игры и обновление состояния.");
