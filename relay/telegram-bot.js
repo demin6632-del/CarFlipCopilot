@@ -18,6 +18,7 @@ process.on("uncaughtException",e=>console.log("UNCAUGHT EXCEPTION:",e?.stack||e?
 const users=new Map(),pendingGameProbes=new Map();
 const activeGameChats=new Map();
 const gameActionChats=new Set();
+const gameRenderQueues=new Map();
 const replyKeyboardClearedChats=new Set();
 const photoFingerprints=new Map();
 const photoFileIds=new Map();
@@ -356,7 +357,7 @@ async function gameKeyboard(message){
   rows.push([{text:"🔄 Обновить игру"},{text:"🚪 Выйти из игры"}]);
   return {keyboard:rows,resize_keyboard:true,one_time_keyboard:false,is_persistent:true};
 }
-async function renderGame(chat,options={}){
+async function renderGameNow(chat,options={}){
   const s=userBridge.status();
   if(!s.last_game_message && userBridge.configured() && s.connected){
     try{userBridge.saveBinding(chat);await userBridge.sendGameMessage("/start");}catch(e){return send(chat,"🎮 ИГРА\n\n❌ Не удалось получить экран игры:\n"+String(e.message||e).slice(0,700));}
@@ -375,6 +376,20 @@ async function renderGame(chat,options={}){
   const sent=await send(chat,text,{reply_markup:markup});
   if(sent?.message_id)activeGameChats.set(String(chat)+"_message_id",sent.message_id);
   return sent;
+}
+async function renderGame(chat,options={}){
+  const key=String(chat);
+  const previous=gameRenderQueues.get(key)||Promise.resolve();
+  let release;
+  const current=new Promise(resolve=>{release=resolve;});
+  gameRenderQueues.set(key,current);
+  try{
+    await previous.catch(()=>{});
+    return await renderGameNow(chat,options);
+  }finally{
+    release();
+    if(gameRenderQueues.get(key)===current) gameRenderQueues.delete(key);
+  }
 }
 async function waitForGameUpdate(previousId,previousText="",previousButtons=[],timeoutMs=10000){
   const started=Date.now();
