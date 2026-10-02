@@ -81,7 +81,7 @@ function buttonChoiceAnalysis(decision,state,buttons){
 
 function buttonScoreText(ranked){
   if(!ranked.length)return "";
-  return ranked.map((x,i)=>(i===0?"⭐ ":"")+String(i+1)+". «"+x.label+"» — "+x.percent+"%\\n   └ "+x.reason).join("\\n");
+  return ranked.map((x,i)=>(i===0?"⭐ ":"")+String(i+1)+". «"+x.label+"» — "+x.percent+"%\n   └ "+x.reason).join("\n");
 }
 function recommendGameButton(decision,buttons,state){
   const ranked=buttonChoiceAnalysis(decision,state,buttons);
@@ -103,10 +103,18 @@ function gameButtonRef(data,prefix){const p=String(data||"").split(":");if(p.len
 async function notifyBridgeState(state){
   const chat=userBridge.boundChatId;if(!chat||!state||!state.received_at)return;
   if(activeGameChats.get(String(chat))){
-    // A button click renders the next screen itself. Do not render the same
-    // Telegram game update here as well, otherwise one click can create two screens.
+    // The game screen is rendered by the active game-mode pipeline.
+    // Never send a second standalone event for the same update.
     if(gameActionChats.has(String(chat))) return;
-    try{const id=activeGameChats.get(String(chat)+"_message_id");if(id)await renderGame(chat,{messageId:id});else await renderGame(chat);}catch(e){console.log("GAME SCREEN PUSH ERROR:",e.message);}return;
+    try{const id=activeGameChats.get(String(chat)+"_message_id");if(id)await renderGame(chat,{messageId:id});else await renderGame(chat);}catch(e){console.log("GAME SCREEN PUSH ERROR:",e.message);}
+    return;
+  }
+  // If the game sends a real screen with buttons before the user opens
+  // "Играть", render that screen directly. Sending a separate "Новое событие"
+  // first creates the duplicate two-message output seen in Telegram.
+  if(Array.isArray(state.buttons) && state.buttons.length){
+    try{await renderGame(chat);}catch(e){console.log("GAME SCREEN PUSH ERROR:",e.message);}
+    return;
   }
   const fingerprint=JSON.stringify({balance:state.balance,garage:state.garage,vehicle:state.vehicle,raw_message:state.raw_message});
   if(fingerprint===lastBridgeFingerprint)return;lastBridgeFingerprint=fingerprint;
@@ -424,9 +432,14 @@ async function renderGameNow(chat,options={}){
   const strategyState=Object.assign({},parsedGame,{raw_text:parsedGame.raw_text,raw_message:latest.text,buttons:latest.buttons||[]});
   const ranked=await rankButtons(chat,strategyState,latest.buttons||[]);
   recordScreen(chat,latest.text,latest.buttons||[]).catch(e=>console.log("BUTTON STRATEGY SCREEN ERROR:",e.message));
-  const adviceLines=["🎮 ИГРА","",""+String(latest.text||"—").slice(0,7000),"","🧠 КАК ПОСТУПИТЬ: "+(ranked.length?"АНАЛИЗ КНОПОК":"НЕТ КНОПОК"),"🔎 Надёжность распознавания: "+decision.confidence+"%"];
-  if(decision.reason) adviceLines.push("💬 "+decision.reason);
-  if(ranked.length) adviceLines.push("","👉 РЕКОМЕНДАЦИЯ: «"+ranked[0].label+"» — "+ranked[0].percent+"%","📊 Все кнопки:\n"+buttonScoreText(ranked));
+  const screenConfidence=ranked.length ? 100 : Math.round(Number(decision.confidence)||0);
+  const adviceLines=["🎮 ИГРА","",""+String(latest.text||"—").slice(0,7000),"","🧠 КАК ПОСТУПИТЬ: "+(ranked.length?"АНАЛИЗ КНОПОК":"НЕТ КНОПОК"),"🔎 Распознавание кнопок: "+screenConfidence+"%"];
+  if(ranked.length){
+    adviceLines.push("💡 Проценты — стратегическая оценка по текущему экрану, сохранённой истории твоей игры и финансовому контексту.");
+    adviceLines.push("","👉 РЕКОМЕНДАЦИЯ: «"+ranked[0].label+"» — "+ranked[0].percent+"%","📊 ВСЕ КНОПКИ:\n"+buttonScoreText(ranked));
+  }else if(decision.reason){
+    adviceLines.push("💬 "+decision.reason);
+  }
   const text=adviceLines.join("\n");
   const markup=await gameKeyboard(latest);
   const messageId=options.messageId||activeGameChats.get(String(chat)+"_message_id");
