@@ -68,7 +68,7 @@ async function registerBotCommands(){
 }
 function tg(method,body){return new Promise((resolve,reject)=>{
   const data=JSON.stringify(body||{}),u=new URL(API+"/"+method);
-  const req=https.request({hostname:u.hostname,path:u.pathname,method:"POST",headers:{"content-type":"application/json","content-length":Buffer.byteLength(data)}},res=>{
+  const req=https.request({hostname:u.hostname,path:u.pathname,method:"POST",agent:keepAliveAgent,headers:{"content-type":"application/json","content-length":Buffer.byteLength(data)}},res=>{
     let s="";res.on("data",c=>s+=c);res.on("end",()=>{try{const j=JSON.parse(s);if(!j.ok)return reject(new Error(j.description||"Telegram API error"));resolve(j.result);}catch(e){reject(e);}});
   });req.on("error",reject);req.setTimeout(35000,()=>{req.destroy(new Error("Telegram API timeout"));});req.write(data);req.end();
 });}
@@ -80,10 +80,10 @@ function kb(chatId){
 }
 async function send(chat_id,text,extra={}){return tg("sendMessage",Object.assign({chat_id,text,reply_markup:kb(chat_id),disable_web_page_preview:true},extra));}
 async function relay(path,body={}){if(!RELAY_URL)throw new Error("RELAY_URL не настроен");const u=new URL(RELAY_URL+path),data=JSON.stringify(body);
-  return new Promise((resolve,reject)=>{const req=https.request({hostname:u.hostname,port:u.port||443,path:u.pathname+u.search,method:"POST",headers:{"content-type":"application/json","authorization":"Bearer "+RELAY_TOKEN,"content-length":Buffer.byteLength(data)}},res=>{let s="";res.on("data",c=>s+=c);res.on("end",()=>{try{resolve(JSON.parse(s))}catch{resolve({raw:s})}})});req.on("error",reject);req.setTimeout(20000,()=>{req.destroy(new Error("Relay timeout"));});req.write(data);req.end();});
+  return new Promise((resolve,reject)=>{const req=https.request({hostname:u.hostname,port:u.port||443,path:u.pathname+u.search,method:"POST",agent:keepAliveAgent,headers:{"content-type":"application/json","authorization":"Bearer "+RELAY_TOKEN,"content-length":Buffer.byteLength(data)}},res=>{let s="";res.on("data",c=>s+=c);res.on("end",()=>{try{resolve(JSON.parse(s))}catch{resolve({raw:s})}})});req.on("error",reject);req.setTimeout(20000,()=>{req.destroy(new Error("Relay timeout"));});req.write(data);req.end();});
 }
 async function downloadTelegramFile(fileId){const file=await tg("getFile",{file_id:fileId});if(!file?.file_path)throw new Error("Telegram не вернул путь к файлу");const u=new URL("https://api.telegram.org/file/bot"+BOT_TOKEN+"/"+file.file_path);
-  return new Promise((resolve,reject)=>{const req=https.get(u,res=>{
+  return new Promise((resolve,reject)=>{const req=https.get(u,{agent:keepAliveAgent},res=>{
     if(res.statusCode!==200){res.resume();return reject(new Error("Telegram file download HTTP "+res.statusCode));}
     const chunks=[];let size=0;
     res.on("data",c=>{size+=c.length;if(size>50*1024*1024){req.destroy(new Error("Файл слишком большой"));return;}chunks.push(c);});
