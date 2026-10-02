@@ -68,8 +68,7 @@ function buttonChoiceAnalysis(decision,state,buttons){
 }
 function buttonScoreText(ranked){
   if(!ranked.length)return "";
-  return ranked.map((x,i)=>(i===0?"⭐ ":"")+String(i+1)+". «"+x.label+"» — "+x.percent+"%
-   └ "+x.reason).join("\n");
+  return ranked.map((x,i)=>(i===0?"⭐ ":"")+String(i+1)+". «"+x.label+"» — "+x.percent+"%\\n   └ "+x.reason).join("\\n");
 }
 function recommendGameButton(decision,buttons,state){
   const ranked=buttonChoiceAnalysis(decision,state,buttons);
