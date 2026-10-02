@@ -245,30 +245,8 @@ server.on("upgrade",(req,socket)=>{
       latest=msg;
       latest.received_at=Date.now();
       log("STATE balance="+msg.balance+" garage="+msg.garage+" ocr="+String(msg.ocr||"").length);
-      if(msg.ocr){
-        try{
-          const parsed=parseState(msg.ocr);
-          const d=decide(parsed,85);
-          const decision={
-            action:d.action||"УТОЧНИ СИТУАЦИЮ",
-            title:d.title||"Локальный анализ",
-            reason:d.reason||"",
-            confidence:Number(d.confidence)||0,
-            game_state:msg.ocr||"",
-            sale_price:parsed.vehicle?.price??msg.vehicle?.price??null,
-            expected_profit:null,
-            roi_percent:null,
-            next_actions:[],
-            changes:[]
-          };
-          latest={...latest,vehicle:msg.vehicle||parsed.vehicle,balance:msg.balance??parsed.balance,garage:msg.garage??parsed.garage};
-          aiHistory.push({time:Date.now(),decision,state:{balance:latest.balance,garage:latest.garage,vehicle:latest.vehicle,ocr:latest.ocr}});
-          if(aiHistory.length>30)aiHistory.shift();
-          broadcast({type:"state",...latest});
-          broadcast({type:"ai_decision",decision,time:Date.now(),source:"phone_mlkit"});
-          setAiStatus("Готово • ML Kit телефона");
-        }catch(e){ log("FAST STATE DECISION ERROR",e.message); }
-      }
+      // Состояние из Telegram user-session уже является серверным источником истины.
+      // Android/ML Kit здесь больше не используется: бот полностью работает без APK.
     }
     if(msg.type==="frame"){latestFrame=msg.jpegBase64||null;lastFrameAt=Date.now();log("FRAME received bytes="+Buffer.byteLength(latestFrame||"","base64"));setAiStatus("Кадр получен relay • запускаю анализ");}
     if(msg.type==="frame"){
