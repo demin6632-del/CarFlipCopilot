@@ -139,8 +139,19 @@ function tg(method,body){return new Promise((resolve,reject)=>{
   const data=JSON.stringify(body||{}),u=new URL(API+"/"+method);
   const req=https.request({hostname:u.hostname,path:u.pathname,method:"POST",agent:keepAliveAgent,headers:{"content-type":"application/json","content-length":Buffer.byteLength(data)}},res=>{
     let s="";res.on("data",c=>s+=c);res.on("end",()=>{try{const j=JSON.parse(s);if(!j.ok)return reject(new Error(j.description||"Telegram API error"));resolve(j.result);}catch(e){reject(e);}});
-  });req.on("error",reject);req.setTimeout(35000,()=>{req.destroy(new Error("Telegram API timeout"));});req.write(data);req.end();
+  });req.on("error",reject);req.setTimeout(35000,()=>req.destroy(new Error("Telegram API timeout")));req.write(data);req.end();
 });}
+function tgPhoto(chat_id,buffer,caption,reply_markup){
+  return new Promise((resolve,reject)=>{
+    const boundary="----CarFlipCopilot"+require("crypto").randomBytes(8).toString("hex");
+    const parts=[],add=(n,v)=>parts.push(Buffer.from("--"+boundary+"\r\nContent-Disposition: form-data; name=\""+n+"\"\r\n\r\n"+String(v)+"\r\n"));
+    add("chat_id",chat_id);add("caption",caption);if(reply_markup)add("reply_markup",JSON.stringify(reply_markup));
+    parts.push(Buffer.from("--"+boundary+"\r\nContent-Disposition: form-data; name=\"photo\"; filename=\"game.jpg\"\r\nContent-Type: image/jpeg\r\n\r\n"),buffer,Buffer.from("\r\n--"+boundary+"--\r\n"));
+    const body=Buffer.concat(parts),u=new URL(API+"/sendPhoto");
+    const req=https.request({hostname:u.hostname,path:u.pathname,method:"POST",agent:keepAliveAgent,headers:{"content-type":"multipart/form-data; boundary="+boundary,"content-length":body.length}},res=>{let s="";res.on("data",d=>s+=d);res.on("end",()=>{try{const j=JSON.parse(s);if(!j.ok)return reject(new Error(j.description||"Telegram sendPhoto error"));resolve(j.result);}catch(e){reject(e);}});});
+    req.on("error",reject);req.setTimeout(15000,()=>req.destroy(new Error("Telegram sendPhoto timeout")));req.write(body);req.end();
+  });
+}
 function kb(chatId){
   const rows=[
     [{text:"🎮 Играть"}],
@@ -398,7 +409,12 @@ async function renderGameNow(chat,options={}){
   if(!options.force && lastRenderedGameFingerprints.get(String(chat))===gameFingerprint && currentMessageId){
     return {message_id:currentMessageId,deduplicated:true};
   }
-  const text="🎮 ИГРА\n\n"+String(latest.text||"—").slice(0,10000);
+  const decision=decide(latest,90);
+  const ranked=buttonChoiceAnalysis(decision,latest,latest.buttons||[]);
+  const adviceLines=["🎮 ИГРА","",""+String(latest.text||"—").slice(0,7000),"","🧠 КАК ПОСТУПИТЬ: "+decision.action,"🎯 Уверенность: "+decision.confidence+"%"];
+  if(decision.reason) adviceLines.push("💬 "+decision.reason);
+  if(ranked.length) adviceLines.push("","👉 НАЖАТЬ: «"+ranked[0].label+"» — "+ranked[0].percent+"%","📊 Варианты:\n"+buttonScoreText(ranked));
+  const text=adviceLines.join("\n");
   const markup=await gameKeyboard(latest);
   const messageId=options.messageId||activeGameChats.get(String(chat)+"_message_id");
   if(messageId){
@@ -406,7 +422,12 @@ async function renderGameNow(chat,options={}){
       await tg("deleteMessage",{chat_id:chat,message_id:messageId});
     }catch(e){console.log("GAME SCREEN DELETE ERROR:",e.message);}
   }
-  const sent=await send(chat,text,{reply_markup:markup});
+  let sent=null;
+  try {
+    const image=await Promise.race([userBridge.getGameMedia(latest.message_id),new Promise(resolve=>setTimeout(()=>resolve(null),2500))]);
+    if(image) sent=await tgPhoto(chat,image,text.slice(0,1000),markup);
+  } catch(e) { console.log("GAME PHOTO SEND ERROR:",e.message); }
+  if(!sent) sent=await send(chat,text,{reply_markup:markup});
   if(sent?.message_id){
     activeGameChats.set(String(chat)+"_message_id",sent.message_id);
     lastRenderedGameFingerprints.set(String(chat),gameFingerprint);
@@ -427,7 +448,7 @@ async function renderGame(chat,options={}){
     if(gameRenderQueues.get(key)===current) gameRenderQueues.delete(key);
   }
 }
-async function waitForGameUpdate(previousId,previousText="",previousButtons=[],timeoutMs=10000){
+async function waitForGameUpdate(previousId,previousText="",previousButtons=[],timeoutMs=4500){
   const started=Date.now();
   const oldText=String(previousText||"");
   const oldButtons=JSON.stringify(previousButtons||[]);
