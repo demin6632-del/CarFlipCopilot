@@ -359,24 +359,47 @@ function num(s) {
 function parseGameText(text) {
   const s=String(text||"");
   const out={};
-  const balance=s.match(/(?:баланс|balance)[^0-9]{0,30}([0-9][0-9\s.,]*)/i);
-  const garage=s.match(/(?:гараж|garage)[^0-9]{0,30}(\d+)\s*[/\\]\s*(\d+)/i);
-  const price=s.match(/(?:цена|стоимость|price)[^0-9]{0,30}([0-9][0-9\s.,]*)/i);
-  const hp=s.match(/(?:л\.с\.|лс|hp)[^0-9]{0,20}(\d{2,5})/i);
-  const mileage=s.match(/(?:пробег|mileage)[^0-9]{0,20}([0-9][0-9\s.,]*)/i);
-  const owners=s.match(/(?:владельц(?:а|ев)|owners)[^0-9]{0,20}(\d+)/i);
-  const plate=s.match(/(?:номер|госномер|plate)[^A-ZА-Я0-9]{0,20}([A-ZА-Я]\d{3}[A-ZА-Я]{2}\s?\d{2,3})/i);
-  const vehicleLine=s.match(/(?:автомобиль|машина|vehicle)[^:\n]{0,10}[:\-]\s*([^\n]+)/i);
-  if(balance) out.balance=num(balance[1]);
-  if(garage) out.garage=Number(garage[1])+"/"+Number(garage[2]);
-  if(price) out.vehicle=Object.assign({},out.vehicle||{}, {price:num(price[1])});
+
+  // Game messages are not guaranteed to use literal labels. Some screens
+  // expose the same values as emoji + value, so support both formats.
+  const money = value => {
+    const raw=String(value||"").replace(/[^0-9]/g,"");
+    const n=Number(raw);
+    return Number.isSafeInteger(n)?n:null;
+  };
+
+  const balancePatterns=[
+    /(?:баланс|balance|сч[её]т|деньги|денег|наличн(?:ые|ых)?)\\s*[:：-]?\\s*[^0-9]{0,20}([0-9][0-9\\s.,]*)/i,
+    /(?:💰|💵)\\s*(?:баланс\\s*[:：-]?\\s*)?([0-9][0-9\\s.,]*)\\s*(?:₽|руб(?:\\.|лей)?|RUB)?/i
+  ];
+  const garagePatterns=[
+    /(?:гараж|garage)\\s*[:：-]?\\s*[^0-9]{0,20}(\\d+)\\s*[/\\\\|]\\s*(\\d+)/i,
+    /(?:🚗|🏠)\\s*(?:гараж\\s*[:：-]?\\s*)?(\\d+)\\s*[/\\\\|]\\s*(\\d+)/i
+  ];
+
+  let balanceMatch=null;
+  for(const re of balancePatterns){ const m=s.match(re); if(m){ balanceMatch=m; break; } }
+  let garageMatch=null;
+  for(const re of garagePatterns){ const m=s.match(re); if(m){ garageMatch=m; break; } }
+
+  const price=s.match(/(?:цена|стоимость|price|стоимость\\s*авто|цена\\s*авто)[^0-9]{0,40}([0-9][0-9\\s.,]*)/i);
+  const hp=s.match(/(?:л\\.?\\s*с\\.?|лс|hp)[^0-9]{0,20}(\\d{2,5})/i);
+  const mileage=s.match(/(?:пробег|mileage)[^0-9]{0,20}([0-9][0-9\\s.,]*)/i);
+  const owners=s.match(/(?:владельц(?:а|ев)?|владельцев|owners)[^0-9]{0,20}(\\d+)/i);
+  const plate=s.match(/(?:номер|госномер|гос\\.?\\s*номер|plate)[^A-ZА-Я0-9]{0,20}([A-ZА-Я]\\s*\\d{3}\\s*[A-ZА-Я]{2}\\s*\\d{2,3})/i);
+  const vehicleLine=s.match(/(?:автомобиль|машина|vehicle)\\s*[:：-]\\s*([^\\n]+)/i);
+
+  if(balanceMatch) out.balance=money(balanceMatch[1]);
+  if(garageMatch) out.garage=Number(garageMatch[1])+"/"+Number(garageMatch[2]);
+  if(price) out.vehicle=Object.assign({},out.vehicle||{}, {price:money(price[1])});
   if(hp) out.vehicle=Object.assign({},out.vehicle||{}, {hp:Number(hp[1])});
-  if(mileage) out.vehicle=Object.assign({},out.vehicle||{}, {mileage:num(mileage[1])});
+  if(mileage) out.vehicle=Object.assign({},out.vehicle||{}, {mileage:money(mileage[1])});
   if(owners) out.vehicle=Object.assign({},out.vehicle||{}, {owners:Number(owners[1])});
-  if(plate) out.vehicle=Object.assign({},out.vehicle||{}, {plate:plate[1]});
+  if(plate) out.vehicle=Object.assign({},out.vehicle||{}, {plate:plate[1].replace(/\\s+/g," ")});
   if(vehicleLine) out.vehicle=Object.assign({},out.vehicle||{}, {name:vehicleLine[1].trim()});
+
   out.source="telegram_user_session";
-  out.confidence=(balance||garage||price||vehicleLine)?0.7:0.25;
+  out.confidence=(balanceMatch||garageMatch||price||vehicleLine)?0.9:0.25;
   return out;
 }
 
