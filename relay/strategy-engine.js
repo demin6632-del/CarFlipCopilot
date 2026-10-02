@@ -145,9 +145,9 @@ function buildStrategy(state, ranked = [], economy = null) {
     renewalCount,
     renewalCost: renewalCount * RENEWAL_COST,
     fee: null,
-    delta: offer - cost,
-    profitBeforeFee: offer - cost,
-    profitAfterFee: offer - cost,
+    delta: offer - cost - renewalCount * RENEWAL_COST,
+    profitBeforeFee: offer - cost - renewalCount * RENEWAL_COST,
+    profitAfterFee: offer - cost - renewalCount * RENEWAL_COST,
     feeKnown: false
   } : null;
 
