@@ -134,24 +134,24 @@ function tg(method,body){return new Promise((resolve,reject)=>{
   });req.on("error",reject);req.setTimeout(35000,()=>{req.destroy(new Error("Telegram API timeout"));});req.write(data);req.end();
 });}
 function kb(chatId){
-  const rows=[[{text:"🎮 Играть",callback_data:"game"}],[{text:"🧠 Что делать сейчас",callback_data:"advice"}],[{text:"📊 Состояние",callback_data:"state"},{text:"📸 Анализ скрина",callback_data:"photo"}],[{text:"🔗 Подключить игру",callback_data:"connect"}],[{text:"🧪 Проверить связь с игрой",callback_data:"probe"}]];
+  const rows=[
+    [{text:"🎮 Играть"}],
+    [{text:"🧠 Что делать сейчас"}],
+    [{text:"📊 Состояние"},{text:"📸 Анализ скрина"}],
+    [{text:"🔗 Подключить игру"}],
+    [{text:"🧪 Проверить связь с игрой"}]
+  ];
   const connectBase=CONNECT_URL||(BRIDGE_PUBLIC_URL?BRIDGE_PUBLIC_URL+"/connect":"");
   const connectUrl=connectBase&&chatId ? connectBase+(connectBase.includes("?")?"&":"?")+"ticket="+encodeURIComponent(userBridge.createTicket(chatId)) : "";
   if(connectUrl)rows.push([{text:"🎮 Открыть подключение",web_app:{url:connectUrl}}]);
-  return {inline_keyboard:rows};
-}
-async function clearReplyKeyboard(chat){
-  const key=String(chat);
-  if(replyKeyboardClearedChats.has(key)) return;
-  try{
-    const r=await tg("sendMessage",{chat_id:chat,text:"🔄 Интерфейс обновлён.",reply_markup:{remove_keyboard:true,selective:false},disable_notification:true,disable_web_page_preview:true});
-    replyKeyboardClearedChats.add(key);
-    if(r?.message_id) setTimeout(()=>tg("deleteMessage",{chat_id:chat,message_id:r.message_id}).catch(()=>{}),2500);
-  }catch(e){console.log("REPLY KEYBOARD CLEANUP ERROR:",e.message);}
+  return {keyboard:rows,resize_keyboard:true,one_time_keyboard:false,is_persistent:true};
 }
 async function send(chat_id,text,extra={}){
-  await clearReplyKeyboard(chat_id);
-  return tg("sendMessage",Object.assign({chat_id,text,reply_markup:kb(chat_id),disable_web_page_preview:true},extra));
+  return tg("sendMessage",Object.assign({
+    chat_id,text,
+    reply_markup:kb(chat_id),
+    disable_web_page_preview:true
+  },extra));
 }
 async function relay(path,body={}){if(!RELAY_URL)throw new Error("RELAY_URL не настроен");const u=new URL(RELAY_URL+path),data=JSON.stringify(body);
   return new Promise((resolve,reject)=>{const req=https.request({hostname:u.hostname,port:u.port||443,path:u.pathname+u.search,method:"POST",agent:keepAliveAgent,headers:{"content-type":"application/json","authorization":"Bearer "+RELAY_TOKEN,"content-length":Buffer.byteLength(data)}},res=>{let s="";res.on("data",c=>s+=c);res.on("end",()=>{try{resolve(JSON.parse(s))}catch{resolve({raw:s})}})});req.on("error",reject);req.setTimeout(20000,()=>{req.destroy(new Error("Relay timeout"));});req.write(data);req.end();});
@@ -265,7 +265,27 @@ async function handle(m){
   if(text==="/help")return send(chat,"Команды:\n/connect — подключение игры\n/state — состояние\n/advice — что делать сейчас\n/probe — проверить связь с игрой\n/bridge — статус Telegram-моста\n/game — открыть игру прямо в чате\n/help — эта справка\n\nМожно прислать скриншот текущей ситуации — бот разберёт его прямо здесь.");
   // Legacy ReplyKeyboard labels arrive as ordinary text. Handle them once
   // and immediately remove the old keyboard, then continue with inline buttons.
-  if(text==="🎮 Играть"){ await clearReplyKeyboard(chat); return gameDebug(chat); }
+  if(activeGameChats.get(String(chat))){
+    const latest=userBridge.status().last_game_message;
+    const labels=Array.isArray(latest?.buttons)?latest.buttons:[];
+    if(text==="🔄 Обновить игру") return renderGame(chat);
+    if(text==="🚪 Выйти из игры"){
+      activeGameChats.delete(String(chat));
+      activeGameChats.delete(String(chat)+"_message_id");
+      return send(chat,"🚪 Игровой режим закрыт.");
+    }
+    const target=labels.find(x=>String(x).trim()===text.trim());
+    if(target && latest?.message_id){
+      try{
+        await userBridge.clickGameButton(target,latest.message_id);
+        const next=await waitForGameUpdate(latest.message_id,latest.text||"",latest.buttons||[],10000);
+        return renderGame(chat,{messageId:activeGameChats.get(String(chat)+"_message_id")});
+      }catch(e){
+        return send(chat,"❌ Не удалось выполнить «"+target+"»: "+String(e.message||e).slice(0,700));
+      }
+    }
+  }
+  if(text==="🎮 Играть"){ return gameDebug(chat); }
   if(text==="🧠 Что делать сейчас"){ await clearReplyKeyboard(chat); return advice(chat); }
   if(text==="📊 Состояние"){ await clearReplyKeyboard(chat); return state(chat); }
   if(text==="📸 Анализ скрина"){ await clearReplyKeyboard(chat); return send(chat,"📸 Пришли скриншот текущей ситуации из игры."); }
@@ -310,14 +330,11 @@ async function connect(chat){
   return send(chat,"🔗 Подключение игры\n\nИгра: @"+GAME_USERNAME+"\n\nПользовательский Telegram-мост: "+(userBridge.configured()?"готов":"не настроен")+"\n\n📸 Скриншотный режим уже работает без API-данных. Пришли скриншот или перешли сообщение из игры — бот разберёт его прямо в Telegram.\n\n🔐 Не отправляй API hash, коды входа, пароль 2FA или сессию в чат.");
 }
 async function gameKeyboard(message){
-  const rows=(message?.buttons||[]).map(label=>[{text:"▶️ "+label,callback_data:gameButtonData(label,message.message_id)}]);
-  rows.push([{text:"🔄 Обновить игру",callback_data:"game_refresh"},{text:"🚪 Выйти из игры",callback_data:"game_exit"}]);
-  return {inline_keyboard:rows};
+  const rows=(message?.buttons||[]).map(label=>[{text:String(label)}]);
+  rows.push([{text:"🔄 Обновить игру"},{text:"🚪 Выйти из игры"}]);
+  return {keyboard:rows,resize_keyboard:true,one_time_keyboard:false,is_persistent:true};
 }
 async function renderGame(chat,options={}){
-  // Game can be opened by an inline callback, so do not rely on send().
-  // Remove any legacy ReplyKeyboard before rendering the game screen.
-  await clearReplyKeyboard(chat);
   const s=userBridge.status();
   if(!s.last_game_message && userBridge.configured() && s.connected){
     try{userBridge.saveBinding(chat);await userBridge.sendGameMessage("/start");}catch(e){return send(chat,"🎮 ИГРА\n\n❌ Не удалось получить экран игры:\n"+String(e.message||e).slice(0,700));}
