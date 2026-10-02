@@ -508,7 +508,10 @@ async function renderGameNow(chat,options={}){
     adviceLines.push("💡 Проценты — стратегическая оценка по текущему экрану, сохранённой истории твоей игры и финансовому контексту.");
     adviceLines.push("","👉 РЕКОМЕНДАЦИЯ: «"+ranked[0].label+"» — "+ranked[0].percent+"%","📊 ВСЕ КНОПКИ:\n"+buttonScoreText(ranked));
     const top=strategy.alternatives.find(x=>x.label===ranked[0].label);
-    if(top) adviceLines.push("⚠️ Риск действия: "+top.risk+"%"+(top.reasons.length?"\n   └ "+top.reasons.join("; "):""));
+    if(top){
+      adviceLines.push("⚠️ Риск действия: "+top.risk+"%"+(top.reasons.length?"\n   └ "+top.reasons.join("; "):""));
+      adviceLines.push("🔮 ЕСЛИ НАЖАТЬ: "+top.scenario);
+    }
   }else if(decision.reason){
     adviceLines.push("💬 "+decision.reason);
   }
@@ -521,6 +524,15 @@ async function renderGameNow(chat,options={}){
     if(strategy.contract.maxPrice!=null)parts.push("лимит "+Math.round(strategy.contract.maxPrice).toLocaleString("ru-RU")+" ₽");
     if(strategy.contract.minHp!=null)parts.push("мощность от "+strategy.contract.minHp+" л.с.");
     adviceLines.push("📋 КОНТРАКТ: "+(parts.length?parts.join(", "):"условия распознаны"));
+    if(strategy.contractFit?.checks?.length){
+      const fitText=strategy.contractFit.checks.map(x=>{
+        const status=x.ok===true?"✅":x.ok===false?"❌":"❔";
+        const actual=x.actual!=null?(" сейчас "+x.actual):" не распознано";
+        const required=x.required!=null?(" / нужно "+x.required):"";
+        return status+" "+x.name+actual+required;
+      }).join("; ");
+      adviceLines.push("🧾 СООТВЕТСТВИЕ КОНТРАКТУ: "+fitText);
+    }
   }
   if(strategy.warnings.length)adviceLines.push("⚠️ "+strategy.warnings.join("\n⚠️ "));
   const text=adviceLines.join("\n");
