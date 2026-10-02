@@ -642,6 +642,16 @@ async function loop(){
   }
 }
 userBridge.webhookHandler=processUpdate;
+async function gracefulShutdown(signal){
+  console.log("RENDER SHUTDOWN:",signal);
+  polling=false;
+  try { if (userBridge?.httpServer) await new Promise(resolve=>userBridge.httpServer.close(()=>resolve())); } catch(e) { console.log("HTTP SERVER SHUTDOWN ERROR:",e.message); }
+  try { if (typeof userBridge.shutdown==="function") await userBridge.shutdown(); } catch(e) { console.log("TELEGRAM BRIDGE SHUTDOWN ERROR:",e.message); }
+  process.exit(0);
+}
+process.once("SIGTERM",()=>gracefulShutdown("SIGTERM"));
+process.once("SIGINT",()=>gracefulShutdown("SIGINT"));
+
 console.log("Telegram bridge env:",{apiIdPresent:!!process.env.TELEGRAM_API_ID,apiHashPresent:!!process.env.TELEGRAM_API_HASH});
 if(process.env.TELEGRAM_API_ID&&process.env.TELEGRAM_API_HASH)userBridge.ensureClient().then(()=>console.log("Telegram user bridge initialized")).catch(e=>console.log("Telegram user bridge init:",e.message));
 registerBotCommands().catch(e=>console.log("Telegram command registration:",e.message));
