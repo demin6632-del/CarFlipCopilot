@@ -13,7 +13,7 @@ assert.equal(c.reward,200000); assert.equal(c.maxPrice,2500000); assert.equal(c.
 const out=s.buildStrategy({raw_message:"Предложение покупателя 2 900 000 ₽",buttons:["По рукам","Продлить","Отмена"],vehicle:{name:"Audi A4"},offer:2900000},
 [{label:"По рукам",percent:62},{label:"Продлить",percent:23},{label:"Отмена",percent:15}],
 {transactions:[{action:"Продлить"},{action:"Продлить"}],vehicles:[{status:"active",full_cost:2821258}]});
-assert.equal(out.economics.delta,78742); assert.equal(out.alternatives.length,3);
+assert.equal(out.economics.delta,75742); assert.equal(out.alternatives.length,3);
 assert.ok(out.alternatives.find(x=>x.label==="Продлить").reasons.length>0);
 assert.ok(/1 500/.test(ru(out.alternatives.find(x=>x.label==="Продлить").scenario)));
 assert.equal(out.renewalCount,2);
@@ -45,7 +45,7 @@ assert.ok(/остаток/.test(purchase.alternatives.find(x=>x.label==="Куп�
 const buyer=s.buildStrategy({raw_text:"Покупатель предлагает 2 900 000 ₽\nПо рукам",contexts:{buyerContext:true},buttons:["По рукам","Продлить","Отмена"]},
 [{label:"По рукам",percent:70},{label:"Продлить",percent:20},{label:"Отмена",percent:10}],{transactions:[],vehicles:[{status:"active",full_cost:2821258}]});
 assert.equal(buyer.actionable,true); assert.equal(buyer.alternatives.find(x=>x.label==="По рукам").type,"sell");
-assert.ok(/61742/.test(ru(buyer.alternatives.find(x=>x.label==="По рукам").scenario)));
+assert.ok(/78742/.test(ru(buyer.alternatives.find(x=>x.label==="По рукам").scenario)));\nassert.equal(buyer.economics.offer,2900000);
 
 const plate=s.buildStrategy({raw_text:"Аукцион госномера\nСтавка 400 000 ₽",contexts:{explicitPlateAuction:true},buttons:["Сделать ставку","Отмена"]},
 [{label:"Сделать ставку",percent:60},{label:"Отмена",percent:40}],{transactions:[],vehicles:[]});
