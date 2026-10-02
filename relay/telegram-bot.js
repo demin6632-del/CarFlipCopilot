@@ -4,6 +4,7 @@ const { TelegramUserBridge, createConnectServer } = require("./user-session-brid
 const { analyzeImage, parseState, decide, warmup } = require("./free-analyzer");
 const { rankButtons, recordScreen, recordClick } = require("./button-strategy");
 const { recordScreen: recordMemoryScreen, recordAction: recordMemoryAction, recent: recentMemory } = require("./game-memory");
+const { recordTransition: recordEconomyTransition, summary: economySummary } = require("./game-economy");
 
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || "";
 const RELAY_TOKEN = process.env.COPILOT_TOKEN || "";
@@ -172,7 +173,8 @@ function kb(chatId){
   const rows=[
     [{text:"🎮 Играть"}],
     [{text:"🧠 Что делать сейчас"}],
-    [{text:"📊 Состояние"},{text:"📜 История"},{text:"📸 Анализ скрина"}],
+    [{text:"📊 Состояние"},{text:"📜 История"},{text:"💰 Экономика"}],
+    [{text:"📸 Анализ скрина"}],
     [{text:"🔗 Подключить игру"}],
     [{text:"🧪 Проверить связь с игрой"}]
   ];
@@ -311,6 +313,12 @@ async function handle(m){
   // pressing «🎮 Играть» must still open/refresh the game screen, not be sent
   // to the game bot as an unknown game button.
   if(text==="🎮 Играть"){ return gameDebug(chat); }
+  if(text==="💰 Экономика"){
+    const e=await economySummary(chat,200);
+    if(!e.transactions.length)return send(chat,"💰 ЭКОНОМИКА\n\nИстория финансовых изменений пока пуста.");
+    const k=e.byKind||{};
+    return send(chat,"💰 ЭКОНОМИКА\n\n📈 Чистое изменение баланса: "+Math.round(e.net)+" ₽\n📤 Расходы: "+Math.round(e.spent)+" ₽\n📥 Поступления: "+Math.round(e.received)+" ₽\n\n🛒 Покупки: "+Math.round(k.purchase||0)+" ₽\n💵 Продажи: "+Math.round(k.sale||0)+" ₽\n🔄 Продления: "+Math.round(k.renewal||0)+" ₽\n🔧 Ремонт: "+Math.round(k.repair||0)+" ₽\n⚙️ Тюнинг: "+Math.round(k.tuning||0)+" ₽\n🔢 Номера: "+Math.round((k.plate||0)+(k.plate_removal||0))+" ₽");
+  }
   if(text==="📜 История"){
     const rows=await recentMemory(chat,20);
     if(!rows.length) return send(chat,"📜 ИСТОРИЯ\n\nИстория действий пока пуста. Сначала подключи игру и выполни действие.");
@@ -362,7 +370,7 @@ async function handle(m){
         const updated=await waitForGameUpdate(latest.message_id,latest.text||"",latest.buttons||[],2500);
         if(updated){
           const afterState=Object.assign({},userBridge.status());
-          recordMemoryAction(chat,beforeState,target,afterState).catch(e=>console.log("GAME MEMORY ACTION ERROR:",e.message));
+          recordMemoryAction(chat,beforeState,target,afterState); recordEconomyTransition(chat,beforeState,target,afterState).catch(e=>console.log("GAME ECONOMY ERROR:",e.message)); recordEconomyTransition(chat,beforeState,target,afterState).catch(e=>console.log("GAME ECONOMY ERROR:",e.message)).catch(e=>console.log("GAME MEMORY ACTION ERROR:",e.message));
           return renderGame(chat,{messageId:activeGameChats.get(String(chat)+"_message_id")});
         }
         const screenId=activeGameChats.get(String(chat)+"_message_id");
