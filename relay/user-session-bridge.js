@@ -24,6 +24,8 @@ class TelegramUserBridge {
     this.boundChatId = null;
     this.state = { connected:false, game_bot:this.gameUsername };
     this.authPromise = null;
+    this.bindingFile = opts.bindingFile || path.join(process.cwd(),"data","telegram-user-binding.json");
+    this.loadBinding();
     this.tickets = new Map();
     this.lastGameMessage = null;
     this.gameMessages = [];
@@ -43,6 +45,20 @@ class TelegramUserBridge {
   saveSession(session) {
     fs.mkdirSync(path.dirname(this.sessionFile),{recursive:true});
     fs.writeFileSync(this.sessionFile,session,{encoding:"utf8",mode:0o600});
+  }
+
+  loadBinding() {
+    try {
+      const raw=fs.readFileSync(this.bindingFile,"utf8");
+      const data=JSON.parse(raw);
+      if (data && data.chatId != null) this.boundChatId=String(data.chatId);
+    } catch {}
+  }
+
+  saveBinding(chatId) {
+    this.boundChatId=String(chatId);
+    fs.mkdirSync(path.dirname(this.bindingFile),{recursive:true});
+    fs.writeFileSync(this.bindingFile,JSON.stringify({chatId:this.boundChatId,updatedAt:Date.now()}),{encoding:"utf8",mode:0o600});
   }
 
   async ensureClient() {
@@ -122,7 +138,7 @@ class TelegramUserBridge {
     const chatId=this.resolveChatId(chatIdOrTicket);
     if (this.boundChatId && String(this.boundChatId)!==String(chatId)) throw new Error("Мост уже привязан к другому Telegram-пользователю");
     if (this.state.connected) {
-      this.boundChatId = chatId;
+      this.saveBinding(chatId);
       return {id:null,connected:true};
     }
     const id=crypto.randomBytes(18).toString("hex");
@@ -134,7 +150,7 @@ class TelegramUserBridge {
         await this.ensureClient();
         if (this.state.connected) {
           record.done=true;
-          this.boundChatId=chatId;
+          this.saveBinding(chatId);
           return;
         }
         await Promise.race([
@@ -154,7 +170,7 @@ class TelegramUserBridge {
         this.saveSession(this.client.session.save());
         record.done=true;
         record.qr=null;
-        this.boundChatId=chatId;
+        this.saveBinding(chatId);
         await this.attach();
       } catch(e) {
         record.error=e.message;
@@ -170,7 +186,7 @@ class TelegramUserBridge {
     const chatId=this.resolveChatId(chatIdOrTicket);
     if (this.boundChatId && String(this.boundChatId)!==String(chatId)) throw new Error("Мост уже привязан к другому Telegram-пользователю");
     await this.ensureClient();
-    if (this.state.connected) { this.boundChatId=chatId; return {connected:true}; }
+    if (this.state.connected) { this.saveBinding(chatId); return {connected:true}; }
     const normalized=String(phone||"").trim();
     if (!/^\+?[0-9][0-9 ()-]{5,20}$/.test(normalized)) throw new Error("Укажи номер телефона в международном формате, например +79991234567");
     const sent=await this.client.sendCode({apiId:this.apiId,apiHash:this.apiHash},normalized);
@@ -194,7 +210,7 @@ class TelegramUserBridge {
       } else throw e;
     }
     this.saveSession(this.client.session.save());
-    this.boundChatId=r.chatId;
+    this.saveBinding(r.chatId);
     this.phoneAuth.delete(String(id));
     await this.attach();
     return {id:r.id,connected:true,user:this.state.username||null};
@@ -413,11 +429,11 @@ function connectHtml() {
 <div class="box" id="codeBox" style="display:none"><input id="code" inputmode="numeric" autocomplete="one-time-code" placeholder="Код из Telegram"><input id="password" type="password" autocomplete="current-password" placeholder="Пароль 2FA, если включён"><button id="verify">Подтвердить вход</button></div>
 <div class="box"><p>Или подключение через QR на другом устройстве:</p><button id="qrStart" type="button">Показать QR</button><img id="qr"><button id="open" type="button" style="display:none">Открыть Telegram</button></div></main>
 <script>
-const p=new URLSearchParams(location.search),ticket=p.get("ticket")||"";let id="";
-async function post(url,data){const r=await fetch(url,{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(data)});return await r.json()}
+const p=new URLSearchParams(location.search),ticket=p.get("ticket")||"";let id="",pollTimer=null;
+async function post(url,data){const r=await fetch(url,{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(data)});let j={};try{j=await r.json()}catch{};if(!r.ok&&!j.error)j.error="HTTP "+r.status;return j}
 const statusEl=document.getElementById("status"),phoneEl=document.getElementById("phone"),sendEl=document.getElementById("send"),codeBoxEl=document.getElementById("codeBox"),codeEl=document.getElementById("code"),passwordEl=document.getElementById("password"),verifyEl=document.getElementById("verify"),qrEl=document.getElementById("qr"),openEl=document.getElementById("open");sendEl.onclick=async()=>{sendEl.disabled=true;statusEl.textContent="Отправляю код…";try{const j=await post("/connect/phone/start",{ticket,phone:phoneEl.value});if(j.error){statusEl.textContent="Ошибка: "+j.error;sendEl.disabled=false;return}id=j.id;codeBoxEl.style.display="block";statusEl.textContent="Код отправлен в Telegram. Введи его здесь.";codeEl.focus()}catch(e){statusEl.textContent="Ошибка соединения: "+e.message;sendEl.disabled=false}};
-verifyEl.onclick=async()=>{verifyEl.disabled=true;statusEl.textContent="Проверяю…";try{const j=await post("/connect/phone/verify",{id,code:codeEl.value,password:passwordEl.value});if(j.error){statusEl.textContent="Ошибка: "+j.error;verifyEl.disabled=false;return}if(j.needsPassword){statusEl.textContent="Нужен пароль 2FA — введи его выше и снова нажми кнопку.";verifyEl.disabled=false;passwordEl.focus();return}if(j.connected){statusEl.textContent="✅ Telegram-сессия подключена. Можно вернуться в бота.";codeBoxEl.style.display="none"}}catch(e){statusEl.textContent="Ошибка соединения: "+e.message;verifyEl.disabled=false}};
-async function qr(){const qrStartEl=document.getElementById("qrStart");qrStartEl.disabled=true;statusEl.textContent="Готовлю QR…";const j=await post("/connect/start",{ticket});if(j.error){statusEl.textContent="Ошибка: "+j.error;qrStartEl.disabled=false;return}if(j.connected){statusEl.textContent="✅ Уже подключено";return}const qid=j.id;async function poll(){const s=await(await fetch("/connect/status?id="+encodeURIComponent(qid))).json();if(s.connected){statusEl.textContent="✅ Telegram-сессия подключена. Можно вернуться в бота.";qrEl.style.display="none";return}if(s.error){statusEl.textContent="Ошибка: "+s.error;qrStartEl.disabled=false;return}if(s.qr){qrEl.src="/connect/qr?id="+encodeURIComponent(qid)+"&t="+Date.now();qrEl.style.display="inline-block";openEl.style.display="inline-block";openEl.onclick=()=>location.href=s.qr}setTimeout(poll,2500)}poll()}document.getElementById("qrStart").onclick=qr;
+verifyEl.onclick=async()=>{verifyEl.disabled=true;statusEl.textContent="Проверяю вход…";try{const j=await post("/connect/phone/verify",{id,code:codeEl.value,password:passwordEl.value});if(j.error){statusEl.textContent="Ошибка: "+j.error;verifyEl.disabled=false;return}if(j.needsPassword){statusEl.textContent="Нужен пароль 2FA — введи его выше и снова нажми кнопку.";verifyEl.disabled=false;passwordEl.focus();return}if(j.connected){statusEl.textContent="✅ Telegram подключён. Вернись в бота и нажми «Проверить связь».";codeBoxEl.style.display="none"}}catch(e){statusEl.textContent="Ошибка соединения: "+e.message;verifyEl.disabled=false}};
+async function qr(){const qrStartEl=document.getElementById("qrStart");qrStartEl.disabled=true;statusEl.textContent="Создаю QR для входа…";try{const j=await post("/connect/start",{ticket});if(j.error){statusEl.textContent="Ошибка: "+j.error;qrStartEl.disabled=false;return}if(j.connected){statusEl.textContent="✅ Telegram уже подключён.";return}id=j.id;const qid=j.id;async function poll(){try{const s=await(await fetch("/connect/status?id="+encodeURIComponent(qid)+"&t="+Date.now(),{cache:"no-store"})).json();if(s.connected){statusEl.textContent="✅ Telegram подключён. Вернись в бота и нажми «Проверить связь».";qrEl.style.display="none";openEl.style.display="none";qrStartEl.disabled=false;return}if(s.error){statusEl.textContent="Ошибка: "+s.error;qrStartEl.disabled=false;return}if(s.qr){qrEl.src="/connect/qr?id="+encodeURIComponent(qid)+"&t="+Date.now();qrEl.style.display="inline-block";openEl.style.display="inline-block";openEl.onclick=()=>{if(s.qr)location.href=s.qr}}pollTimer=setTimeout(poll,1500)}catch(e){statusEl.textContent="Ошибка проверки: "+e.message;qrStartEl.disabled=false}}poll()}catch(e){statusEl.textContent="Ошибка соединения: "+e.message;qrStartEl.disabled=false}}document.getElementById("qrStart").onclick=qr;
 </script>`;
 }
 
