@@ -294,7 +294,18 @@ async function gameDebug(chat){
 async function bridgeStatus(chat){const s=userBridge.status();return send(chat,"🔗 Telegram-мост\n\nСтатус: "+(s.connected?"✅ подключён":"❌ не подключён")+"\nИгровой бот: @"+GAME_USERNAME+"\nПользователь: "+(s.username?"@"+s.username:"не определён")+(s.last_error?"\n\n⚠️ "+s.last_error:""));}
 async function state(chat){
   try{
-    const local=userBridge.status();
+    let local=userBridge.status();
+    if(!(local && (local.balance!=null||local.garage!=null||local.vehicle?.name||local.raw_message)) && userBridge.configured()){
+      try{
+        await userBridge.ensureClient();
+        local=userBridge.status();
+        if(local.connected){
+          userBridge.saveBinding(chat);
+          await userBridge.sendGameMessage("/start");
+          local=userBridge.status();
+        }
+      }catch(e){ console.log("STATE GAME REFRESH ERROR:",e.message); }
+    }
     const s=local && (local.balance!=null||local.garage!=null||local.vehicle?.name||local.raw_message)
       ? local
       : await relay("/state");
