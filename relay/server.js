@@ -69,7 +69,7 @@ function frame(obj){
 }
 
 const {spawnSync}=require("child_process");
-const { analyzeImage } = require("./free-analyzer");
+const { analyzeImage, parseState, decide } = require("./free-analyzer");
 
 const analysisSchema={
  type:"object",strict:true,
