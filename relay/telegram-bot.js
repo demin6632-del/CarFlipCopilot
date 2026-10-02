@@ -346,9 +346,8 @@ async function renderGame(chat,options={}){
   const messageId=options.messageId||activeGameChats.get(String(chat)+"_message_id");
   if(messageId){
     try{
-      await tg("editMessageText",{chat_id:chat,message_id:messageId,text,disable_web_page_preview:true});
-      return send(chat,text,{reply_markup:markup});
-    }catch(e){console.log("GAME SCREEN EDIT ERROR:",e.message);}
+      await tg("deleteMessage",{chat_id:chat,message_id:messageId});
+    }catch(e){console.log("GAME SCREEN DELETE ERROR:",e.message);}
   }
   const sent=await send(chat,text,{reply_markup:markup});
   if(sent?.message_id)activeGameChats.set(String(chat)+"_message_id",sent.message_id);
@@ -486,8 +485,9 @@ async function callback(q){
         if(next){
           const markup=await gameKeyboard(next);
           try{
-            await tg("editMessageText",{chat_id:chat,message_id:screenId,text:"🎮 ИГРА\n\n"+String(next.text||"—").slice(0,10000),disable_web_page_preview:true});
-            await send(chat,"🎮 ИГРА\n\n"+String(next.text||"—").slice(0,10000),{reply_markup:markup});
+            if(screenId) await tg("deleteMessage",{chat_id:chat,message_id:screenId});
+            const sent=await send(chat,"🎮 ИГРА\n\n"+String(next.text||"—").slice(0,10000),{reply_markup:markup});
+            if(sent?.message_id) activeGameChats.set(String(chat)+"_message_id",sent.message_id);
           }catch(e){console.log("GAME SCREEN AFTER CLICK ERROR:",e.message);}
         }else await renderGame(chat,{messageId:screenId});
         return;
