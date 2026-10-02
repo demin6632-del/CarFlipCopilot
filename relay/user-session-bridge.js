@@ -318,7 +318,7 @@ class TelegramUserBridge {
     return sent;
   }
 
-  async clickGameButton(label) {
+  async clickGameButton(label,messageId=null) {
     if (!this.state.connected || !this.client) throw new Error("Игровая Telegram-сессия не подключена");
     const target=String(label||"").trim();
     if (!target) throw new Error("Не указана кнопка");
@@ -326,12 +326,10 @@ class TelegramUserBridge {
     // Never execute a button from an arbitrary older game message.
     // The bot's recommendation is bound to the latest message it observed.
     const latest=this.lastGameMessage;
-    if (!latest || !latest.message_id) throw new Error("Нет актуального сообщения игры");
-    if (!Array.isArray(latest.buttons) || !latest.buttons.includes(target)) {
-      throw new Error("Кнопка устарела или уже исчезла: "+target);
-    }
-
-    const msgs=await this.client.getMessages(this.gameUsername,{ids:[Number(latest.message_id)]});
+    const targetMessageId=messageId!=null?String(messageId):String(latest?.message_id||"");
+    if (!targetMessageId) throw new Error("Нет сообщения игры");
+    if (messageId==null && (!latest || !Array.isArray(latest.buttons) || !latest.buttons.includes(target))) throw new Error("Кнопка устарела или уже исчезла: "+target);
+    const msgs=await this.client.getMessages(this.gameUsername,{ids:[Number(targetMessageId)]});
     const msg=Array.isArray(msgs) ? msgs[0] : msgs;
     if (!msg) throw new Error("Актуальное сообщение игры больше недоступно");
     const rows=msg.replyMarkup && msg.replyMarkup.rows ? msg.replyMarkup.rows : [];
