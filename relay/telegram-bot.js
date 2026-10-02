@@ -1,4 +1,5 @@
 const https = require("https");
+const keepAliveAgent = new https.Agent({keepAlive:true,maxSockets:32,maxFreeSockets:8,timeout:60000,freeSocketTimeout:15000});
 const { TelegramUserBridge, createConnectServer } = require("./user-session-bridge");
 const { analyzeImage, parseState, decide, warmup } = require("./free-analyzer");
 
