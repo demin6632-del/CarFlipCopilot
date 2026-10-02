@@ -260,7 +260,7 @@ async function handlePhoto(chat,photo){
 
 async function handle(m){
   const chat=m.chat?.id;if(!chat)return;const text=String(m.text||"").trim();
-  if(text==="/start"){users.set(chat,{connected:false});try{await tg("sendMessage",{chat_id:chat,text:"🚗 Интерфейс обновлён: теперь все действия — только inline-кнопками.",reply_markup:{remove_keyboard:true},disable_web_page_preview:true});}catch(e){console.log("KEYBOARD REMOVE ERROR:",e.message);}return send(chat,"🚗 CarFlipCopilot\n\nЯ работаю прямо внутри Telegram. Android-приложение для общения со мной не нужно.\n\nМоя задача — смотреть состояние «Симулятора Перекупа», учитывать историю сделок и говорить одно конкретное следующее действие.\n\nНачни с «🔗 Подключить игру».");}
+  if(text==="/start"){users.set(chat,{connected:false});try{await tg("sendMessage",{chat_id:chat,text:"🚗 Интерфейс обновлён: все действия теперь находятся в нижней клавиатуре.",reply_markup:{remove_keyboard:true},disable_web_page_preview:true});}catch(e){console.log("KEYBOARD REMOVE ERROR:",e.message);}return send(chat,"🚗 CarFlipCopilot\n\nЯ работаю прямо внутри Telegram. Android-приложение для общения со мной не нужно.\n\nМоя задача — смотреть состояние «Симулятора Перекупа», учитывать историю сделок и говорить одно конкретное следующее действие.\n\nНачни с «🔗 Подключить игру».");}
   if(text==="/connect")return connect(chat);if(text==="/state")return state(chat);if(text==="/advice")return advice(chat);if(text==="/probe")return probe(chat);if(text==="/bridge")return bridgeStatus(chat);if(text==="/game")return gameDebug(chat);
   if(text==="/help")return send(chat,"Команды:\n/connect — подключение игры\n/state — состояние\n/advice — что делать сейчас\n/probe — проверить связь с игрой\n/bridge — статус Telegram-моста\n/game — открыть игру прямо в чате\n/help — эта справка\n\nМожно прислать скриншот текущей ситуации — бот разберёт его прямо здесь.");
   // Legacy ReplyKeyboard labels arrive as ordinary text. Handle them once
@@ -323,9 +323,9 @@ async function connect(chat){
   if(CONNECT_URL||BRIDGE_PUBLIC_URL){
     const url=CONNECT_URL||(BRIDGE_PUBLIC_URL+"/connect?ticket="+encodeURIComponent(userBridge.createTicket(chat)));
     if(!userBridge.configured()){
-      return send(chat,"🔗 Подключение игры\n\nАвтоматический мост сейчас не активирован: на сервере отсутствуют TELEGRAM_API_ID и TELEGRAM_API_HASH.\n\n📸 Скриншотный режим уже доступен — просто пришли экран игры или перешли сообщение из неё.\n\n🔐 API-данные не отправляй в чат.",{reply_markup:{inline_keyboard:[[{text:"📸 Использовать скриншотный режим",callback_data:"photo"}],[{text:"↩️ Назад",callback_data:"menu"}]]}});
+      return send(chat,"🔗 Подключение игры\n\nАвтоматический мост сейчас не активирован: на сервере отсутствуют TELEGRAM_API_ID и TELEGRAM_API_HASH.\n\n📸 Скриншотный режим уже доступен — просто пришли экран игры или перешли сообщение из неё.\n\n🔐 API-данные не отправляй в чат."
     }
-    return send(chat,"🔗 Открываю защищённое подключение.\n\nПосле авторизации мост привяжет твой Telegram-профиль к состоянию игры.",{reply_markup:{inline_keyboard:[[{text:"🎮 Подключить игру",web_app:{url}}],[{text:"🧪 Проверить связь",callback_data:"probe"}],[{text:"↩️ Назад",callback_data:"menu"}]]}});
+    return send(chat,"🔗 Открываю защищённое подключение.\n\nПосле авторизации мост привяжет твой Telegram-профиль к состоянию игры."
   }
   return send(chat,"🔗 Подключение игры\n\nИгра: @"+GAME_USERNAME+"\n\nПользовательский Telegram-мост: "+(userBridge.configured()?"готов":"не настроен")+"\n\n📸 Скриншотный режим уже работает без API-данных. Пришли скриншот или перешли сообщение из игры — бот разберёт его прямо в Telegram.\n\n🔐 Не отправляй API hash, коды входа, пароль 2FA или сессию в чат.");
 }
@@ -349,7 +349,7 @@ async function renderGame(chat,options={}){
     try{return await tg("editMessageText",{chat_id:chat,message_id:messageId,text,reply_markup:markup,disable_web_page_preview:true});}
     catch(e){console.log("GAME SCREEN EDIT ERROR:",e.message);}
   }
-  const sent=await send(chat,text,{reply_markup:markup});
+  const sent=await send(chat,text,);
   if(sent?.message_id)activeGameChats.set(String(chat)+"_message_id",sent.message_id);
   return sent;
 }
@@ -435,7 +435,7 @@ async function advice(chat){
     }
     let out=r.text||"Пока нет актуального решения.";
     if(recommended) out+="\n\n➡️ Нажать: «"+recommended+"» — "+ranked[0].percent+"%\n💬 "+ranked[0].reason;
-    return send(chat,out,rows.length?{reply_markup:{inline_keyboard:rows}}:{});
+    return send(chat,out,rows.length?:{});
   }catch(e){return send(chat,"⚠️ Помощник пока не получил состояние игры: "+e.message);}
 }
 async function probe(chat){
