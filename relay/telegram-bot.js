@@ -344,7 +344,7 @@ async function handle(m){
         recordClick(chat,latest.text||"",latest.buttons||[],target,userBridge.status().last_game_message?.text||"").catch(e=>console.log("BUTTON STRATEGY CLICK ERROR:",e.message));
         // Do not make the user wait 10 seconds for a slow game response.
         // If the game answers later, the background waiter will refresh the screen.
-        const updated=await waitForGameUpdate(latest.message_id,latest.text||"",latest.buttons||[],2500);
+        const updated=await waitForGameUpdate(latest.message_id,latest.text||"",latest.buttons||[],1200);
         if(updated){
           return renderGame(chat,{messageId:activeGameChats.get(String(chat)+"_message_id")});
         }
