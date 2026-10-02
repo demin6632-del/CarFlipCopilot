@@ -88,6 +88,7 @@ class TelegramUserBridge {
     if (!this.configured()) throw new Error("TELEGRAM_API_ID/TELEGRAM_API_HASH не настроены");
     if (this.client) return this.client;
     const session=await this.loadSession();
+    console.log("TELEGRAM SESSION SOURCE:", session ? "restored" : "empty");
     const client=new TelegramClient(new StringSession(session),this.apiId,this.apiHash,{connectionRetries:2});
     this.client=client;
     try {
@@ -100,6 +101,7 @@ class TelegramUserBridge {
         new Promise((_,reject)=>setTimeout(()=>reject(new Error("Проверка авторизации Telegram превысила 10 секунд")),10000))
       ])) {
         await this.attach();
+        try { await this.saveSession(client.session.save()); } catch(e) { console.log("SESSION REFRESH SAVE ERROR:",e.message); }
       }
       return client;
     } catch (e) {
