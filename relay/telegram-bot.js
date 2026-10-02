@@ -115,7 +115,12 @@ async function notifyBridgeState(state){
   const lines=["🎮 Новое событие из игры","","💰 Баланс: "+(state.balance??"—"),"🚗 Гараж: "+(state.garage??"—")];
   if(state.vehicle?.name)lines.push("🚘 "+state.vehicle.name);
   if(state.vehicle?.price!=null)lines.push("💵 Цена: "+state.vehicle.price);
-  const autoDecision=state.local_decision||decide(state,90);\n  const ranked=buttonChoiceAnalysis(autoDecision,state,state.buttons||[]);\n  if(ranked.length){\n    lines.push("","🧠 АВТОАНАЛИЗ КНОПОК","➡️ Лучше нажать: «"+ranked[0].label+"» — "+ranked[0].percent+"%");\n    lines.push("📊 ВСЕ КНОПКИ:\\n"+buttonScoreText(ranked));\n  }else lines.push("","Нажми «🧠 Что делать сейчас», чтобы получить решение ИИ.");
+  const autoDecision=state.local_decision||decide(state,90);
+  const ranked=buttonChoiceAnalysis(autoDecision,state,state.buttons||[]);
+  if(ranked.length){
+    lines.push("","🧠 АВТОАНАЛИЗ КНОПОК","➡️ Лучше нажать: «"+ranked[0].label+"» — "+ranked[0].percent+"%");
+    lines.push("📊 ВСЕ КНОПКИ:\n"+buttonScoreText(ranked));
+  }else lines.push("","Нажми «🧠 Что делать сейчас», чтобы получить решение ИИ.");
   try{await send(chat,lines.join("\n"));}catch(e){console.log("BRIDGE NOTICE ERROR:",e.message);}
 }
 
@@ -303,7 +308,7 @@ async function connect(chat){
 async function gameDebug(chat){
   const s=userBridge.status(),m=s.last_game_message;if(!m)return send(chat,"🎮 Пока нет сообщения от игрового бота. Сначала подключи игру и нажми «Проверить связь с игрой».");
   const buttons=m.buttons&&m.buttons.length?"\n\n🔘 Кнопки:\n"+m.buttons.map((x,i)=>(i+1)+". "+x).join("\n"):"";
-  const rows=(m.buttons||[]).slice(0,8).map(label=>[{text:"▶️ "+label,callback_data:gameButtonData(label,userBridge.status()?.last_game_message?.message_id)}]);
+  const rows=(m.buttons||[]).map(label=>[{text:"▶️ "+label,callback_data:gameButtonData(label,userBridge.status()?.last_game_message?.message_id)}]);
   return send(chat,"🎮 Последнее сообщение игры:\n\n"+String(m.text||"—").slice(0,6000)+buttons,{reply_markup:{inline_keyboard:rows}});
 }
 async function bridgeStatus(chat){const s=userBridge.status();return send(chat,"🔗 Telegram-мост\n\nСтатус: "+(s.connected?"✅ подключён":"❌ не подключён")+"\nИгровой бот: @"+GAME_USERNAME+"\nПользователь: "+(s.username?"@"+s.username:"не определён")+(s.last_error?"\n\n⚠️ "+s.last_error:""));}
