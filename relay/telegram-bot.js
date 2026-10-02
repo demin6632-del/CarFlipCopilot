@@ -694,28 +694,29 @@ async function callback(q){
     else{try{label=await userBridge.getGameButton(ref.messageId,ref.key);}catch(e){console.log("GAME BUTTON LOOKUP ERROR:",e.message);}}
     if(!label)return send(chat,"⚠️ Эта кнопка больше отсутствует. Нажми «🔄 Обновить игру».");
     try{
+      // Capture the exact pre-click screen before sending the action.
+      const beforeState=Object.assign({},userBridge.status());
+      const beforeScreen=beforeState.last_game_message;
       await userBridge.clickGameButton(label,ref.messageId);
-      recordClick(chat,latest.text||"",latest.buttons||[],label,userBridge.status().last_game_message?.text||"").catch(e=>console.log("BUTTON STRATEGY CALLBACK ERROR:",e.message));
+      recordClick(chat,beforeScreen?.text||"",beforeScreen?.buttons||[],label,userBridge.status().last_game_message?.text||"").catch(e=>console.log("BUTTON STRATEGY CALLBACK ERROR:",e.message));
       if(activeGameChats.get(String(chat))){
-        const beforeState=Object.assign({},userBridge.status());
-        const beforeScreen=beforeState.last_game_message;
         const next=await waitForGameUpdate(ref.messageId,beforeScreen?.text||"",beforeScreen?.buttons||[],10000);
-        const screenId=q.message?.message_id||activeGameChats.get(String(chat)+"_message_id");
-        if(screenId)activeGameChats.set(String(chat)+"_message_id",screenId);
         if(next){
           const afterState=Object.assign({},userBridge.status());
           recordMemoryAction(chat,beforeState,label,afterState).catch(e=>console.log("GAME MEMORY CALLBACK ERROR:",e.message));
           recordEconomyTransition(chat,beforeState,label,afterState).catch(e=>console.log("GAME ECONOMY CALLBACK ERROR:",e.message));
-          const markup=await gameKeyboard(next);
-          try{
-            if(screenId) await tg("deleteMessage",{chat_id:chat,message_id:screenId});
-            const sent=await send(chat,"🎮 ИГРА\n\n"+String(next.text||"—").slice(0,10000),{reply_markup:markup});
-            if(sent?.message_id) activeGameChats.set(String(chat)+"_message_id",sent.message_id);
-          }catch(e){console.log("GAME SCREEN AFTER CLICK ERROR:",e.message);}
-        }else await renderGame(chat,{messageId:screenId});
+          // Re-render through the unified strategy/economy pipeline so the
+          // new screen gets the same analysis as an incoming game event.
+          const screenId=q.message?.message_id||activeGameChats.get(String(chat)+"_message_id");
+          await renderGame(chat,{messageId:screenId,force:true});
+        }else{
+          const screenId=q.message?.message_id||activeGameChats.get(String(chat)+"_message_id");
+          await renderGame(chat,{messageId:screenId,force:true});
+        }
         return;
       }
-      return send(chat,"✅ Нажал: "+label);    }catch(e){return send(chat,"❌ Не удалось выполнить «"+label+"»: "+String(e.message||e).slice(0,700));}
+      return send(chat,"✅ Нажал: "+label);
+    }catch(e){return send(chat,"❌ Не удалось выполнить «"+label+"»: "+String(e.message||e).slice(0,700));}
   }
   if(data==="connect")return connect(chat);
   if(data==="state")return state(chat);
