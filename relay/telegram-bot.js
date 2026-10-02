@@ -380,6 +380,8 @@ async function handle(m){
       return send(chat,"Главное меню:");
     }
     if(text==="🔄 Обновить игру") return renderGame(chat);
+    if(text==="🧠 Стратегия") return advice(chat);
+    if(text==="📊 Состояние") return state(chat);
     if(text==="🚪 Выйти из игры"){
       const screenId=activeGameChats.get(String(chat)+"_message_id");
       activeGameChats.delete(String(chat));
