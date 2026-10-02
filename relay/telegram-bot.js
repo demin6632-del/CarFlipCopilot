@@ -2,6 +2,7 @@ const https = require("https");
 const keepAliveAgent = new https.Agent({keepAlive:true,maxSockets:32,maxFreeSockets:8,timeout:60000,freeSocketTimeout:15000});
 const { TelegramUserBridge, createConnectServer } = require("./user-session-bridge");
 const { analyzeImage, parseState, decide, warmup } = require("./free-analyzer");
+const { rankButtons, recordScreen, recordClick } = require("./button-strategy");
 
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || "";
 const RELAY_TOKEN = process.env.COPILOT_TOKEN || "";
@@ -114,7 +115,7 @@ async function notifyBridgeState(state){
   if(state.vehicle?.name)lines.push("🚘 "+state.vehicle.name);
   if(state.vehicle?.price!=null)lines.push("💵 Цена: "+state.vehicle.price);
   const autoDecision=state.local_decision||decide(state,90);
-  const ranked=buttonChoiceAnalysis(autoDecision,state,state.buttons||[]);
+  const ranked=await rankButtons(chat,state,state.buttons||[]);
   if(ranked.length){
     lines.push("","🧠 АВТОАНАЛИЗ КНОПОК","➡️ Лучше нажать: «"+ranked[0].label+"» — "+ranked[0].percent+"%");
     lines.push("📊 ВСЕ КНОПКИ:\n"+buttonScoreText(ranked));
@@ -249,7 +250,7 @@ async function analyzeForwardedText(chat,text){
     "",
     "➡️ СЕЙЧАС: "+decision.action,
     "💬 "+decision.reason,
-    "🎯 Уверенность: "+decision.confidence+"%"
+    "🔎 Надёжность распознавания: "+decision.confidence+"%"
   ].filter(Boolean);
   return send(chat,lines.join("\n"));
 }
@@ -327,6 +328,7 @@ async function handle(m){
         // Do not require the cached button list to contain the label: the
         // game can update its markup a moment before our local state does.
         await userBridge.clickGameButton(target,latest.message_id);
+        recordClick(chat,latest.text||"",latest.buttons||[],target,userBridge.status().last_game_message?.text||"").catch(e=>console.log("BUTTON STRATEGY CLICK ERROR:",e.message));
         // Do not make the user wait 10 seconds for a slow game response.
         // If the game answers later, the background waiter will refresh the screen.
         const updated=await waitForGameUpdate(latest.message_id,latest.text||"",latest.buttons||[],2500);
@@ -419,10 +421,12 @@ async function renderGameNow(chat,options={}){
   // Passing the raw bridge object directly makes decide() miss raw_text and fall back to OCR advice.
   const parsedGame=parseState(String(latest.text||""));
   const decision=decide(Object.assign({},parsedGame,{raw_text:parsedGame.raw_text,raw_message:latest.text,buttons:latest.buttons}),90);
-  const ranked=buttonChoiceAnalysis(decision,Object.assign({},parsedGame,{raw_text:parsedGame.raw_text,raw_message:latest.text}),latest.buttons||[]);
-  const adviceLines=["🎮 ИГРА","",""+String(latest.text||"—").slice(0,7000),"","🧠 КАК ПОСТУПИТЬ: "+decision.action,"🎯 Уверенность: "+decision.confidence+"%"];
+  const strategyState=Object.assign({},parsedGame,{raw_text:parsedGame.raw_text,raw_message:latest.text,buttons:latest.buttons||[]});
+  const ranked=await rankButtons(chat,strategyState,latest.buttons||[]);
+  recordScreen(chat,latest.text,latest.buttons||[]).catch(e=>console.log("BUTTON STRATEGY SCREEN ERROR:",e.message));
+  const adviceLines=["🎮 ИГРА","",""+String(latest.text||"—").slice(0,7000),"","🧠 КАК ПОСТУПИТЬ: "+(ranked.length?"АНАЛИЗ КНОПОК":"НЕТ КНОПОК"),"🔎 Надёжность распознавания: "+decision.confidence+"%"];
   if(decision.reason) adviceLines.push("💬 "+decision.reason);
-  if(ranked.length) adviceLines.push("","👉 НАЖАТЬ: «"+ranked[0].label+"» — "+ranked[0].percent+"%","📊 Варианты:\n"+buttonScoreText(ranked));
+  if(ranked.length) adviceLines.push("","👉 РЕКОМЕНДАЦИЯ: «"+ranked[0].label+"» — "+ranked[0].percent+"%","📊 Все кнопки:\n"+buttonScoreText(ranked));
   const text=adviceLines.join("\n");
   const markup=await gameKeyboard(latest);
   const messageId=options.messageId||activeGameChats.get(String(chat)+"_message_id");
@@ -529,7 +533,8 @@ async function advice(chat){
     const relayButtons=Array.isArray(r.game_buttons)?r.game_buttons:[];
     const observed=currentMessage?.buttons?.length?currentMessage.buttons:relayButtons;
     const sourceMessageId=currentMessage?.message_id||null;
-    const ranked=buttonChoiceAnalysis(r.decision,{...r.state,...(currentMessage||{}),raw_message:currentMessage?.text||r.state?.raw_message},observed);
+    const adviceState={...r.state,...(currentMessage||{}),raw_message:currentMessage?.text||r.state?.raw_message};
+    const ranked=await rankButtons(chat,adviceState,observed);
     const recommended=ranked[0]?.label||null;
     const rows=[];
     if(recommended && sourceMessageId){
@@ -580,6 +585,7 @@ async function callback(q){
     if(!label)return send(chat,"⚠️ Эта кнопка больше отсутствует. Нажми «🔄 Обновить игру».");
     try{
       await userBridge.clickGameButton(label,ref.messageId);
+      recordClick(chat,latest.text||"",latest.buttons||[],label,userBridge.status().last_game_message?.text||"").catch(e=>console.log("BUTTON STRATEGY CALLBACK ERROR:",e.message));
       if(activeGameChats.get(String(chat))){
         const beforeScreen=userBridge.status().last_game_message;
         const next=await waitForGameUpdate(ref.messageId,beforeScreen?.text||"",beforeScreen?.buttons||[],10000);
