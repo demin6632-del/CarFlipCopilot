@@ -262,7 +262,7 @@ function decide(state, ocr = 0) {
 
 async function preprocess(input, mode = "normal") {
   const base = Buffer.isBuffer(input) ? input : await sharp(input).png().toBuffer();
-  let image = sharp(base).rotate().resize({ width: 800, withoutEnlargement: false }).grayscale().normalize();
+  let image = sharp(base).rotate().resize({ width: 720, withoutEnlargement: false }).grayscale().normalize();
   if (mode === "sharp") image = image.sharpen({ sigma: 1.2 });
   if (mode === "threshold") image = image.sharpen({ sigma: 1.5 }).linear(1.25, -20);
   return image.png().toBuffer();
@@ -353,7 +353,7 @@ async function analyzeImageInternal(input) {
   await run("normal");
   let best = passes[0] || { text: "", confidence: 0 };
   const needsSecondPass =
-    best.confidence < 50 ||
+    best.confidence < 32 ||
     !/баланс|гараж|цена|стоимость|покуп|продаж|аукцион|номер|пробег|л\.?\s*с\.?/i.test(best.text);
   if (needsSecondPass) {
     await run("sharp");
@@ -364,7 +364,7 @@ async function analyzeImageInternal(input) {
   }
   const needsThirdPass =
     !best.text.trim() ||
-    best.confidence < 25;
+    best.confidence < 18;
   if (needsThirdPass && passes.length < 2) await run("threshold");
 
   best = passes.filter(x => x.text.trim()).sort((a, b) => {
