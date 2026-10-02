@@ -99,7 +99,7 @@ async function notifyBridgeState(state){
   const lines=["🎮 Новое событие из игры","","💰 Баланс: "+(state.balance??"—"),"🚗 Гараж: "+(state.garage??"—")];
   if(state.vehicle?.name)lines.push("🚘 "+state.vehicle.name);
   if(state.vehicle?.price!=null)lines.push("💵 Цена: "+state.vehicle.price);
-  const ranked=buttonChoiceAnalysis(state.local_decision||null,state,state.buttons||[]);\n  if(ranked.length){\n    lines.push("","🧠 АВТОАНАЛИЗ КНОПОК","➡️ Лучше нажать: «"+ranked[0].label+"» — "+ranked[0].percent+"%");\n    lines.push("📊 "+ranked.slice(0,4).map(x=>"«"+x.label+"» "+x.percent+"%").join(" · "));\n  }else lines.push("","Нажми «🧠 Что делать сейчас», чтобы получить решение ИИ.");
+  const autoDecision=state.local_decision||decide(state,90);\n  const ranked=buttonChoiceAnalysis(autoDecision,state,state.buttons||[]);\n  if(ranked.length){\n    lines.push("","🧠 АВТОАНАЛИЗ КНОПОК","➡️ Лучше нажать: «"+ranked[0].label+"» — "+ranked[0].percent+"%");\n    lines.push("📊 "+ranked.slice(0,4).map(x=>"«"+x.label+"» "+x.percent+"%").join(" · "));\n  }else lines.push("","Нажми «🧠 Что делать сейчас», чтобы получить решение ИИ.");
   try{await send(chat,lines.join("\n"));}catch(e){console.log("BRIDGE NOTICE ERROR:",e.message);}
 }
 
