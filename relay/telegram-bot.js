@@ -128,7 +128,7 @@ function imageFileId(m){
 async function analyzeForwardedText(chat,text){
   const state=parseState(text);
   const decision=decide(state,100);
-  try { await relay("/bridge/state", { ...state, source: "telegram_forward", received_at: Date.now(), local_decision: decision }); } catch (e) { console.log("FORWARD STATE PUBLISH ERROR:", e.message); }
+  relay("/bridge/state", { ...state, source: "telegram_forward", received_at: Date.now(), local_decision: decision }).catch(e => console.log("FORWARD STATE PUBLISH ERROR:", e.message));
   const lines=[
     "📨 ПЕРЕСЛАННОЕ СООБЩЕНИЕ ИЗ ИГРЫ","",
     state.balance!=null?"💰 Баланс: "+state.balance.toLocaleString("ru-RU")+" ₽":"",
@@ -167,7 +167,7 @@ async function handlePhoto(chat,photo){
     photoFingerprints.set(String(chat),{fingerprint,time:Date.now()});
     const analysis = await analyzeImage(bytes);
     const r = analysis || {};
-    try { await relay("/bridge/state", { ...r, source: "telegram_screenshot", received_at: Date.now(), local_decision: r.decision || null }); } catch (e) { console.log("SCREEN STATE PUBLISH ERROR:", e.message); }
+    relay("/bridge/state", { ...r, source: "telegram_screenshot", received_at: Date.now(), local_decision: r.decision || null }).catch(e => console.log("SCREEN STATE PUBLISH ERROR:", e.message));
     const result = await analyzePhotoFree(bytes, analysis);
     return send(chat, "📸 Анализ скриншота\n\n" + result);
   } catch (e) {
