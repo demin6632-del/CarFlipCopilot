@@ -22,3 +22,12 @@ jobs:
       - name: Package check
         working-directory: relay
         run: npm install --ignore-scripts
+      - name: Game dashboard routing guard
+        run: |
+          grep -F 'text:"🧠 Стратегия"' relay/telegram-bot.js
+          grep -F 'text:"📊 Состояние"' relay/telegram-bot.js
+          grep -F 'text:"📜 История"' relay/telegram-bot.js
+          grep -F 'text:"💰 Экономика"' relay/telegram-bot.js
+          grep -F 'if(text==="🧠 Стратегия") return advice(chat);' relay/telegram-bot.js
+          grep -F 'if(text==="📊 Состояние") return state(chat);' relay/telegram-bot.js
+          grep -F 'if(text==="🔄 Обновить игру") return renderGame(chat);' relay/telegram-bot.js
