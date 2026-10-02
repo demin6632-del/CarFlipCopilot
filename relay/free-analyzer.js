@@ -385,13 +385,26 @@ async function analyzeImageInternal(input) {
       (Number(a.confidence || 0) + Math.min(25, a.text.length / 80))
     )[0] || best;
   }
+  // If OCR produced text but parsed almost no game fields, run a third,
+  // high-contrast pass. This is important for screenshots where labels are
+  // readable to a human but Tesseract mangles them.
+  let parsedBest = parseState(best.text);
+  const usefulFields = s =>
+    Number(s?.balance != null) + Number(s?.garage != null) +
+    Number(!!s?.vehicle?.name) + Number(s?.price != null) +
+    Number(s?.mileage != null) + Number(s?.hp != null) +
+    Number(s?.owners != null) + Number(!!s?.plate);
   const needsThirdPass =
     !best.text.trim() ||
-    best.confidence < 18;
-  if (needsThirdPass && passes.length < 2) await run("threshold");
+    best.confidence < 18 ||
+    usefulFields(parsedBest) === 0;
+  if (needsThirdPass && passes.length < 3) await run("threshold");
 
   best = passes.filter(x => x.text.trim()).sort((a, b) => {
-    const score = x => Number(x.confidence || 0) + Math.min(25, x.text.length / 80);
+    const score = x => {
+      const parsed = parseState(x.text);
+      return Number(x.confidence || 0) + Math.min(25, x.text.length / 80) + usefulFields(parsed) * 14;
+    };
     return score(b) - score(a);
   })[0] || { text: "", confidence: 0 };
 
