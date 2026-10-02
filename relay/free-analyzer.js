@@ -208,7 +208,7 @@ function confidenceFor(state, ocr) {
 }
 
 function decide(state, ocr = 0) {
-  const t = state.raw_text.toLowerCase();
+  const t = String(state?.raw_text || state?.raw_message || "").toLowerCase();
   if (!t) {
     return {
       action: "ПРИШЛИ ДРУГОЙ СКРИНШОТ",
