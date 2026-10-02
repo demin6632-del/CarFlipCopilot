@@ -270,7 +270,26 @@ class TelegramUserBridge {
 
   async sendGameMessage(message) {
     if (!this.state.connected || !this.client) throw new Error("Игровая Telegram-сессия не подключена");
-    return this.client.sendMessage(this.gameUsername,{message:String(message)});
+    const before = this.lastGameMessage && Number(this.lastGameMessage.message_id) || 0;
+    const sent = await this.client.sendMessage(this.gameUsername,{message:String(message)});
+    // NewMessage is normally enough, but game bots can occasionally deliver the
+    // response before the event handler is attached/processed. Poll recent
+    // messages once so /start and manual probes reliably update state.
+    for (let attempt=0; attempt<6; attempt++) {
+      await new Promise(r=>setTimeout(r,500));
+      try {
+        const msgs=await this.client.getMessages(this.gameUsername,{limit:5});
+        const list=Array.isArray(msgs)?msgs:[msgs];
+        const candidates=list
+          .filter(m=>m && Number(m.id||0)>before && String(m.message||"").trim())
+          .sort((a,b)=>Number(a.id||0)-Number(b.id||0));
+        for (const msg of candidates) await this.handleGameMessage(msg);
+        if (candidates.length) break;
+      } catch(e) {
+        console.log("GAME RESPONSE POLL ERROR:",e.message);
+      }
+    }
+    return sent;
   }
 
   async clickGameButton(label) {
