@@ -29,4 +29,11 @@ const fit=s.contractFit({minHp:300,maxPrice:2500000},{vehicle:{hp:320},price:240
 assert.equal(fit.known,2);
 assert.equal(fit.passed,2);
 assert.equal(s.scenarioFor("buy",{},null),"Покупка: деньги уйдут сразу; прибыль не фиксируется до будущей продажи.");
+assert.ok(/не подтверждено/i.test(s.scenarioFor("other",{},null)));
+const cases=["Продать","Продлить","Номер","Ремонт","Тюнинг","Работа","Отмена"];
+for(const label of cases) assert.ok(s.actionType(label));
+const failedFit=s.contractFit({minHp:300,maxPrice:2500000},{vehicle:{hp:265},price:2900000});
+assert.equal(failedFit.known,2);
+assert.equal(failedFit.passed,0);
+
 console.log("STRATEGY ENGINE TESTS: PASS");
