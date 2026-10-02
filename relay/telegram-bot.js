@@ -22,17 +22,61 @@ const processingChats=new Set();
 let lastBridgeNotice=0,lastBridgeFingerprint="";
 
 function normalizeButtonText(s){return String(s||"").toLowerCase().replace(/ё/g,"е").replace(/[^a-zа-я0-9]+/gi," ").trim();}
-function recommendGameButton(decision,buttons){
-  const list=Array.isArray(buttons)?buttons.filter(Boolean):[]; if(!decision||!list.length)return null;
-  const source=normalizeButtonText([decision.action,decision.title,decision.reason].filter(Boolean).join(" "));
-  const aliases=[["куп","покуп","приобр","взять"],["прод","продаж","сбыть"],["осмотр","провер","диагност","оцен"],["назад","вернуться","отмена"],["гараж","машин","авто"],["номер","госномер","аукцион"],["ремонт","почин"],["тюнинг","улучш"],["работ","контракт","заказ"],["награ","получить"],["подтверд","оформ","готово"]];
-  let best=null;
-  for(const label of list){const n=normalizeButtonText(label);let score=0;
-    for(const group of aliases)if(group.some(x=>source.includes(x))&&group.some(x=>n.includes(x)))score+=3;
-    for(const w of source.split(/\s+/).filter(x=>x.length>=4))if(n.includes(w))score++;
-    if(score&&(!best||score>best.score))best={label,score};
-  }
-  return best&&best.score>=3?best.label:null;
+function classifyGameButton(label){
+  const n=normalizeButtonText(label);
+  const tests=[
+    ["buy",/(куп|покуп|приобр|взять|забрать|торг)/i],
+    ["sell",/(прод|продаж|сбыть|по\s*рукам|принять\s+предлож)/i],
+    ["inspect",/(осмотр|провер|диагност|оцен|состояни)/i],
+    ["renew",/(продл|обновить|поднять\s+объяв)/i],
+    ["cancel",/(отмен|назад|выйти|вернуться)/i],
+    ["garage",/(гараж|машин|авто)/i],
+    ["plate",/(номер|госномер|аукцион)/i],
+    ["repair",/(ремонт|почин)/i],
+    ["tune",/(тюнинг|улучш)/i],
+    ["work",/(работ|контракт|заказ)/i],
+    ["confirm",/(подтверд|оформ|готово|да)/i],
+    ["continue",/(далее|продолж|след|исслед|ехать|вперед|впер[её]д)/i]
+  ];
+  for(const [type,re] of tests)if(re.test(n))return type;
+  return "other";
+}
+function buttonChoiceAnalysis(decision,state,buttons){
+  const list=[...new Set((Array.isArray(buttons)?buttons:[]).map(x=>String(x||"").trim()).filter(Boolean))];
+  if(!list.length)return [];
+  const source=normalizeButtonText([decision?.action,decision?.title,decision?.reason,state?.raw_message].filter(Boolean).join(" "));
+  const action=normalizeButtonText(decision?.action||"");
+  const type=action.includes("куп")?"buy":action.includes("прод")?"sell":action.includes("осмотр")||action.includes("провер")?"inspect":action.includes("номер")||action.includes("аукцион")?"plate":action.includes("ремонт")?"repair":action.includes("тюнинг")?"tune":null;
+  const financial=state&&(state.price!=null||state.balance!=null||state.vehicle?.name);
+  const raw=String(state?.raw_message||"").toLowerCase();
+  const weights=list.map(label=>{
+    const bt=classifyGameButton(label), n=normalizeButtonText(label);
+    let score=35;
+    if(type&&bt===type)score+=48;
+    if(type&&bt==="confirm"&&["buy","sell","plate","repair","tune"].includes(type))score+=24;
+    if(type&&bt==="cancel")score-=18;
+    if(bt==="inspect"&&(!financial||/провер|осмотр|оцен/i.test(source)))score+=16;
+    if(bt==="sell"&&/предлож|покупател|по\s*рукам|торг/i.test(raw))score+=22;
+    if(bt==="renew"&&/объяв|продл|ставк|предлож/i.test(raw))score+=12;
+    if(bt==="buy"&&/куп|покуп/i.test(raw))score+=12;
+    if(bt==="continue"&&/след|далее|продолж|исслед/i.test(source))score+=10;
+    if(bt==="cancel"&&/отмен|назад/i.test(source))score+=8;
+    for(const w of source.split(/\s+/).filter(x=>x.length>=4))if(n.includes(w))score+=2;
+    if(!financial&&["buy","sell","repair","tune"].includes(bt))score-=10;
+    return {label,type:bt,score:Math.max(5,score)};
+  });
+  const max=Math.max(...weights.map(x=>x.score));
+  const exp=weights.map(x=>({...x,weight:Math.exp((x.score-max)/18)}));
+  const total=exp.reduce((s,x)=>s+x.weight,0)||1;
+  let rounded=exp.map(x=>({...x,percent:Math.max(1,Math.round(x.weight/total*100))}));
+  let diff=100-rounded.reduce((s,x)=>s+x.percent,0);
+  rounded.sort((a,b)=>b.score-a.score);
+  if(rounded.length)rounded[0].percent=Math.max(1,rounded[0].percent+diff);
+  return rounded.sort((a,b)=>b.percent-a.percent);
+}
+function recommendGameButton(decision,buttons,state){
+  const ranked=buttonChoiceAnalysis(decision,state,buttons);
+  return ranked[0]?.label||null;
 }
 function actionRisk(action){return /(куп|покуп|прод|продаж|аукцион|номер|ремонт|тюнинг|оплат|подтверд|оформ)/i.test(normalizeButtonText(action));}
 function gameButtonKey(label){
