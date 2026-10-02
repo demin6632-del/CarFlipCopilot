@@ -43,6 +43,9 @@ function currentGameButton(key){
   if(!Array.isArray(buttons))return null;
   return buttons.find(label=>gameButtonKey(label)===key)||null;
 }
+function gameButtonData(label,messageId){return "gamebtn:"+String(messageId||"0")+":"+gameButtonKey(label);}
+function confirmButtonData(label,messageId){return "confirmbtn:"+String(messageId||"0")+":"+gameButtonKey(label);}
+function gameButtonRef(data,prefix){const p=String(data||"").split(":");return p.length===3&&p[0]===prefix?{messageId:p[1],key:p[2]}:null;}
 
 async function notifyBridgeState(state){
   const chat=userBridge.boundChatId;if(!chat||!state||!state.received_at)return;
@@ -240,15 +243,15 @@ async function connect(chat){
 async function gameDebug(chat){
   const s=userBridge.status(),m=s.last_game_message;if(!m)return send(chat,"🎮 Пока нет сообщения от игрового бота. Сначала подключи игру и нажми «Проверить связь с игрой».");
   const buttons=m.buttons&&m.buttons.length?"\n\n🔘 Кнопки:\n"+m.buttons.map((x,i)=>(i+1)+". "+x).join("\n"):"";
-  const rows=(m.buttons||[]).slice(0,8).map(label=>[{text:"▶️ "+label,callback_data:"gamebtn:"+gameButtonKey(label)}]);
+  const rows=(m.buttons||[]).slice(0,8).map(label=>[{text:"▶️ "+label,callback_data:gameButtonData(label,userBridge.status()?.last_game_message?.message_id)}]);
   return send(chat,"🎮 Последнее сообщение игры:\n\n"+String(m.text||"—").slice(0,6000)+buttons,{reply_markup:{inline_keyboard:rows}});
 }
 async function bridgeStatus(chat){const s=userBridge.status();return send(chat,"🔗 Telegram-мост\n\nСтатус: "+(s.connected?"✅ подключён":"❌ не подключён")+"\nИгровой бот: @"+GAME_USERNAME+"\nПользователь: "+(s.username?"@"+s.username:"не определён")+(s.last_error?"\n\n⚠️ "+s.last_error:""));}
 async function state(chat){try{const s=await relay("/state");return send(chat,"📊 Текущее состояние\n\n💰 Баланс: "+(s.balance??"неизвестно")+"\n🚗 Гараж: "+(s.garage??"неизвестно")+"\n🚘 Машина: "+(s.vehicle?.name||"нет данных")+"\n\nЭто данные, которые игровой мост передал relay.");}catch(e){return send(chat,"⚠️ Состояние пока недоступно: "+e.message);}}
 async function advice(chat){
   try{const r=await relay("/telegram/advice",{chat_id:chat}),observed=(r.game_buttons||[]).slice(0,8),recommended=recommendGameButton(r.decision,observed),rows=[];
-    if(recommended){const risk=actionRisk(r.decision?.action||recommended);rows.push([{text:(risk?"⚠️ Подтвердить: ":"🤖 Выполнить: ")+recommended,callback_data:"confirmbtn:"+gameButtonKey(recommended)}]);}
-    for(const label of observed){rows.push([{text:"▶️ "+label,callback_data:"gamebtn:"+gameButtonKey(label)}]);}
+    if(recommended){const risk=actionRisk(r.decision?.action||recommended);rows.push([{text:(risk?"⚠️ Подтвердить: ":"🤖 Выполнить: ")+recommended,callback_data:confirmButtonData(recommended,userBridge.status()?.last_game_message?.message_id)}]);}
+    for(const label of observed){rows.push([{text:"▶️ "+label,callback_data:gameButtonData(label,userBridge.status()?.last_game_message?.message_id)}]);}
     let out=r.text||"Пока нет актуального решения. Передай состояние игры или скриншот.";if(recommended)out+="\n\n🤖 ИИ сопоставил действие с кнопкой игры: «"+recommended+"».\nНажатие выполняется только после твоего подтверждения.";
     return send(chat,out,rows.length?{reply_markup:{inline_keyboard:rows}}:{});
   }catch(e){return send(chat,"⚠️ Помощник пока не получил состояние игры: "+e.message);}
@@ -274,9 +277,15 @@ async function probe(chat){
   }
 }
 async function callback(q){
-  const chat=q.message?.chat?.id,data=q.data;try{await tg("answerCallbackQuery",{callback_query_id:q.id});}catch{}
-  if(data.startsWith("confirmbtn:")){const key=data.slice(11),label=currentGameButton(key);if(!label)return send(chat,"⚠️ Рекомендация действительно устарела: кнопки игры уже изменились. Нажми /advice ещё раз.");try{await userBridge.clickGameButton(label);return send(chat,"✅ Выполнено в игре: "+label);}catch(e){return send(chat,"❌ Не удалось выполнить «"+label+"»: "+e.message);}}
-  if(data.startsWith("gamebtn:")){const key=data.slice(8),label=currentGameButton(key);if(!label)return send(chat,"⚠️ Эта кнопка действительно устарела: игра уже показала другой экран. Нажми /game ещё раз.");try{await userBridge.clickGameButton(label);return send(chat,"✅ Нажал: "+label);}catch(e){return send(chat,"❌ Не удалось нажать «"+label+"»: "+e.message);}}
+  const chat=q.message?.chat?.id,data=String(q.data||"");try{await tg("answerCallbackQuery",{callback_query_id:q.id});}catch{}
+  if(data.startsWith("confirmbtn:")||data.startsWith("gamebtn:")){
+    const prefix=data.startsWith("confirmbtn:")?"confirmbtn":"gamebtn",ref=gameButtonRef(data,prefix),s=userBridge.status(),latest=s.last_game_message;
+    if(!ref)return send(chat,"⚠️ Кнопка повреждена. Нажми /game или /advice ещё раз.");
+    if(!latest||String(latest.message_id)!==String(ref.messageId))return send(chat,"⚠️ Экран игры изменился. Обнови кнопки через /game или /advice.");
+    const label=(latest.buttons||[]).find(x=>gameButtonKey(x)===ref.key);
+    if(!label)return send(chat,"⚠️ Эта кнопка больше отсутствует на исходном экране игры. Обнови кнопки.");
+    try{await userBridge.clickGameButton(label,ref.messageId);return send(chat,(prefix==="confirmbtn"?"✅ Выполнено в игре: ":"✅ Нажал: ")+label);}catch(e){return send(chat,"❌ Не удалось выполнить «"+label+"»: "+e.message);}
+  }
   if(data==="connect")return connect(chat);if(data==="state")return state(chat);if(data==="advice")return advice(chat);if(data==="probe")return probe(chat);if(data==="photo")return send(chat,"📸 Просто отправь сюда скриншот игры.");if(data==="menu")return send(chat,"Главное меню:");
 }
 async function processUpdate(u){
