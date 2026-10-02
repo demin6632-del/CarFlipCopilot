@@ -16,6 +16,7 @@ process.on("unhandledRejection",e=>console.log("UNHANDLED REJECTION:",e?.stack||
 process.on("uncaughtException",e=>console.log("UNCAUGHT EXCEPTION:",e?.stack||e?.message||e));
 const users=new Map(),pendingGameProbes=new Map(),gameButtonMap=new Map();
 const photoFingerprints=new Map();
+const photoFileIds=new Map();
 const processingChats=new Set();
 let lastBridgeNotice=0,lastBridgeFingerprint="";
 
@@ -155,7 +156,13 @@ async function handlePhoto(chat,photo){
   try {
     const best = Array.isArray(photo) ? photo[photo.length - 1] : photo;
     if (!best || !best.file_id) throw new Error("Telegram не передал file_id");
-    await send(chat, "📥 Скриншот получил. Анализирую локально...");
+    const chatKey=String(chat);
+    const previousFile=photoFileIds.get(chatKey);
+    if(previousFile && previousFile.file_id===best.file_id && Date.now()-previousFile.time<60000){
+      return send(chat,"ℹ️ Этот скриншот уже был разобран. Отправь новый экран игры.");
+    }
+    photoFileIds.set(chatKey,{file_id:best.file_id,time:Date.now()});
+    send(chat, "📥 Скриншот получил. Анализирую локально...").catch(e=>console.log("PHOTO NOTICE ERROR:",e.message));
     const bytes = await downloadTelegramFile(best.file_id);
     if (!bytes || !bytes.length) throw new Error("Telegram вернул пустой файл");
     const crypto=require("crypto");
