@@ -172,7 +172,7 @@ function kb(chatId){
   const rows=[
     [{text:"🎮 Играть"}],
     [{text:"🧠 Что делать сейчас"}],
-    [{text:"📊 Состояние"},{text:"📸 Анализ скрина"}],
+    [{text:"📊 Состояние"},{text:"📜 История"},{text:"📸 Анализ скрина"}],
     [{text:"🔗 Подключить игру"}],
     [{text:"🧪 Проверить связь с игрой"}]
   ];
@@ -311,6 +311,19 @@ async function handle(m){
   // pressing «🎮 Играть» must still open/refresh the game screen, not be sent
   // to the game bot as an unknown game button.
   if(text==="🎮 Играть"){ return gameDebug(chat); }
+  if(text==="📜 История"){
+    const rows=await recentMemory(chat,20);
+    if(!rows.length) return send(chat,"📜 ИСТОРИЯ\n\nИстория действий пока пуста. Сначала подключи игру и выполни действие.");
+    const lines=["📜 ИСТОРИЯ ПОСЛЕДНИХ ДЕЙСТВИЙ",""]; 
+    rows.slice(0,12).forEach((r,i)=>{
+      const before=String(r.before_text||"").replace(/\\s+/g," ").slice(0,90);
+      const after=String(r.after_text||"").replace(/\\s+/g," ").slice(0,90);
+      lines.push((i+1)+". 👉 "+String(r.button||"—")+" "+(r.changed?"→ экран изменился":"→ экран не изменился"));
+      lines.push("   До: "+before);
+      if(after) lines.push("   После: "+after);
+    });
+    return send(chat,lines.join("\\n"));
+  }
   // ReplyKeyboard labels arrive as ordinary text and are handled directly.
   if(activeGameChats.get(String(chat))){
     const latest=userBridge.status().last_game_message;
