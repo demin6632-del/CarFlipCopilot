@@ -512,6 +512,12 @@ async function renderGameNow(chat,options={}){
       adviceLines.push("","👉 РЕКОМЕНДАЦИЯ: нет — текущий экран не подтверждает, что нужно нажимать кнопку.");
     }
     adviceLines.push("📊 ВСЕ КНОПКИ:\n"+buttonScoreText(ranked));
+    const actionLines=strategy.alternatives.map(x=>{
+      const blocked=x.contractBlocked?" ⛔ КОНТРАКТ":"";
+      return "• «"+x.label+"» — риск "+x.risk+"%"+blocked+"\n  ↳ если нажать: "+x.scenario;
+    });
+    if(actionLines.length)adviceLines.push("🔎 РАЗБОР КАЖДОЙ КНОПКИ:\n"+actionLines.join("\n"));
+    if(strategy.historyCount)adviceLines.push("📜 ИСТОРИЯ: учтено действий — "+strategy.historyCount+". Повторения: "+Object.entries(strategy.historyByAction).map(([k,v])=>k+" ×"+v).join(", "));
     const top=strategy.alternatives.find(x=>x.label===ranked[0].label);
     if(top){
       adviceLines.push("⚠️ Риск действия: "+top.risk+"%"+(top.reasons.length?"\n   └ "+top.reasons.join("; "):""));
