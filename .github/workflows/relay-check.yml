@@ -31,6 +31,7 @@ jobs:
           grep -F 'if(text==="🧠 Стратегия") return advice(chat);' relay/telegram-bot.js
           grep -F 'if(text==="📊 Состояние") return state(chat);' relay/telegram-bot.js
           grep -F 'if(text==="🔄 Обновить игру") return renderGame(chat);' relay/telegram-bot.js
+          grep -F '{command:"game",description:"Открыть игру в Telegram"}' relay/telegram-bot.js
           grep -F 'if(s.vehicle?.hp!=null)lines.push("⚙️ Мощность: "+s.vehicle.hp+" л.с.");' relay/telegram-bot.js
           grep -F 'if(offer!=null)lines.push("💵 Предложение: "+offer.toLocaleString("ru-RU")+" ₽");' relay/telegram-bot.js
           grep -F 'if(contract){' relay/telegram-bot.js
