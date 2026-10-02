@@ -130,12 +130,8 @@ class TelegramUserBridge {
         console.log("GAME MESSAGE ERROR:",e.message);
       }
     }, new NewMessage({}));
-    try {
-      await this.client.sendMessage(this.gameUsername,{message:"/start"});
-    } catch (e) {
-      console.log("GAME START ERROR:",e.message);
-      this.state.last_error = e.message;
-    }
+    // Do not send /start automatically on startup or session restore.
+    // The game is pinged only by the explicit "Проверить связь с игрой" action.
   }
 
   createTicket(chatId) {
