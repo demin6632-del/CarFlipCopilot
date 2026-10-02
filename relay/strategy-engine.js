@@ -132,7 +132,7 @@ function buildStrategy(state, ranked = [], economy = null) {
   const contract = parseContract(screenText);
   const currentVehicle = economy?.vehicles?.find(v => v.status === "active");
   const cost = currentVehicle?.full_cost != null ? numberValue(currentVehicle.full_cost) : null;
-  const offer = numberValue(state?.offer ?? state?.saleOffer ?? state?.buyerOffer);
+  const offerFromState = numberValue(state?.offer ?? state?.saleOffer ?? state?.buyerOffer);\n  const offerMatch = /(?:предложение(?:\\s+покупателя)?|покупатель\\s+предлагает|ставка)\\D{0,30}([0-9][0-9 .]*)\\s*(?:₽|руб)?/i.exec(screenText);\n  const offerFromText = offerMatch ? numberValue(offerMatch[1]) : null;\n  const offer = offerFromState ?? offerFromText;
   const balance = numberValue(state?.balance);
   const renewalCount = sameActionCount.get("renew") || 0;
   const contractFitResult = contractFit(contract, state);
