@@ -3,6 +3,7 @@ const fs = require("fs");
 const path = require("path");
 const http = require("http");
 const https = require("https");
+const { Client: PgClient } = require("pg");
 const keepAliveAgent = new https.Agent({keepAlive:true,maxSockets:16,maxFreeSockets:4,timeout:60000,freeSocketTimeout:15000});
 const QRCode = require("qrcode");
 const { TelegramClient, Api } = require("telegram");
@@ -31,20 +32,42 @@ class TelegramUserBridge {
     this.gameMessages = [];
     this.webhookHandler = null;
     this.phoneAuth = new Map();
+    this.databaseUrl = String(opts.databaseUrl || process.env.DATABASE_URL || "").trim();
   }
 
   configured() {
     return this.apiId > 0 && !!this.apiHash;
   }
 
-  loadSession() {
+  async loadSession() {
     if (process.env.TELEGRAM_SESSION) return process.env.TELEGRAM_SESSION;
+    if (this.databaseUrl) {
+      try {
+        const db=new PgClient({connectionString:this.databaseUrl,ssl:{rejectUnauthorized:false}});
+        await db.connect();
+        await db.query("CREATE TABLE IF NOT EXISTS copilot_state (key text PRIMARY KEY, value text NOT NULL, updated_at timestamptz NOT NULL DEFAULT now())");
+        const r=await db.query("SELECT value FROM copilot_state WHERE key=$1",["telegram_session"]);
+        await db.end();
+        if (r.rows[0] && r.rows[0].value) return r.rows[0].value;
+      } catch(e) { console.log("SESSION DB LOAD ERROR:",e.message); }
+    }
     try { return fs.readFileSync(this.sessionFile,"utf8").trim(); } catch { return ""; }
   }
 
-  saveSession(session) {
+  async saveSession(session) {
+    const value=String(session||"").trim();
+    if (this.databaseUrl && value) {
+      try {
+        const db=new PgClient({connectionString:this.databaseUrl,ssl:{rejectUnauthorized:false}});
+        await db.connect();
+        await db.query("CREATE TABLE IF NOT EXISTS copilot_state (key text PRIMARY KEY, value text NOT NULL, updated_at timestamptz NOT NULL DEFAULT now())");
+        await db.query("INSERT INTO copilot_state(key,value) VALUES($1,$2) ON CONFLICT(key) DO UPDATE SET value=EXCLUDED.value,updated_at=now()",["telegram_session",value]);
+        await db.end();
+        console.log("TELEGRAM SESSION SAVED TO DATABASE");
+      } catch(e) { console.log("SESSION DB SAVE ERROR:",e.message); }
+    }
     fs.mkdirSync(path.dirname(this.sessionFile),{recursive:true});
-    fs.writeFileSync(this.sessionFile,session,{encoding:"utf8",mode:0o600});
+    fs.writeFileSync(this.sessionFile,value,{encoding:"utf8",mode:0o600});
   }
 
   loadBinding() {
@@ -64,7 +87,8 @@ class TelegramUserBridge {
   async ensureClient() {
     if (!this.configured()) throw new Error("TELEGRAM_API_ID/TELEGRAM_API_HASH не настроены");
     if (this.client) return this.client;
-    const client=new TelegramClient(new StringSession(this.loadSession()),this.apiId,this.apiHash,{connectionRetries:2});
+    const session=await this.loadSession();
+    const client=new TelegramClient(new StringSession(session),this.apiId,this.apiHash,{connectionRetries:2});
     this.client=client;
     try {
       await Promise.race([
@@ -167,7 +191,7 @@ class TelegramUserBridge {
         ),
           new Promise((_,reject)=>setTimeout(()=>reject(new Error("Авторизация по QR не завершилась за 10 минут")),10*60*1000))
         ]);
-        this.saveSession(this.client.session.save());
+        await this.saveSession(this.client.session.save());
         record.done=true;
         record.qr=null;
         this.saveBinding(chatId);
@@ -209,7 +233,7 @@ class TelegramUserBridge {
         await this.client.signInWithPassword({apiId:this.apiId,apiHash:this.apiHash},{password:async()=>pw,onError:async err=>{ console.log("TELEGRAM 2FA ERROR:",err.message); return true; }});
       } else throw e;
     }
-    this.saveSession(this.client.session.save());
+    await this.saveSession(this.client.session.save());
     this.saveBinding(r.chatId);
     this.phoneAuth.delete(String(id));
     await this.attach();
