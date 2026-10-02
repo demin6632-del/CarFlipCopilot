@@ -56,5 +56,5 @@ assert.ok(/10%/.test(plate.alternatives.find(x=>x.label==="Сделать ста
 const contract=s.buildStrategy({raw_text:"Контракт: минимум 300 л.с., максимум 2 500 000 ₽",contexts:{dealContext:true},vehicle:{hp:265},price:2900000,buttons:["Выполнить контракт","Отмена"]},
 [{label:"Выполнить контракт",percent:80},{label:"Отмена",percent:20}],{transactions:[],vehicles:[]});
 assert.equal(contract.contractFit.failed,2); assert.equal(contract.alternatives.find(x=>x.label==="Выполнить контракт").contractBlocked,true);
-assert.ok(contract.warnings.some(x=>/условия контракта/.test(x)));
+assert.ok(contract.warnings.some(x=>/услов(?:ия|ий) контракта/.test(x)));
 console.log("STRATEGY ENGINE TESTS: PASS");
