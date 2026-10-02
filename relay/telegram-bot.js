@@ -76,7 +76,8 @@ function tg(method,body){return new Promise((resolve,reject)=>{
 });}
 function kb(chatId){
   const rows=[[{text:"🧠 Что делать сейчас",callback_data:"advice"}],[{text:"📊 Состояние",callback_data:"state"},{text:"📸 Анализ скрина",callback_data:"photo"}],[{text:"🔗 Подключить игру",callback_data:"connect"}],[{text:"🧪 Проверить связь с игрой",callback_data:"probe"}]];
-  const connectUrl=CONNECT_URL||(BRIDGE_PUBLIC_URL&&chatId?BRIDGE_PUBLIC_URL+"/connect?ticket="+encodeURIComponent(userBridge.createTicket(chatId)):"");
+  const connectBase=CONNECT_URL||(BRIDGE_PUBLIC_URL?BRIDGE_PUBLIC_URL+"/connect":"");
+  const connectUrl=connectBase&&chatId ? connectBase+(connectBase.includes("?")?"&":"?")+"ticket="+encodeURIComponent(userBridge.createTicket(chatId)) : "";
   if(connectUrl)rows.push([{text:"🎮 Открыть подключение",web_app:{url:connectUrl}}]);
   return {inline_keyboard:rows};
 }
