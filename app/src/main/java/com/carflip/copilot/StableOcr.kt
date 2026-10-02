@@ -15,7 +15,7 @@ class StableOcr {
 
     fun accept(text: String): String? {
         val normalized = text.lowercase()
-            .replace(Regex("\\s+"), " ")
+            .replace(Regex("\s+"), " ")
             .trim()
         if (normalized.isBlank()) return null
 
@@ -27,14 +27,16 @@ class StableOcr {
             repeatCount = 1
         }
 
+        // Same screen twice: accept immediately.
         if (repeatCount >= 2 && normalized != stableText) {
             stableText = normalized
             lastAcceptedAt = now
             return text
         }
 
-        // Changed screens are accepted faster so the live assistant reacts promptly.
-        if (normalized != stableText && now - lastAcceptedAt >= 700L) {
+        // The game changes constantly, so do not wait forever for an identical OCR result.
+        // A changed screen is accepted at most once per 1400 ms.
+        if (normalized != stableText && now - lastAcceptedAt >= 1400L) {
             stableText = normalized
             lastAcceptedAt = now
             return text
