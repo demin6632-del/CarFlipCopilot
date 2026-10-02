@@ -513,7 +513,8 @@ async function renderGameNow(chat,options={}){
   recordScreen(chat,latest.text,latest.buttons||[]).catch(e=>console.log("BUTTON STRATEGY SCREEN ERROR:",e.message));
   recordMemoryScreen(chat,latest).catch(e=>console.log("GAME MEMORY SCREEN ERROR:",e.message));
   const screenConfidence=ranked.length ? 100 : Math.round(Number(decision.confidence)||0);
-  const adviceLines=["🎮 ИГРА","",""+String(latest.text||"—").slice(0,7000),"","🧠 КАК ПОСТУПИТЬ: "+(ranked.length?"АНАЛИЗ КНОПОК":"НЕТ КНОПОК"),"🔎 Распознавание кнопок: "+screenConfidence+"%"];
+  const rawGameText=String(latest.text||"—");
+  const adviceLines=["🎮 ИГРА","",""+rawGameText.slice(0,7000),"","🧠 КАК ПОСТУПИТЬ: "+(ranked.length?"АНАЛИЗ КНОПОК":"НЕТ КНОПОК"),"🔎 Распознавание кнопок: "+screenConfidence+"%"];
   if(ranked.length){
     adviceLines.push("💡 Проценты — стратегическая оценка по текущему экрану, сохранённой истории твоей игры и финансовому контексту.");
     if(strategy.actionable){
