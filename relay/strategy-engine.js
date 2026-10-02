@@ -156,7 +156,7 @@ function buildStrategy(state, ranked = [], economy = null) {
     const risk = riskFor(type, state, { sameActionCount: sameActionCount.get(type) || 0 });
     const rank = Array.isArray(ranked) ? ranked.find(x => x.label === label) : null;
     const scenario = scenarioFor(type, {...state,balance}, economics);
-    const contractBlocked = type === "work" && contractFitResult?.complete && !contractFitResult.satisfied;
+    const contractBlocked = type === "work" && !!contractFitResult && contractFitResult.failed > 0;
     return {
       label, type, score: rank?.percent ?? null, risk: contractBlocked ? Math.min(100,risk.score+25) : risk.score,
       reasons: contractBlocked ? [...risk.reasons,"условия контракта не выполнены"] : risk.reasons,
