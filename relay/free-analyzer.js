@@ -3,6 +3,8 @@ const sharp = require("sharp");
 
 let workerPromise;
 let analysisQueue = Promise.resolve();
+const analysisCache = new Map();
+const ANALYSIS_CACHE_TTL = 120000;
 async function getWorker() {
   if (!workerPromise) {
     workerPromise = createWorker("rus+eng").catch(err => {
@@ -302,12 +304,29 @@ async function resetWorker() {
 }
 
 async function analyzeImageQueued(input) {
+  const startedAt = Date.now();
+  const source = Buffer.isBuffer(input) ? input : Buffer.from(input);
+  const crypto = require("crypto");
+  const cacheKey = crypto.createHash("sha256").update(source).digest("hex");
+  const cached = analysisCache.get(cacheKey);
+  if (cached && Date.now() - cached.time < ANALYSIS_CACHE_TTL) {
+    console.log("OCR CACHE HIT", cacheKey.slice(0,12), "ageMs="+(Date.now()-cached.time));
+    return cached.result;
+  }
+  if (cached) analysisCache.delete(cacheKey);
   const previous = analysisQueue;
   let release;
   analysisQueue = new Promise(resolve => { release = resolve; });
   try {
     await withTimeout(previous, 15000, "OCR queue");
-    return await withTimeout(analyzeImageInternal(input), 15000, "OCR analysis");
+    const result = await withTimeout(analyzeImageInternal(source), 15000, "OCR analysis");
+    analysisCache.set(cacheKey, { time: Date.now(), result });
+    if (analysisCache.size > 100) {
+      const oldest = analysisCache.keys().next().value;
+      if (oldest) analysisCache.delete(oldest);
+    }
+    console.log("OCR ANALYSIS", cacheKey.slice(0,12), "ms="+(Date.now()-startedAt), "confidence="+result.ocr_confidence);
+    return result;
   } catch (e) {
     if (/OCR (queue|analysis) timeout/i.test(String(e.message || ""))) {
       await resetWorker();
