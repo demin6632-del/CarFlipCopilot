@@ -472,6 +472,12 @@ class TelegramUserBridge {
     return Object.assign({},this.state,{game_bot:"@"+this.gameUsername,auth_in_progress:!!this.authPromise,last_game_message:this.lastGameMessage});
   }
 
+  async shutdown() {
+    this.state.connected=false;
+    try { if (this.client) await this.client.disconnect(); } catch (e) { console.log("TELEGRAM CLIENT SHUTDOWN ERROR:",e.message); }
+    this.client=null;
+  }
+
   recentGameMessages(limit=10) {
     return this.gameMessages.slice(-Math.max(1,Math.min(20,Number(limit)||10)));
   }
@@ -610,6 +616,7 @@ function createConnectServer(bridge, port=8787) {
     res.writeHead(404);res.end("not found");
   });
   const listenPort=Number(process.env.PORT||port||8787);
+  bridge.httpServer=server;
   server.listen(listenPort,"0.0.0.0",()=>console.log("Telegram user bridge web listening on",listenPort));
   return server;
 }
