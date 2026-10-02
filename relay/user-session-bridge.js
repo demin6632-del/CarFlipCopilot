@@ -321,9 +321,13 @@ function createConnectServer(bridge, port=8787) {
       req.on("end",async()=>{
         try {
           const update=JSON.parse(body||"{}");
-          if(typeof bridge.webhookHandler==="function") await bridge.webhookHandler(update);
           res.writeHead(200,{"content-type":"application/json"});
           res.end(JSON.stringify({ok:true}));
+          if(typeof bridge.webhookHandler==="function") {
+            Promise.resolve().then(()=>bridge.webhookHandler(update)).catch(e=>
+              console.log("TELEGRAM ASYNC UPDATE ERROR:",e.stack||e.message||e)
+            );
+          }
         } catch(e) {
           console.log("TELEGRAM WEBHOOK ERROR:",e.stack||e.message||e);
           res.writeHead(200,{"content-type":"application/json"});
