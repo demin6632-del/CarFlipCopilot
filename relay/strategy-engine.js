@@ -146,4 +146,4 @@ function buildStrategy(state, ranked = [], economy = null) {
   };
 }
 
-module.exports = { buildStrategy, actionType, parseContract, riskFor };
+module.exports = { buildStrategy, actionType, parseContract, riskFor, contractFit, scenarioFor };
