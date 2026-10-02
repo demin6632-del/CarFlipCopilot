@@ -403,7 +403,7 @@ async function handle(m){
         recordClick(chat,latest.text||"",latest.buttons||[],target,userBridge.status().last_game_message?.text||"").catch(e=>console.log("BUTTON STRATEGY CLICK ERROR:",e.message));
         // Do not make the user wait 10 seconds for a slow game response.
         // If the game answers later, the background waiter will refresh the screen.
-        const updated=await waitForGameUpdate(latest.message_id,latest.text||"",latest.buttons||[],2500);
+        const updated=await waitForGameUpdate(latest.message_id,latest.text||"",latest.buttons||[],1200);
         if(updated){
           const afterState=Object.assign({},userBridge.status());
           recordMemoryAction(chat,beforeState,target,afterState).catch(e=>console.log("GAME MEMORY ACTION ERROR:",e.message));
@@ -568,7 +568,7 @@ async function renderGameNow(chat,options={}){
   }
   let sent=null;
   try {
-    const image=await Promise.race([userBridge.getGameMedia(latest.message_id),new Promise(resolve=>setTimeout(()=>resolve(null),2500))]);
+    const image=await Promise.race([userBridge.getGameMedia(latest.message_id),new Promise(resolve=>setTimeout(()=>resolve(null),700))]);
     if(image) sent=await tgPhoto(chat,image,text.slice(0,1000),markup);
   } catch(e) { console.log("GAME PHOTO SEND ERROR:",e.message); }
   if(!sent) sent=await send(chat,text,{reply_markup:markup});
@@ -764,6 +764,7 @@ async function callback(q){
     if(ref.legacy)label=(latest.buttons||[]).find(x=>gameButtonKey(x)===ref.key);
     else{try{label=await userBridge.getGameButton(ref.messageId,ref.key);}catch(e){console.log("GAME BUTTON LOOKUP ERROR:",e.message);}}
     if(!label)return send(chat,"⚠️ Эта кнопка больше отсутствует. Нажми «🔄 Обновить игру».");
+    gameActionChats.add(String(chat));
     try{
       // Capture the exact pre-click screen before sending the action.
       const beforeState=Object.assign({},userBridge.status());
@@ -771,23 +772,35 @@ async function callback(q){
       await userBridge.clickGameButton(label,ref.messageId);
       recordClick(chat,beforeScreen?.text||"",beforeScreen?.buttons||[],label,userBridge.status().last_game_message?.text||"").catch(e=>console.log("BUTTON STRATEGY CALLBACK ERROR:",e.message));
       if(activeGameChats.get(String(chat))){
-        const next=await waitForGameUpdate(ref.messageId,beforeScreen?.text||"",beforeScreen?.buttons||[],10000);
+        const next=await waitForGameUpdate(ref.messageId,beforeScreen?.text||"",beforeScreen?.buttons||[],1200);
+        const screenId=q.message?.message_id||activeGameChats.get(String(chat)+"_message_id");
+        if(screenId)activeGameChats.set(String(chat)+"_message_id",screenId);
         if(next){
           const afterState=Object.assign({},userBridge.status());
           recordMemoryAction(chat,beforeState,label,afterState).catch(e=>console.log("GAME MEMORY CALLBACK ERROR:",e.message));
           recordEconomyTransition(chat,beforeState,label,afterState).catch(e=>console.log("GAME ECONOMY CALLBACK ERROR:",e.message));
-          // Re-render through the unified strategy/economy pipeline so the
-          // new screen gets the same analysis as an incoming game event.
-          const screenId=q.message?.message_id||activeGameChats.get(String(chat)+"_message_id");
           await renderGame(chat,{messageId:screenId,force:true});
         }else{
-          const screenId=q.message?.message_id||activeGameChats.get(String(chat)+"_message_id");
-          await renderGame(chat,{messageId:screenId,force:true});
+          // Keep the current screen visible while waiting for a slow game response.
+          setTimeout(async()=>{
+            try{
+              const later=await waitForGameUpdate(ref.messageId,beforeScreen?.text||"",beforeScreen?.buttons||[],8000);
+              if(later){
+                const afterState=Object.assign({},userBridge.status());
+                recordMemoryAction(chat,beforeState,label,afterState).catch(e=>console.log("GAME MEMORY LATE CALLBACK ERROR:",e.message));
+                await renderGame(chat,{messageId:activeGameChats.get(String(chat)+"_message_id"),force:true});
+              }
+            }catch(e){console.log("GAME CALLBACK LATE UPDATE ERROR:",e.message);}
+          },0);
         }
         return;
       }
       return send(chat,"✅ Нажал: "+label);
-    }catch(e){return send(chat,"❌ Не удалось выполнить «"+label+"»: "+String(e.message||e).slice(0,700));}
+    }catch(e){
+      return send(chat,"❌ Не удалось выполнить «"+label+"»: "+String(e.message||e).slice(0,700));
+    }finally{
+      gameActionChats.delete(String(chat));
+    }
   }
   if(data==="connect")return connect(chat);
   if(data==="state")return state(chat);
