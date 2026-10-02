@@ -49,35 +49,64 @@ function classifyGameButton(label){
 function buttonChoiceAnalysis(decision,state,buttons){
   const list=[...new Set((Array.isArray(buttons)?buttons:[]).map(x=>String(x||"").trim()).filter(Boolean))];
   if(!list.length)return [];
+
   const raw=String(state?.raw_message||state?.raw_text||"").toLowerCase();
-  const dataQuality=Math.max(0,Math.min(1,Number(decision?.confidence||0)/100));
   const explicit=String(decision?.action||"").toLowerCase();
   const type=explicit.includes("куп")?"buy":explicit.includes("прод")?"sell":explicit.includes("осмотр")||explicit.includes("провер")?"inspect":explicit.includes("номер")||explicit.includes("аукцион")?"plate":explicit.includes("ремонт")?"repair":explicit.includes("тюнинг")?"tune":explicit.includes("работ")?"work":explicit.includes("гараж")?"garage":explicit.includes("отмен")?"cancel":explicit.includes("продолж")||explicit.includes("далее")?"continue":null;
+  if(!type)return [];
+
+  // Проценты показываем только там, где экран игры прямо подтверждает
+  // соответствие кнопки текущему действию. Финансовые поля сами по себе
+  // не являются доказательством того, что нужно покупать/продавать/VIP.
   const source=normalizeButtonText([decision?.title,decision?.reason,raw].filter(Boolean).join(" "));
-  const hasFinance=state?.price!=null||state?.balance!=null;
-  const hasVehicle=!!state?.vehicle?.name;
-  const hasCondition=state?.mileage!=null||state?.hp!=null||state?.plate;
-  if(!type || dataQuality<0.25) return [];
+  const directContext={
+    buy:/купить|покупка|приобрести|взять\s+авто/i.test(raw),
+    sell:/продать|продажа|по\s*рукам|предложени[ея]\s+покупател|покупател[ья]/i.test(raw),
+    inspect:/осмотр|проверить|диагност|оценить/i.test(source),
+    plate:/аукцион|торги.*номер|номер.*торги|ставка.*номер|номер.*ставка/i.test(raw),
+    repair:/ремонт|почин/i.test(raw),
+    tune:/тюнинг|улучш/i.test(raw),
+    work:/работ|контракт|заказ/i.test(raw),
+    garage:/расширить\s+гараж|боксы\s+гаража|мест.*гараж/i.test(raw),
+    cancel:/отмен|назад|выйти|вернуться/i.test(raw),
+    continue:/далее|продолжить|следующий|исследовать|ехать|вперед/i.test(raw)
+  };
+
   const scores=list.map(label=>{
     const bt=classifyGameButton(label);
-    let evidence=0;
     const evidenceParts=[];
-    if(bt===type){evidence+=6;evidenceParts.push("соответствие цели решения");}
-    if(bt==="confirm"&&["buy","sell","plate","repair","tune"].includes(type)){evidence+=4;evidenceParts.push("подтверждение выбранного действия");}
-    if(bt==="cancel"&&type!=="cancel"){evidence-=2;evidenceParts.push("отмена текущего действия");}
-    if(bt==="sell"&&/предлож|покупател|по\s*рукам|торг|продаж/i.test(raw)){evidence+=3;evidenceParts.push("контекст продажи");}
-    if(bt==="inspect"&&/провер|осмотр|оцен/i.test(source)){evidence+=3;evidenceParts.push("необходимость проверки");}
-    if(bt==="renew"&&/объяв|продл|ставк|предлож/i.test(raw)){evidence+=3;evidenceParts.push("контекст объявления");}
-    if(hasFinance&&["buy","sell","confirm"].includes(bt)){evidence+=1;evidenceParts.push("финансовые данные распознаны");}
-    if(hasVehicle&&hasCondition&&["inspect","sell","buy"].includes(bt)){evidence+=1;evidenceParts.push("данные автомобиля распознаны");}
+    let evidence=0;
+
+    if(bt===type && directContext[type]){
+      evidence=1;
+      evidenceParts.push("кнопка и действие подтверждены текущим экраном");
+    }
+    if(bt==="confirm" && directContext[type] && ["buy","sell","plate","repair","tune"].includes(type)){
+      evidence=1;
+      evidenceParts.push("экран требует подтверждения действия");
+    }
+    if(bt==="cancel" && directContext.cancel && type==="cancel"){
+      evidence=1;
+      evidenceParts.push("экран прямо указывает на отмену/возврат");
+    }
+
     return {label,type:bt,evidence,evidenceParts};
   });
-  const positive=scores.map(x=>Math.max(0,x.evidence));
-  const total=positive.reduce((a,b)=>a+b,0);
-  if(total<=0)return [];
-  return scores.map((x,i)=>({...x,percent:Math.round(positive[i]/total*100),reason:x.evidenceParts.length?x.evidenceParts.join(", "):"нет подтверждающих данных"}))
-    .sort((a,b)=>b.percent-a.percent);
+
+  const confirmed=scores.filter(x=>x.evidence>0);
+  if(!confirmed.length)return [];
+
+  // Это распределение только между кнопками, для которых есть прямое
+  // текстовое подтверждение. Неподтверждённым кнопкам 0% не приписываем:
+  // они просто не участвуют в расчёте.
+  const total=confirmed.length;
+  return scores.map(x=>({
+    ...x,
+    percent:x.evidence>0?Math.round(100/total):null,
+    reason:x.evidenceParts.length?x.evidenceParts.join(", "):"нет прямого подтверждения"
+  })).filter(x=>x.evidence>0).sort((a,b)=>b.percent-a.percent);
 }
+
 function buttonScoreText(ranked){
   if(!ranked.length)return "";
   return ranked.map((x,i)=>(i===0?"⭐ ":"")+String(i+1)+". «"+x.label+"» — "+x.percent+"%\\n   └ "+x.reason).join("\\n");
@@ -147,8 +176,7 @@ function tg(method,body){return new Promise((resolve,reject)=>{
   const req=https.request({hostname:u.hostname,path:u.pathname,method:"POST",agent:keepAliveAgent,headers:{"content-type":"application/json","content-length":Buffer.byteLength(data)}},res=>{
     let s="";res.on("data",c=>s+=c);res.on("end",()=>{try{const j=JSON.parse(s);if(!j.ok)return reject(new Error(j.description||"Telegram API error"));resolve(j.result);}catch(e){reject(e);}});
   });req.on("error",reject);req.setTimeout(35000,()=>req.destroy(new Error("Telegram API timeout")));req.write(data);req.end();
-});}
-function tgPhoto(chat_id,buffer,caption,reply_markup){
+});}function tgPhoto(chat_id,buffer,caption,reply_markup){
   return new Promise((resolve,reject)=>{
     const boundary="----CarFlipCopilot"+require("crypto").randomBytes(8).toString("hex");
     const parts=[],add=(n,v)=>parts.push(Buffer.from("--"+boundary+"\r\nContent-Disposition: form-data; name=\""+n+"\"\r\n\r\n"+String(v)+"\r\n"));
@@ -297,8 +325,7 @@ async function handle(m){
   if(text==="/start"){users.set(chat,{connected:false});return send(chat,"🚗 CarFlipCopilot\n\nЯ работаю прямо внутри Telegram. Android-приложение для общения со мной не нужно.\n\nМоя задача — смотреть состояние «Симулятора Перекупа», учитывать историю сделок и говорить одно конкретное следующее действие.\n\nНачни с «🔗 Подключить игру».");}
   if(text==="/connect")return connect(chat);if(text==="/state")return state(chat);if(text==="/advice")return advice(chat);if(text==="/probe")return probe(chat);if(text==="/bridge")return bridgeStatus(chat);if(text==="/game")return gameDebug(chat);
   if(text==="/help")return send(chat,"Команды:\n/connect — подключение игры\n/state — состояние\n/advice — что делать сейчас\n/probe — проверить связь с игрой\n/bridge — статус Telegram-моста\n/game — открыть игру прямо в чате\n/help — эта справка\n\nМожно прислать скриншот текущей ситуации — бот разберёт его прямо здесь.");
-  // ReplyKeyboard labels arrive as ordinary text and are handled directly.
-  if(activeGameChats.get(String(chat))){
+  // ReplyKeyboard labels arrive as ordinary text and are handled directly.  if(activeGameChats.get(String(chat))){
     const latest=userBridge.status().last_game_message;
     const labels=Array.isArray(latest?.buttons)?latest.buttons:[];
     if(text==="⬅️ Назад"){
@@ -447,8 +474,7 @@ async function renderGameNow(chat,options={}){
 async function renderGame(chat,options={}){
   const key=String(chat);
   const previous=gameRenderQueues.get(key)||Promise.resolve();
-  let release;
-  const current=new Promise(resolve=>{release=resolve;});
+  let release;  const current=new Promise(resolve=>{release=resolve;});
   gameRenderQueues.set(key,current);
   try{
     await previous.catch(()=>{});
@@ -597,8 +623,7 @@ async function callback(q){
         }else await renderGame(chat,{messageId:screenId});
         return;
       }
-      return send(chat,"✅ Нажал: "+label);
-    }catch(e){return send(chat,"❌ Не удалось выполнить «"+label+"»: "+String(e.message||e).slice(0,700));}
+      return send(chat,"✅ Нажал: "+label);    }catch(e){return send(chat,"❌ Не удалось выполнить «"+label+"»: "+String(e.message||e).slice(0,700));}
   }
   if(data==="connect")return connect(chat);
   if(data==="state")return state(chat);
