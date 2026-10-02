@@ -310,6 +310,20 @@ async function advice(chat){
       current.balance!=null||current.garage!=null||current.vehicle?.name||current.raw_message||current.last_game_message?.text
     ) ? current : null;
     let r=null;
+    if(!localState && userBridge.configured()){
+      try{
+        await userBridge.ensureClient();
+        current=userBridge.status();
+        if(current.connected){
+          userBridge.saveBinding(chat);
+          await userBridge.sendGameMessage("/start");
+          current=userBridge.status();
+          localState=current&&(
+            current.balance!=null||current.garage!=null||current.vehicle?.name||current.raw_message||current.last_game_message?.text
+          ) ? current : null;
+        }
+      }catch(e){ console.log("ADVICE GAME REFRESH ERROR:",e.message); }
+    }
     if(localState){
       const raw=String(localState.raw_message||localState.last_game_message?.text||"");
       const parsed=raw?parseState(raw):localState;
