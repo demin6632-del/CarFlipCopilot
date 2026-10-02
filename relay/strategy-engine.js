@@ -101,6 +101,19 @@ function buildStrategy(state, ranked = [], economy = null) {
   }
 
   const contract = parseContract(textOf(state));
+  const currentVehicle = economy?.vehicles?.find(v => v.status === "active");
+  const cost = currentVehicle?.full_cost ?? null;
+  const offer = numberValue(state?.offer ?? state?.saleOffer);
+  const contractFitResult = contractFit(contract, state);
+  const economics = cost != null && offer != null ? {
+    cost,
+    offer,
+    fee: 0,
+    delta: offer - cost,
+    profitBeforeFee: offer - cost,
+    profitAfterFee: offer - cost
+  } : null;
+
   const alternatives = buttons.map(label => {
     const type = actionType(label);
     const risk = riskFor(type, state, { sameActionCount: sameActionCount.get(type) || 0 });
@@ -114,19 +127,6 @@ function buildStrategy(state, ranked = [], economy = null) {
       scenario: scenarioFor(type, state, economics)
     };
   });
-
-  const currentVehicle = economy?.vehicles?.find(v => v.status === "active");
-  const cost = currentVehicle?.full_cost ?? null;
-  const offer = numberValue(state?.offer ?? state?.saleOffer);
-  const contractFitResult = contractFit(contract, state);
-  const economics = cost != null && offer != null ? {
-    cost,
-    offer,
-    fee: 0,
-    delta: offer - cost,
-    profitBeforeFee: offer - cost,
-    profitAfterFee: offer - cost
-  } : null;
 
   const explicit = /(?:нажми|выбери|нужно\s+нажать|следует\s+нажать)\s+[«"“]?([^»"”\n]+)[»"”]?/i.exec(textOf(state));
   const evidence = explicit ? buttons.find(x => x.toLowerCase() === explicit[1].trim().toLowerCase()) : null;
