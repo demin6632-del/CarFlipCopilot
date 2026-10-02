@@ -605,17 +605,20 @@ async function callback(q){
       recordClick(chat,latest.text||"",latest.buttons||[],label,userBridge.status().last_game_message?.text||"").catch(e=>console.log("BUTTON STRATEGY CALLBACK ERROR:",e.message));
       if(activeGameChats.get(String(chat))){
         const beforeScreen=userBridge.status().last_game_message;
-        const next=await waitForGameUpdate(ref.messageId,beforeScreen?.text||"",beforeScreen?.buttons||[],10000);
+        const next=await waitForGameUpdate(ref.messageId,beforeScreen?.text||"",beforeScreen?.buttons||[],1200);
         const screenId=q.message?.message_id||activeGameChats.get(String(chat)+"_message_id");
         if(screenId)activeGameChats.set(String(chat)+"_message_id",screenId);
+        // Always use the same renderer as passive game updates. This keeps the
+        // image, strategy analysis, percentages, deduplication and keyboard
+        // behavior identical after a button click.
         if(next){
-          const markup=await gameKeyboard(next);
-          try{
-            if(screenId) await tg("deleteMessage",{chat_id:chat,message_id:screenId});
-            const sent=await send(chat,"🎮 ИГРА\n\n"+String(next.text||"—").slice(0,10000),{reply_markup:markup});
-            if(sent?.message_id) activeGameChats.set(String(chat)+"_message_id",sent.message_id);
-          }catch(e){console.log("GAME SCREEN AFTER CLICK ERROR:",e.message);}
-        }else await renderGame(chat,{messageId:screenId});
+          await renderGame(chat,{messageId:screenId,force:true});
+        }else{
+          // A slow game response is handled by the background state event;
+          // render the current state immediately instead of leaving the old
+          // screen visible indefinitely.
+          await renderGame(chat,{messageId:screenId,force:true});
+        }
         return;
       }
       return send(chat,"✅ Нажал: "+label);    }catch(e){return send(chat,"❌ Не удалось выполнить «"+label+"»: "+String(e.message||e).slice(0,700));}
