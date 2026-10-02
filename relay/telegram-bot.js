@@ -249,7 +249,7 @@ async function gameDebug(chat){
 async function bridgeStatus(chat){const s=userBridge.status();return send(chat,"🔗 Telegram-мост\n\nСтатус: "+(s.connected?"✅ подключён":"❌ не подключён")+"\nИгровой бот: @"+GAME_USERNAME+"\nПользователь: "+(s.username?"@"+s.username:"не определён")+(s.last_error?"\n\n⚠️ "+s.last_error:""));}
 async function state(chat){try{const s=await relay("/state");return send(chat,"📊 Текущее состояние\n\n💰 Баланс: "+(s.balance??"неизвестно")+"\n🚗 Гараж: "+(s.garage??"неизвестно")+"\n🚘 Машина: "+(s.vehicle?.name||"нет данных")+"\n\nЭто данные, которые игровой мост передал relay.");}catch(e){return send(chat,"⚠️ Состояние пока недоступно: "+e.message);}}
 async function advice(chat){
-  try{const r=await relay("/telegram/advice",{chat_id:chat}),observed=(r.game_buttons||[]).slice(0,8),recommended=recommendGameButton(r.decision,observed),rows=[];
+  try{const r=await relay("/telegram/advice",{chat_id:chat}),current=userBridge.status().last_game_message,observed=(current?.buttons||[]).slice(0,8),recommended=recommendGameButton(r.decision,observed),rows=[];
     if(recommended){const risk=actionRisk(r.decision?.action||recommended);rows.push([{text:(risk?"⚠️ Подтвердить: ":"🤖 Выполнить: ")+recommended,callback_data:confirmButtonData(recommended,userBridge.status()?.last_game_message?.message_id)}]);}
     for(const label of observed){rows.push([{text:"▶️ "+label,callback_data:gameButtonData(label,userBridge.status()?.last_game_message?.message_id)}]);}
     let out=r.text||"Пока нет актуального решения. Передай состояние игры или скриншот.";if(recommended)out+="\n\n🤖 ИИ сопоставил действие с кнопкой игры: «"+recommended+"».\nНажатие выполняется только после твоего подтверждения.";
