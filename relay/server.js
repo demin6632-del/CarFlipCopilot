@@ -7,7 +7,7 @@ const clients=new Set();
 const token=process.env.COPILOT_TOKEN||"";
 
 const model="free-local-ocr";
-const BUILD_ID="whole-game-planner-2026-09-29-1";
+const BUILD_ID="whole-game-planner-2026-10-02-bridge-advice-1";
 const uploadDir=process.env.UPLOAD_DIR||path.join(process.cwd(),"uploads");
 fs.mkdirSync(uploadDir,{recursive:true});
 let latest=null;
