@@ -1,0 +1,20 @@
+name: CarFlipCopilot V2 safety tests
+
+on:
+  push:
+    branches:
+      - v2-safe-update
+  workflow_dispatch:
+
+jobs:
+  safety:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Install dependencies
+        run: npm install
+      - name: Run safety guard regression tests
+        run: node relay/safety-guard.test.js
