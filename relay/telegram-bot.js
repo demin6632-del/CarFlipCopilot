@@ -436,7 +436,8 @@ async function callback(q){
     try{
       await userBridge.clickGameButton(label,ref.messageId);
       if(activeGameChats.get(String(chat))){
-        const beforeScreen=userBridge.status().last_game_message;\n        const next=await waitForGameUpdate(ref.messageId,beforeScreen?.text||"",beforeScreen?.buttons||[],10000);
+        const beforeScreen=userBridge.status().last_game_message;
+        const next=await waitForGameUpdate(ref.messageId,beforeScreen?.text||"",beforeScreen?.buttons||[],10000);
         const screenId=q.message?.message_id||activeGameChats.get(String(chat)+"_message_id");
         if(screenId)activeGameChats.set(String(chat)+"_message_id",screenId);
         if(next){
