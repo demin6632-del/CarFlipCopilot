@@ -24,7 +24,7 @@ assert.equal(out.economics.delta,78742);
 assert.equal(out.alternatives.length,3);
 assert.ok(out.alternatives.find(x=>x.label==="Продлить").reasons.length>0);
 const renew=s.scenarioFor("renew",{},null);
-assert.ok(/себестоимость/i.test(renew));
+assert.ok(/себестоимост/i.test(renew));
 const fit=s.contractFit({minHp:300,maxPrice:2500000},{vehicle:{hp:320},price:2400000});
 assert.equal(fit.known,2);
 assert.equal(fit.passed,2);
