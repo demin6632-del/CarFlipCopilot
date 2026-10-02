@@ -4,7 +4,7 @@ const { TelegramUserBridge, createConnectServer } = require("./user-session-brid
 const { analyzeImage, parseState, decide, warmup } = require("./free-analyzer");
 const { rankButtons, recordScreen, recordClick } = require("./button-strategy");
 const { recordScreen: recordMemoryScreen, recordAction: recordMemoryAction, recent: recentMemory } = require("./game-memory");
-const { recordTransition: recordEconomyTransition, summary: economySummary } = require("./game-economy");
+const { recordTransition: recordEconomyTransition, summary: economySummary, currentVehicleEconomics } = require("./game-economy");
 
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || "";
 const RELAY_TOKEN = process.env.COPILOT_TOKEN || "";
@@ -315,6 +315,11 @@ async function handle(m){
   if(text==="🎮 Играть"){ return gameDebug(chat); }
   if(text==="💰 Экономика"){
     const e=await economySummary(chat,200);
+    const live=userBridge.status();
+    const liveText=String(live?.last_game_message?.text||live?.last_game_message?.raw_text||"");
+    const offerMatch=liveText.match(/(?:предлож(?:ение|ил)|цена продажи|купит за|купят за)[^0-9]{0,30}([0-9][0-9 .]{2,})/i);
+    const offer=offerMatch?Number(offerMatch[1].replace(/\s/g,"")):null;
+    const liveEco=currentVehicleEconomics(live,offer,0);
     if(!e.transactions.length)return send(chat,"💰 ЭКОНОМИКА\n\nИстория финансовых изменений пока пуста.");
     const k=e.byKind||{};
     const lines=["💰 ЭКОНОМИКА","",
@@ -335,6 +340,14 @@ async function handle(m){
         if(v.status==="sold") lines.push("   Реализовано: "+Math.round(v.realized_proceeds||0)+" ₽","   Комиссии: "+Math.round(v.fees||0)+" ₽","   Итог: "+Math.round(v.realized_profit||0)+" ₽");
         else lines.push("   Вложено дополнительно: "+Math.round(v.extra_cost||0)+" ₽","   Статус: в гараже");
       });
+    }
+    if(liveEco?.sale){
+      lines.push("","🎯 ТЕКУЩЕЕ ПРЕДЛОЖЕНИЕ");
+      lines.push("Предложение: "+Math.round(liveEco.sale.offer)+" ₽");
+      lines.push("Себестоимость: "+Math.round(liveEco.sale.cost)+" ₽");
+      lines.push("Разница до комиссии: "+Math.round(liveEco.sale.offer-liveEco.sale.cost)+" ₽");
+      lines.push("Расчётная комиссия: "+Math.round(liveEco.sale.fee)+" ₽");
+      lines.push("Расчётный результат: "+Math.round(liveEco.sale.profit)+" ₽");
     }
     return send(chat,lines.join("\n"));
   }
