@@ -270,8 +270,13 @@ class TelegramUserBridge {
     state.connected=true;
     state.received_at=Date.now();
     this.state=Object.assign({},this.state,state);
-    await this.publishState(this.state);
-    if (this.onState) await this.onState(this.state);
+    // Do not block the Telegram reply on the Render relay network request.
+    // The local bot response is the latency-critical path; relay persistence runs in parallel.
+    this.publishState(this.state).catch(e=>console.log("RELAY STATE ASYNC ERROR:",e.message));
+    if (this.onState) {
+      try { await this.onState(this.state); }
+      catch (e) { console.log("GAME STATE NOTIFY ERROR:",e.message); }
+    }
   }
 
   async publishState(state) {
