@@ -11,6 +11,7 @@ const { StringSession } = require("telegram/sessions");
 const { NewMessage } = require("telegram/events");
 const { EditedMessage } = require("telegram/events/EditedMessage");
 const { normalizeScreenText, normalizeButtons, screenFingerprint, isDuplicateScreen, chooseStableState, classifyScreen } = require("./safety-guard");
+const diagnostics=require("./diagnostics");
 
 class TelegramUserBridge {
   constructor(opts={}) {
@@ -295,6 +296,8 @@ class TelegramUserBridge {
   }
 
   async handleGameMessage(msg) {
+    const pipelineStarted=Date.now();
+    diagnostics.inc("screen.received");
     const receivedAt=Date.now();
     const text=normalizeScreenText(String(msg.message||""));
     const buttons=[];
@@ -322,6 +325,7 @@ class TelegramUserBridge {
       receivedAt:this.lastGameMessage.received_at
     };
     if(isDuplicateScreen(previous,current,15000)){
+      diagnostics.inc("screen.duplicate");
       console.log("GAME SCREEN DUPLICATE IGNORED:",msg.id!=null?String(msg.id):"unknown");
       return;
     }
@@ -329,6 +333,7 @@ class TelegramUserBridge {
     const parsed=parseGameText(text);
     const stable=chooseStableState(this.state && this.state.raw_message ? this.state : null,parsed);
     if(!stable.accepted){
+      diagnostics.inc("ocr.rejected");
       console.log("GAME OCR GUARD:",stable.check.warnings.join(","),msg.id!=null?String(msg.id):"unknown");
     }
     const state=Object.assign({},stable.state,parsed);
@@ -355,7 +360,9 @@ class TelegramUserBridge {
     state.connected=true;
     state.received_at=receivedAt;
     this.state=Object.assign({},this.state,state);
-    this.publishState(this.state).catch(e=>console.log("RELAY STATE ASYNC ERROR:",e.message));
+    diagnostics.inc("screen.accepted");
+    diagnostics.observe("screen.pipeline",Date.now()-pipelineStarted);
+    this.publishState(this.state).catch(e=>{ diagnostics.inc("relay.publish_error"); console.log("RELAY STATE ASYNC ERROR:",e.message); });
     if (this.onState) {
       try { await this.onState(this.state); }
       catch (e) { console.log("GAME STATE NOTIFY ERROR:", e.stack||e.message||e); }
