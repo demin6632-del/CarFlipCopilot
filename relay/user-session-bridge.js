@@ -314,6 +314,21 @@ class TelegramUserBridge {
     return sent;
   }
 
+  async getGameButton(messageId,key) {
+    if (!this.state.connected || !this.client) throw new Error("Игровая Telegram-сессия не подключена");
+    const targetMessageId=Number(messageId);
+    if (!Number.isFinite(targetMessageId)) return null;
+    const msgs=await this.client.getMessages(this.gameUsername,{ids:[targetMessageId]});
+    const msg=Array.isArray(msgs) ? msgs[0] : msgs;
+    if (!msg) return null;
+    const rows=msg.replyMarkup && msg.replyMarkup.rows ? msg.replyMarkup.rows : [];
+    for (const row of rows) for (const button of (row.buttons||[])) {
+      const label=String(button.text||"").trim();
+      if (label && require("crypto").createHash("sha256").update(label).digest("hex").slice(0,16)===String(key)) return label;
+    }
+    return null;
+  }
+
   async clickGameButton(label,messageId=null) {
     if (!this.state.connected || !this.client) throw new Error("Игровая Telegram-сессия не подключена");
     const target=String(label||"").trim();
