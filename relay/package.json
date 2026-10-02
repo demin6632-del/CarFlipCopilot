@@ -12,6 +12,7 @@
     "telegram": "^2.26.22",
     "tesseract.js": "^7.0.0",
     "@tesseract.js-data/rus": "^1.0.0",
-    "@tesseract.js-data/eng": "^1.0.0"
+    "@tesseract.js-data/eng": "^1.0.0",
+    "pg": "^8.16.3"
   }
 }
