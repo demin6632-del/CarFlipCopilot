@@ -378,7 +378,7 @@ async function renderGameNow(chat,options={}){
   // One visible screen per unique game state. Telegram/game events and a button click can both request a render.
   const gameFingerprint=JSON.stringify({text:String(latest.text||""),buttons:Array.isArray(latest.buttons)?latest.buttons:[]});
   const currentMessageId=activeGameChats.get(String(chat)+"_message_id");
-  if(lastRenderedGameFingerprints.get(String(chat))===gameFingerprint && currentMessageId){
+  if(!options.force && lastRenderedGameFingerprints.get(String(chat))===gameFingerprint && currentMessageId){
     return {message_id:currentMessageId,deduplicated:true};
   }
   const text="🎮 ИГРА\n\n"+String(latest.text||"—").slice(0,10000);
@@ -426,7 +426,7 @@ async function waitForGameUpdate(previousId,previousText="",previousButtons=[],t
   }
   return null;
 }
-async function gameDebug(chat){try{return await renderGame(chat);}catch(e){return send(chat,"⚠️ Игровой режим не открылся: "+String(e.message||e).slice(0,700));}}
+async function gameDebug(chat){try{return await renderGame(chat,{force:true});}catch(e){return send(chat,"⚠️ Игровой режим не открылся: "+String(e.message||e).slice(0,700));}}
 async function bridgeStatus(chat){const s=userBridge.status();return send(chat,"🔗 Telegram-мост\n\nСтатус: "+(s.connected?"✅ подключён":"❌ не подключён")+"\nИгровой бот: @"+GAME_USERNAME+"\nПользователь: "+(s.username?"@"+s.username:"не определён")+(s.last_error?"\n\n⚠️ "+s.last_error:""));}
 async function state(chat){
   try{
