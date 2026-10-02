@@ -305,12 +305,24 @@ async function state(chat){
 }
 async function advice(chat){
   try{
-    const r=await relay("/telegram/advice",{chat_id:chat});
-    const current=userBridge.status().last_game_message;
+    const current=userBridge.status();
+    const localState=current&&(
+      current.balance!=null||current.garage!=null||current.vehicle?.name||current.raw_message||current.last_game_message?.text
+    ) ? current : null;
+    let r=null;
+    if(localState){
+      const raw=String(localState.raw_message||localState.last_game_message?.text||"");
+      const parsed=raw?parseState(raw):localState;
+      const decision=localState.local_decision||decide(parsed,Number(localState.confidence)||70);
+      r={text:"🧠 РЕШЕНИЕ: "+(decision.title||decision.action)+"\n\n➡️ Сейчас: "+decision.action+"\n💬 Почему: "+decision.reason+"\n🎯 Уверенность: "+Math.round(Number(decision.confidence)||0)+"%",decision,state:localState,game_buttons:localState.buttons||localState.last_game_message?.buttons||[]};
+    }else{
+      r=await relay("/telegram/advice",{chat_id:chat});
+    }
+    const currentMessage=userBridge.status().last_game_message;
     const relayButtons=Array.isArray(r.game_buttons)?r.game_buttons:[];
-    const observed=current?.buttons?.length?current.buttons:relayButtons;
-    const sourceMessageId=current?.message_id||null;
-    const ranked=buttonChoiceAnalysis(r.decision,{...r.state,...(current||{}),raw_message:current?.text||r.state?.raw_message},observed);
+    const observed=currentMessage?.buttons?.length?currentMessage.buttons:relayButtons;
+    const sourceMessageId=currentMessage?.message_id||null;
+    const ranked=buttonChoiceAnalysis(r.decision,{...r.state,...(currentMessage||{}),raw_message:currentMessage?.text||r.state?.raw_message},observed);
     const recommended=ranked[0]?.label||null;
     const rows=[];
     if(recommended && sourceMessageId){
