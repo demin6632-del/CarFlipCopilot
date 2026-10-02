@@ -316,7 +316,7 @@ async function state(chat){
 }
 async function advice(chat){
   try{
-    const current=userBridge.status();
+    let current=userBridge.status();
     const localState=current&&(
       current.balance!=null||current.garage!=null||current.vehicle?.name||current.raw_message||current.last_game_message?.text
     ) ? current : null;
