@@ -83,9 +83,7 @@ function contractFit(contract, state) {
 function scenarioFor(type, state, economics) {
   if (type === "renew") return "Продление: добавится стоимость продления к себестоимости; новая цена продажи пока не подтверждена.";
   if (type === "sell" && economics) {
-    const fee = Number(economics.fee || 0);
-    const net = Number(economics.offer) - fee;
-    return "Продажа: после комиссии останется примерно " + Math.round(net).toLocaleString("ru-RU") + " ₽.";
+    return "Продажа: разница с зафиксированной себестоимостью " + Math.round(economics.delta).toLocaleString("ru-RU") + " ₽ до возможной комиссии.";
   }
   if (type === "buy") return "Покупка: деньги уйдут сразу; прибыль не фиксируется до будущей продажи.";
   if (type === "plate") return "Номер: учитывай комиссию аукциона и отдельную стоимость снятия, если номер снимается с автомобиля.";
