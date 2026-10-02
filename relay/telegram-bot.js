@@ -65,7 +65,16 @@ function buttonChoiceAnalysis(decision,state,buttons){
     if(bt==="garage"&&/гараж|машин|авто/i.test(source))score+=12;
     for(const w of source.split(/\s+/).filter(x=>x.length>=4))if(n.includes(w))score+=1;
     if(!financial&&["buy","sell","repair","tune"].includes(bt))score-=12;
-    return {label,type:bt,score:Math.max(1,score)};
+    const reasons=[];
+    if(type&&bt===type) reasons.push("соответствует текущему решению ИИ");
+    if(bt==="sell"&&/предлож|покупател|по\s*рукам|торг/i.test(raw)) reasons.push("есть признаки предложения покупателя");
+    if(bt==="buy"&&/куп|покуп/i.test(raw)) reasons.push("экран связан с покупкой");
+    if(bt==="renew"&&/объяв|продл|ставк|предлож/i.test(raw)) reasons.push("объявление или предложение можно продолжить");
+    if(bt==="inspect"&&/провер|осмотр|оцен/i.test(source)) reasons.push("сначала стоит получить больше данных");
+    if(bt==="cancel") reasons.push(type==="cancel"?"соответствует отмене":"отказ снижает риск, но не продвигает сделку");
+    if(!financial&&["buy","sell","repair","tune"].includes(bt)) reasons.push("не хватает финансовых данных");
+    if(!reasons.length) reasons.push("совпадение с распознанным контекстом слабее других вариантов");
+    return {label,type:bt,score:Math.max(1,score),reason:reasons.join("; ")};
   });
   const max=Math.max(...weights.map(x=>x.score));
   const exp=weights.map(x=>({...x,weight:Math.exp((x.score-max)/14)}));
@@ -79,7 +88,7 @@ function buttonChoiceAnalysis(decision,state,buttons){
 }
 function buttonScoreText(ranked){
   if(!ranked.length)return "";
-  return ranked.map((x,i)=>(i===0?"⭐ ":"")+String(i+1)+". «"+x.label+"» — "+x.percent+"%").join("\n");
+  return ranked.map((x,i)=>(i===0?"⭐ ":"")+String(i+1)+". «"+x.label+"» — "+x.percent+"%\n   └ "+x.reason).join("\n");
 }
 function recommendGameButton(decision,buttons,state){
   const ranked=buttonChoiceAnalysis(decision,state,buttons);
