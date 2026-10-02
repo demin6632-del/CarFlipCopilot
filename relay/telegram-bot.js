@@ -292,7 +292,17 @@ async function gameDebug(chat){
   return send(chat,"🎮 Последнее сообщение игры:\n\n"+String(m.text||"—").slice(0,6000)+buttons,{reply_markup:{inline_keyboard:rows}});
 }
 async function bridgeStatus(chat){const s=userBridge.status();return send(chat,"🔗 Telegram-мост\n\nСтатус: "+(s.connected?"✅ подключён":"❌ не подключён")+"\nИгровой бот: @"+GAME_USERNAME+"\nПользователь: "+(s.username?"@"+s.username:"не определён")+(s.last_error?"\n\n⚠️ "+s.last_error:""));}
-async function state(chat){try{const s=await relay("/state");return send(chat,"📊 Текущее состояние\n\n💰 Баланс: "+(s.balance??"неизвестно")+"\n🚗 Гараж: "+(s.garage??"неизвестно")+"\n🚘 Машина: "+(s.vehicle?.name||"нет данных")+"\n\nЭто данные, которые игровой мост передал relay.");}catch(e){return send(chat,"⚠️ Состояние пока недоступно: "+e.message);}}
+async function state(chat){
+  try{
+    const local=userBridge.status()?.state||null;
+    const s=local && (local.balance!=null||local.garage!=null||local.vehicle?.name||local.raw_message)
+      ? local
+      : await relay("/state");
+    const hasData=s&&(s.balance!=null||s.garage!=null||s.vehicle?.name||s.raw_message);
+    if(!hasData)return send(chat,"📊 Текущее состояние\n\n⚠️ Игра ещё не передала состояние. Нажми «🧪 Проверить связь с игрой» или «🧠 Что делать сейчас».");
+    return send(chat,"📊 Текущее состояние\n\n💰 Баланс: "+(s.balance??"неизвестно")+"\n🚗 Гараж: "+(s.garage??"неизвестно")+"\n🚘 Машина: "+(s.vehicle?.name||"нет данных"));
+  }catch(e){return send(chat,"⚠️ Состояние пока недоступно: "+e.message);}
+}
 async function advice(chat){
   try{
     const r=await relay("/telegram/advice",{chat_id:chat});
