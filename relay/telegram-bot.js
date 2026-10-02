@@ -3,6 +3,7 @@ const keepAliveAgent = new https.Agent({keepAlive:true,maxSockets:32,maxFreeSock
 const { TelegramUserBridge, createConnectServer } = require("./user-session-bridge");
 const { analyzeImage, parseState, decide, warmup } = require("./free-analyzer");
 const { rankButtons, recordScreen, recordClick } = require("./button-strategy");
+const { recordScreen: recordMemoryScreen, recordAction: recordMemoryAction, recent: recentMemory } = require("./game-memory");
 
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || "";
 const RELAY_TOKEN = process.env.COPILOT_TOKEN || "";
@@ -340,12 +341,15 @@ async function handle(m){
       try{
         // Do not require the cached button list to contain the label: the
         // game can update its markup a moment before our local state does.
+        const beforeState=Object.assign({},userBridge.status());
         await userBridge.clickGameButton(target,latest.message_id);
         recordClick(chat,latest.text||"",latest.buttons||[],target,userBridge.status().last_game_message?.text||"").catch(e=>console.log("BUTTON STRATEGY CLICK ERROR:",e.message));
         // Do not make the user wait 10 seconds for a slow game response.
         // If the game answers later, the background waiter will refresh the screen.
         const updated=await waitForGameUpdate(latest.message_id,latest.text||"",latest.buttons||[],2500);
         if(updated){
+          const afterState=Object.assign({},userBridge.status());
+          recordMemoryAction(chat,beforeState,target,afterState).catch(e=>console.log("GAME MEMORY ACTION ERROR:",e.message));
           return renderGame(chat,{messageId:activeGameChats.get(String(chat)+"_message_id")});
         }
         const screenId=activeGameChats.get(String(chat)+"_message_id");
@@ -436,6 +440,7 @@ async function renderGameNow(chat,options={}){
   const strategyState=Object.assign({},parsedGame,{raw_text:parsedGame.raw_text,raw_message:latest.text,buttons:latest.buttons||[]});
   const ranked=await rankButtons(chat,strategyState,latest.buttons||[]);
   recordScreen(chat,latest.text,latest.buttons||[]).catch(e=>console.log("BUTTON STRATEGY SCREEN ERROR:",e.message));
+  recordMemoryScreen(chat,latest).catch(e=>console.log("GAME MEMORY SCREEN ERROR:",e.message));
   const screenConfidence=ranked.length ? 100 : Math.round(Number(decision.confidence)||0);
   const adviceLines=["🎮 ИГРА","",""+String(latest.text||"—").slice(0,7000),"","🧠 КАК ПОСТУПИТЬ: "+(ranked.length?"АНАЛИЗ КНОПОК":"НЕТ КНОПОК"),"🔎 Распознавание кнопок: "+screenConfidence+"%"];
   if(ranked.length){
@@ -609,6 +614,8 @@ async function callback(q){
         const screenId=q.message?.message_id||activeGameChats.get(String(chat)+"_message_id");
         if(screenId)activeGameChats.set(String(chat)+"_message_id",screenId);
         if(next){
+          const afterState=Object.assign({},userBridge.status());
+          recordMemoryAction(chat,beforeState,label,afterState).catch(e=>console.log("GAME MEMORY CALLBACK ERROR:",e.message));
           const markup=await gameKeyboard(next);
           try{
             if(screenId) await tg("deleteMessage",{chat_id:chat,message_id:screenId});
