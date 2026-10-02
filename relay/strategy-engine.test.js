@@ -37,3 +37,14 @@ assert.equal(failedFit.known,2);
 assert.equal(failedFit.passed,0);
 
 console.log("STRATEGY ENGINE TESTS: PASS");
+
+const generic=s.buildStrategy({raw_text:"Баланс: 5 990 655 ₽\nГараж: 1/3",buttons:["Профиль","Гараж","Настройки"]},[
+  {label:"Профиль",percent:50},{label:"Гараж",percent:30},{label:"Настройки",percent:20}
+],{transactions:[],vehicles:[]});
+assert.equal(generic.actionable,false);
+assert.equal(s.actionType("Гараж"),"other");
+const explicit=s.buildStrategy({raw_text:"Нажми «Продлить объявление»",buttons:["Продлить объявление","Отмена"]},[
+  {label:"Продлить объявление",percent:70},{label:"Отмена",percent:30}
+],{transactions:[],vehicles:[]});
+assert.equal(explicit.actionable,true);
+assert.equal(explicit.actionEvidence,"Продлить объявление");
