@@ -417,11 +417,26 @@ async function setupWebhook(){
     return false;
   }
 }
+async function pollLoop(){
+  console.log("Telegram polling fallback enabled");
+  while(true){
+    try{
+      const updates=await tg("getUpdates",{offset,timeout:25,allowed_updates:["message","callback_query"]});
+      for(const u of (Array.isArray(updates)?updates:[])){
+        try{await processUpdate(u);}catch(e){console.log("TELEGRAM UPDATE ERROR:",e.stack||e.message||e);}
+      }
+    }catch(e){
+      console.log("TELEGRAM POLLING ERROR:",e.message);
+      await new Promise(r=>setTimeout(r,3000));
+    }
+  }
+}
 async function loop(){
   if(polling)return;polling=true;
   const ok=await setupWebhook();
   if(ok) return;
-  console.log("Telegram bot fallback polling is disabled to prevent 409 conflicts.");
+  console.log("Telegram webhook unavailable; switching to polling fallback.");
+  await pollLoop();
 }
 userBridge.webhookHandler=processUpdate;
 console.log("Telegram bridge env:",{apiIdPresent:!!process.env.TELEGRAM_API_ID,apiHashPresent:!!process.env.TELEGRAM_API_HASH});
