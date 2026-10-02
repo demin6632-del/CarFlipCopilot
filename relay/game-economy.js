@@ -28,6 +28,8 @@ async function db(){
     const c=new Client({connectionString:process.env.DATABASE_URL,ssl:{rejectUnauthorized:false}});
     await c.connect();
     await c.query("CREATE TABLE IF NOT EXISTS game_economy_transactions (id bigserial PRIMARY KEY,chat_id text NOT NULL,action text,kind text NOT NULL,amount numeric NOT NULL,balance_before numeric,balance_after numeric,screen_text text NOT NULL,vehicle_key text,fee numeric NOT NULL DEFAULT 0,created_at timestamptz NOT NULL DEFAULT now())");
+    await c.query("ALTER TABLE game_economy_transactions ADD COLUMN IF NOT EXISTS vehicle_key text");
+    await c.query("ALTER TABLE game_economy_transactions ADD COLUMN IF NOT EXISTS fee numeric NOT NULL DEFAULT 0");
     await c.query("CREATE INDEX IF NOT EXISTS game_economy_chat_idx ON game_economy_transactions(chat_id,created_at DESC)");
     await c.query("CREATE TABLE IF NOT EXISTS game_economy_vehicles (chat_id text NOT NULL,vehicle_key text NOT NULL,vehicle_name text,plate text,purchase_cost numeric NOT NULL DEFAULT 0,extra_cost numeric NOT NULL DEFAULT 0,realized_proceeds numeric NOT NULL DEFAULT 0,fees numeric NOT NULL DEFAULT 0,status text NOT NULL DEFAULT 'active',updated_at timestamptz NOT NULL DEFAULT now(),PRIMARY KEY(chat_id,vehicle_key))");
     await c.query("CREATE INDEX IF NOT EXISTS game_economy_vehicle_chat_idx ON game_economy_vehicles(chat_id,updated_at DESC)");
