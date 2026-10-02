@@ -356,7 +356,11 @@ async function handle(m){
         setTimeout(async()=>{
           try{
             const later=await waitForGameUpdate(latest.message_id,latest.text||"",latest.buttons||[],8000);
-            if(later) await renderGame(chat,{messageId:activeGameChats.get(String(chat)+"_message_id")});
+            if(later){
+              const afterState=Object.assign({},userBridge.status());
+              recordMemoryAction(chat,beforeState,target,afterState).catch(e=>console.log("GAME MEMORY DELAYED ACTION ERROR:",e.message));
+              await renderGame(chat,{messageId:activeGameChats.get(String(chat)+"_message_id")});
+            }
           }catch(e){console.log("GAME LATE UPDATE ERROR:",e.message);}
         },0);
         return renderGame(chat,{messageId:screenId});
