@@ -173,8 +173,10 @@ function parseState(text) {
     /(?:номер|госномер).{0,60}(?:ставка|лот)/is.test(raw) ||
     /sell_plate|склад(?:е|а).{0,40}ном/i.test(raw);
 
-  const buyerContext = /предложение.{0,50}(?:покупател|купить|забрать)|(?:покупател|готов\s+купить|осмотр|торг).{0,80}(?:₽|руб|цена|предлага)/is.test(raw);
+  const buyerContext = /предложение.{0,80}(?:покупател|купить|забрать)|(?:покупател|готов\s+купить|осмотр|торг|по\s*рукам).{0,120}(?:₽|руб|цена|предлага|сумм)|(?:предлага|ставка).{0,80}(?:₽|руб|сумм)/is.test(raw);
   const purchaseContext = /купить|покупка|покупател|продать|продажа|продавец|гараж|автомобил|машин/i.test(raw);
+  const dealContext = /(?:по\s*рукам|торг|продать|продажа|предложение|покупател|купить|покупка|осмотр|ставка|лот|цена|стоимость)/i.test(raw)
+    || (price != null && (vehicleName || plate || mileage != null || hp != null));
 
   return {
     balance,
@@ -249,6 +251,27 @@ function decide(state, ocr = 0) {
       title: "Найдена покупка",
       reason: "Проверь цену, состояние, пробег, владельцев и дополнительные расходы.",
       confidence: confidenceFor(state, ocr)
+    };
+  }
+
+  if (state.contexts?.dealContext) {
+    const hasFinancialData = state.price != null || state.balance != null || state.vehicle?.name;
+    return {
+      action: hasFinancialData ? "ПРОВЕРЬ ТЕКУЩУЮ СДЕЛКУ" : "ОПРЕДЕЛИ ТЕКУЩИЙ ЭКРАН",
+      title: "Текущая сделка распознана",
+      reason: hasFinancialData
+        ? "Бот видит данные сделки или автомобиля и может продолжить анализ без обязательного нового скриншота."
+        : "На экране есть признаки игровой сделки, но финансовых данных пока мало.",
+      confidence: Math.max(35, confidenceFor(state, ocr))
+    };
+  }
+
+  if (state.balance != null || state.vehicle?.name || state.price != null) {
+    return {
+      action: "ПРОВЕРЬ ТЕКУЩУЮ СДЕЛКУ",
+      title: "Игровое состояние распознано",
+      reason: "Распознаны данные текущего экрана. Используй их как основу решения вместо запроса повторного скриншота.",
+      confidence: Math.max(40, confidenceFor(state, ocr))
     };
   }
 
