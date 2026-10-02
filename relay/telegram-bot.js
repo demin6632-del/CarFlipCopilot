@@ -279,6 +279,7 @@ async function handle(m){
       const screenId=activeGameChats.get(String(chat)+"_message_id");
       activeGameChats.delete(String(chat));
       activeGameChats.delete(String(chat)+"_message_id");
+      lastRenderedGameFingerprints.delete(String(chat));
       if(screenId){
         try{await tg("deleteMessage",{chat_id:chat,message_id:screenId});}catch(e){console.log("GAME SCREEN BACK DELETE ERROR:",e.message);}
       }
