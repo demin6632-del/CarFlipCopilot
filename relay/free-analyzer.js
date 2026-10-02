@@ -187,7 +187,7 @@ function parseState(text) {
     mileage,
     hp,
     owners,
-    contexts: { explicitPlateAuction, buyerContext, purchaseContext },
+    contexts: { explicitPlateAuction, buyerContext, purchaseContext, dealContext },
     money_values: numberCandidates(raw).map(x => x.value).filter(x => x >= 1000).slice(0, 50),
     raw_text: raw.slice(0, 16000)
   };
