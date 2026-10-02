@@ -155,11 +155,19 @@ function kb(chatId){
   return {keyboard:rows,resize_keyboard:true,one_time_keyboard:false,is_persistent:true};
 }
 async function send(chat_id,text,extra={}){
-  return tg("sendMessage",Object.assign({
+  const payload=Object.assign({
     chat_id,text,
     reply_markup:kb(chat_id),
     disable_web_page_preview:true
-  },extra));
+  },extra);
+  // While the user is in game mode, every ordinary bot message must preserve
+  // the game ReplyKeyboard. A single fallback/error message must not switch
+  // Telegram back to the main menu keyboard.
+  if(activeGameChats.get(String(chat_id)) && !Object.prototype.hasOwnProperty.call(extra,"reply_markup")){
+    const latest=userBridge.status().last_game_message;
+    if(latest) payload.reply_markup=await gameKeyboard(latest);
+  }
+  return tg("sendMessage",payload);
 }
 async function relay(path,body={}){if(!RELAY_URL)throw new Error("RELAY_URL не настроен");const u=new URL(RELAY_URL+path),data=JSON.stringify(body);
   return new Promise((resolve,reject)=>{const req=https.request({hostname:u.hostname,port:u.port||443,path:u.pathname+u.search,method:"POST",agent:keepAliveAgent,headers:{"content-type":"application/json","authorization":"Bearer "+RELAY_TOKEN,"content-length":Buffer.byteLength(data)}},res=>{let s="";res.on("data",c=>s+=c);res.on("end",()=>{try{resolve(JSON.parse(s))}catch{resolve({raw:s})}})});req.on("error",reject);req.setTimeout(20000,()=>{req.destroy(new Error("Relay timeout"));});req.write(data);req.end();});
