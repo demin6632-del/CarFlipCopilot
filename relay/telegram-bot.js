@@ -310,8 +310,20 @@ async function handle(m){
         // Do not require the cached button list to contain the label: the
         // game can update its markup a moment before our local state does.
         await userBridge.clickGameButton(target,latest.message_id);
-        await waitForGameUpdate(latest.message_id,latest.text||"",latest.buttons||[],10000);
-        return renderGame(chat,{messageId:activeGameChats.get(String(chat)+"_message_id")});
+        // Do not make the user wait 10 seconds for a slow game response.
+        // If the game answers later, the background waiter will refresh the screen.
+        const updated=await waitForGameUpdate(latest.message_id,latest.text||"",latest.buttons||[],2500);
+        if(updated){
+          return renderGame(chat,{messageId:activeGameChats.get(String(chat)+"_message_id")});
+        }
+        const screenId=activeGameChats.get(String(chat)+"_message_id");
+        setTimeout(async()=>{
+          try{
+            const later=await waitForGameUpdate(latest.message_id,latest.text||"",latest.buttons||[],8000);
+            if(later) await renderGame(chat,{messageId:activeGameChats.get(String(chat)+"_message_id")});
+          }catch(e){console.log("GAME LATE UPDATE ERROR:",e.message);}
+        },0);
+        return renderGame(chat,{messageId:screenId});
       }catch(e){
         // Never fall through to the main-menu fallback while game mode is active.
         return renderGame(chat,{messageId:activeGameChats.get(String(chat)+"_message_id")});
