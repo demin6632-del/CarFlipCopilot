@@ -5,7 +5,7 @@ const { analyzeImage, parseState, decide, warmup } = require("./free-analyzer");
 const { rankButtons, recordScreen, recordClick } = require("./button-strategy");
 const { recordScreen: recordMemoryScreen, recordAction: recordMemoryAction, recent: recentMemory } = require("./game-memory");
 const { recordTransition: recordEconomyTransition, summary: economySummary, currentVehicleEconomics } = require("./game-economy");
-const { buildStrategy } = require("./strategy-engine");
+const { buildStrategy, parseContract } = require("./strategy-engine");
 
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || "";
 const RELAY_TOKEN = process.env.COPILOT_TOKEN || "";
@@ -627,7 +627,43 @@ async function state(chat){
       : await relay("/state");
     const hasData=s&&(s.balance!=null||s.garage!=null||s.vehicle?.name||s.raw_message);
     if(!hasData)return send(chat,"📊 Текущее состояние\n\n⚠️ Игра ещё не передала состояние. Нажми «🧪 Проверить связь с игрой» или «🧠 Что делать сейчас».");
-    return send(chat,"📊 Текущее состояние\n\n💰 Баланс: "+(s.balance??"неизвестно")+"\n🚗 Гараж: "+(s.garage??"неизвестно")+"\n🚘 Машина: "+(s.vehicle?.name||"нет данных"));
+
+    const raw=String(s.raw_message||s.last_game_message?.text||"");
+    const parsed=raw?parseState(raw):s;
+    const strategyState=Object.assign({},parsed,{raw_message:raw,raw_text:parsed.raw_text,buttons:s.buttons||s.last_game_message?.buttons||[]});
+    const economy=await economySummary(chat,120);
+    const offerMatch=/(?:предлож(?:ение)?\s*(?:покупателя)?|покупатель\s+предлагает|предлагает)[^0-9]{0,30}([0-9][0-9 .]*)\s*(?:₽|руб)/i.exec(raw);
+    const offer=offerMatch?Number(offerMatch[1].replace(/[^0-9]/g,"")):null;
+    const vehicleEconomics=currentVehicleEconomics(strategyState,offer,0);
+    const contract=parseContract(raw);
+    const lines=[
+      "📊 ТЕКУЩЕЕ СОСТОЯНИЕ","",
+      "💰 Баланс: "+(s.balance!=null?Number(s.balance).toLocaleString("ru-RU")+" ₽":"неизвестно"),
+      "🚗 Гараж: "+(s.garage??"неизвестно"),
+      "🚘 Машина: "+(s.vehicle?.name||"нет данных")
+    ];
+    if(s.vehicle?.hp!=null)lines.push("⚙️ Мощность: "+s.vehicle.hp+" л.с.");
+    if(s.vehicle?.mileage!=null)lines.push("🛣 Пробег: "+Number(s.vehicle.mileage).toLocaleString("ru-RU")+" км");
+    if(s.plate)lines.push("🔢 Номер: "+s.plate);
+    if(offer!=null)lines.push("💵 Предложение: "+offer.toLocaleString("ru-RU")+" ₽");
+    if(vehicleEconomics?.sale){
+      const delta=vehicleEconomics.sale.profit;
+      lines.push("📈 Результат продажи: "+(delta>=0?"+":"")+Math.round(delta).toLocaleString("ru-RU")+" ₽");
+    }
+    const activeVehicles=Array.isArray(economy?.vehicles)?economy.vehicles.filter(v=>v.status==="active"):[]; 
+    if(activeVehicles.length){
+      const v=activeVehicles[0];
+      lines.push("🧾 Учтённая себестоимость: "+Math.round(v.full_cost).toLocaleString("ru-RU")+" ₽");
+      if(v.realized_profit!=null)lines.push("📚 Учтённый результат: "+(v.realized_profit>=0?"+":"")+Math.round(v.realized_profit).toLocaleString("ru-RU")+" ₽");
+    }
+    if(contract){
+      const cp=[];
+      if(contract.reward!=null)cp.push("награда "+Math.round(contract.reward).toLocaleString("ru-RU")+" ₽");
+      if(contract.maxPrice!=null)cp.push("лимит "+Math.round(contract.maxPrice).toLocaleString("ru-RU")+" ₽");
+      if(contract.minHp!=null)cp.push("от "+contract.minHp+" л.с.");
+      lines.push("📋 Контракт: "+(cp.length?cp.join(", "):"условия распознаны"));
+    }
+    return send(chat,lines.join("\n"));
   }catch(e){return send(chat,"⚠️ Состояние пока недоступно: "+e.message);}
 }
 async function advice(chat){
