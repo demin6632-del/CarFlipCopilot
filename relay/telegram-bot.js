@@ -141,7 +141,7 @@ function kb(chatId){
 }
 async function clearReplyKeyboard(chat){
   try{
-    const r=await tg("sendMessage",{chat_id:chat,text:"⠀",reply_markup:{remove_keyboard:true},disable_notification:true,disable_web_page_preview:true});
+    const r=await tg("sendMessage",{chat_id:chat,text:"Удаляю старую клавиатуру…",reply_markup:{remove_keyboard:true},disable_notification:true,disable_web_page_preview:true});
     if(r?.message_id) setTimeout(()=>tg("deleteMessage",{chat_id:chat,message_id:r.message_id}).catch(()=>{}),350);
   }catch(e){console.log("REPLY KEYBOARD CLEANUP ERROR:",e.message);}
 }
@@ -499,26 +499,18 @@ async function setupWebhook(){
     return false;
   }
 }
-async function pollLoop(){
-  console.log("Telegram polling fallback enabled");
-  while(true){
-    try{
-      const updates=await tg("getUpdates",{offset,timeout:25,allowed_updates:["message","callback_query"]});
-      for(const u of (Array.isArray(updates)?updates:[])){
-        try{await processUpdate(u);}catch(e){console.log("TELEGRAM UPDATE ERROR:",e.stack||e.message||e);}
-      }
-    }catch(e){
-      console.log("TELEGRAM POLLING ERROR:",e.message);
-      await new Promise(r=>setTimeout(r,3000));
-    }
-  }
-}
 async function loop(){
-  if(polling)return;polling=true;
-  const ok=await setupWebhook();
-  if(ok) return;
-  console.log("Telegram webhook unavailable; switching to polling fallback.");
-  await pollLoop();
+  if(polling)return;
+  polling=true;
+  while(true){
+    const ok=await setupWebhook();
+    if(ok){
+      console.log("Telegram webhook active; polling disabled.");
+      return;
+    }
+    console.log("Telegram webhook unavailable; retrying in 5000ms. Polling is disabled to avoid webhook/getUpdates conflicts.");
+    await new Promise(r=>setTimeout(r,5000));
+  }
 }
 userBridge.webhookHandler=processUpdate;
 console.log("Telegram bridge env:",{apiIdPresent:!!process.env.TELEGRAM_API_ID,apiHashPresent:!!process.env.TELEGRAM_API_HASH});
