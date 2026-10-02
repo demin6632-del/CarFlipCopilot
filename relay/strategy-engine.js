@@ -70,6 +70,29 @@ function riskFor(type, state, history = {}) {
   return { score: Math.min(100, score), reasons };
 }
 
+function contractFit(contract, state) {
+  if (!contract) return null;
+  const hp = numberValue(state?.vehicle?.hp ?? state?.hp);
+  const price = numberValue(state?.price);
+  const checks = [];
+  if (contract.minHp != null) checks.push({name:"мощность",ok:hp!=null ? hp >= contract.minHp : null,actual:hp,required:contract.minHp});
+  if (contract.maxPrice != null) checks.push({name:"цена",ok:price!=null ? price <= contract.maxPrice : null,actual:price,required:contract.maxPrice});
+  return {checks,known:checks.filter(x=>x.ok!==null).length,passed:checks.filter(x=>x.ok===true).length};
+}
+
+function scenarioFor(type, state, economics) {
+  if (type === "renew") return "Продление: добавится стоимость продления к себестоимости; новая цена продажи пока не подтверждена.";
+  if (type === "sell" && economics) {
+    const fee = Number(economics.fee || 0);
+    const net = Number(economics.offer) - fee;
+    return "Продажа: после комиссии останется примерно " + Math.round(net).toLocaleString("ru-RU") + " ₽.";
+  }
+  if (type === "buy") return "Покупка: деньги уйдут сразу; прибыль не фиксируется до будущей продажи.";
+  if (type === "plate") return "Номер: учитывай комиссию аукциона и отдельную стоимость снятия, если номер снимается с автомобиля.";
+  if (type === "repair" || type === "tune") return "Расход: увеличит себестоимость текущего автомобиля, если действие оплачивается.";
+  return "Последствие не подтверждено текущим экраном.";
+}
+
 function buildStrategy(state, ranked = [], economy = null) {
   const buttons = Array.isArray(state?.buttons) ? state.buttons.map(String) : [];
   const history = Array.isArray(economy?.transactions) ? economy.transactions : [];
@@ -89,18 +112,22 @@ function buildStrategy(state, ranked = [], economy = null) {
       type,
       score: rank?.percent ?? null,
       risk: risk.score,
-      reasons: risk.reasons
+      reasons: risk.reasons,
+      scenario: scenarioFor(type, state, economics)
     };
   });
 
   const currentVehicle = economy?.vehicles?.find(v => v.status === "active");
   const cost = currentVehicle?.full_cost ?? null;
   const offer = numberValue(state?.offer ?? state?.saleOffer);
+  const contractFitResult = contractFit(contract, state);
   const economics = cost != null && offer != null ? {
     cost,
     offer,
+    fee: 0,
     delta: offer - cost,
-    profitBeforeFee: offer - cost
+    profitBeforeFee: offer - cost,
+    profitAfterFee: offer - cost
   } : null;
 
   const explicit = /(?:нажми|выбери|нужно\s+нажать|следует\s+нажать)\s+[«"“]?([^»"”\n]+)[»"”]?/i.exec(textOf(state));
@@ -110,8 +137,10 @@ function buildStrategy(state, ranked = [], economy = null) {
     actionEvidence: evidence || null,
     alternatives,
     contract,
+    contractFit: contractFitResult,
     economics,
     historyCount: history.length,
+    historyByAction: Object.fromEntries([...sameActionCount.entries()]),
     warnings: [
       ...(!buttons.length ? ["кнопки текущего экрана не распознаны"] : []),
       ...(economics && economics.delta < 0 ? ["предложение ниже зафиксированной себестоимости"] : [])
