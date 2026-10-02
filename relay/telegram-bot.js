@@ -600,6 +600,7 @@ async function callback(q){
     if(ref.legacy)label=(latest.buttons||[]).find(x=>gameButtonKey(x)===ref.key);
     else{try{label=await userBridge.getGameButton(ref.messageId,ref.key);}catch(e){console.log("GAME BUTTON LOOKUP ERROR:",e.message);}}
     if(!label)return send(chat,"⚠️ Эта кнопка больше отсутствует. Нажми «🔄 Обновить игру».");
+    gameActionChats.add(String(chat));
     try{
       await userBridge.clickGameButton(label,ref.messageId);
       recordClick(chat,latest.text||"",latest.buttons||[],label,userBridge.status().last_game_message?.text||"").catch(e=>console.log("BUTTON STRATEGY CALLBACK ERROR:",e.message));
@@ -608,20 +609,28 @@ async function callback(q){
         const next=await waitForGameUpdate(ref.messageId,beforeScreen?.text||"",beforeScreen?.buttons||[],1200);
         const screenId=q.message?.message_id||activeGameChats.get(String(chat)+"_message_id");
         if(screenId)activeGameChats.set(String(chat)+"_message_id",screenId);
-        // Always use the same renderer as passive game updates. This keeps the
-        // image, strategy analysis, percentages, deduplication and keyboard
-        // behavior identical after a button click.
+        // Use the same renderer as every other game update so the image,
+        // strategy, percentages and keyboard never diverge after a click.
         if(next){
           await renderGame(chat,{messageId:screenId,force:true});
         }else{
-          // A slow game response is handled by the background state event;
-          // render the current state immediately instead of leaving the old
-          // screen visible indefinitely.
-          await renderGame(chat,{messageId:screenId,force:true});
+          // Do not delete/re-send the old screen. Wait for the slow game
+          // response in the background and render it when it actually arrives.
+          setTimeout(async()=>{
+            try{
+              const later=await waitForGameUpdate(ref.messageId,beforeScreen?.text||"",beforeScreen?.buttons||[],8000);
+              if(later) await renderGame(chat,{messageId:activeGameChats.get(String(chat)+"_message_id"),force:true});
+            }catch(e){console.log("GAME CALLBACK LATE UPDATE ERROR:",e.message);}
+          },0);
         }
         return;
       }
-      return send(chat,"✅ Нажал: "+label);    }catch(e){return send(chat,"❌ Не удалось выполнить «"+label+"»: "+String(e.message||e).slice(0,700));}
+      return send(chat,"✅ Нажал: "+label);
+    }catch(e){
+      return send(chat,"❌ Не удалось выполнить «"+label+"»: "+String(e.message||e).slice(0,700));
+    }finally{
+      gameActionChats.delete(String(chat));
+    }
   }
   if(data==="connect")return connect(chat);
   if(data==="state")return state(chat);
