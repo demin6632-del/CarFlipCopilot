@@ -260,7 +260,7 @@ function decide(state, ocr = 0) {
 
 async function preprocess(input, mode = "normal") {
   const base = Buffer.isBuffer(input) ? input : await sharp(input).png().toBuffer();
-  let image = sharp(base).rotate().resize({ width: 1200, withoutEnlargement: false }).grayscale().normalize();
+  let image = sharp(base).rotate().resize({ width: 900, withoutEnlargement: false }).grayscale().normalize();
   if (mode === "sharp") image = image.sharpen({ sigma: 1.2 });
   if (mode === "threshold") image = image.sharpen({ sigma: 1.5 }).linear(1.25, -20);
   return image.png().toBuffer();
