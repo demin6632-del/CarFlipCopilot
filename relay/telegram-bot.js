@@ -247,7 +247,7 @@ async function handlePhoto(chat,photo){
 
 async function handle(m){
   const chat=m.chat?.id;if(!chat)return;const text=String(m.text||"").trim();
-  if(text==="/start"){users.set(chat,{connected:false});return send(chat,"🚗 CarFlipCopilot\n\nЯ работаю прямо внутри Telegram. Android-приложение для общения со мной не нужно.\n\nМоя задача — смотреть состояние «Симулятора Перекупа», учитывать историю сделок и говорить одно конкретное следующее действие.\n\nНачни с «🔗 Подключить игру».");}
+  if(text==="/start"){users.set(chat,{connected:false});try{await tg("sendMessage",{chat_id:chat,text:"🚗 Интерфейс обновлён: теперь все действия — только inline-кнопками.",reply_markup:{remove_keyboard:true},disable_web_page_preview:true});}catch(e){console.log("KEYBOARD REMOVE ERROR:",e.message);}return send(chat,"🚗 CarFlipCopilot\n\nЯ работаю прямо внутри Telegram. Android-приложение для общения со мной не нужно.\n\nМоя задача — смотреть состояние «Симулятора Перекупа», учитывать историю сделок и говорить одно конкретное следующее действие.\n\nНачни с «🔗 Подключить игру».");}
   if(text==="/connect")return connect(chat);if(text==="/state")return state(chat);if(text==="/advice")return advice(chat);if(text==="/probe")return probe(chat);if(text==="/bridge")return bridgeStatus(chat);if(text==="/game")return gameDebug(chat);
   if(text==="/help")return send(chat,"Команды:\n/connect — подключение игры\n/state — состояние\n/advice — что делать сейчас\n/probe — проверить связь с игрой\n/bridge — статус Telegram-моста\n/game — открыть игру прямо в чате\n/help — эта справка\n\nМожно прислать скриншот текущей ситуации — бот разберёт его прямо здесь.");
   const forwarded=forwardedInfo(m);
