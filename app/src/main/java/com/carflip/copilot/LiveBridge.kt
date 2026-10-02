@@ -177,7 +177,7 @@ class LiveBridge(
     fun sendFrame(bitmap: Bitmap) {
         if (!connected) return
         val now = System.currentTimeMillis()
-        if (now - lastFrameSent < 5000L) return
+        if (now - lastFrameSent < 1800L) return
         lastFrameSent = now
         val out = ByteArrayOutputStream()
         val scaled = if (bitmap.width > 720) Bitmap.createScaledBitmap(bitmap, 720, bitmap.height * 720 / bitmap.width, true) else bitmap
