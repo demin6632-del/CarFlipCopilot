@@ -454,7 +454,7 @@ async function renderGameNow(chat,options={}){
   }
   let sent=null;
   try {
-    const image=await Promise.race([userBridge.getGameMedia(latest.message_id),new Promise(resolve=>setTimeout(()=>resolve(null),2500))]);
+    const image=await Promise.race([userBridge.getGameMedia(latest.message_id),new Promise(resolve=>setTimeout(()=>resolve(null),700))]);
     if(image) sent=await tgPhoto(chat,image,text.slice(0,1000),markup);
   } catch(e) { console.log("GAME PHOTO SEND ERROR:",e.message); }
   if(!sent) sent=await send(chat,text,{reply_markup:markup});
