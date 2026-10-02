@@ -225,7 +225,7 @@ class TelegramUserBridge {
     } catch {}
     state.buttons=buttons;
     state.raw_message=text.slice(0,12000);
-    this.lastGameMessage={text:state.raw_message,buttons,received_at:Date.now()};
+    this.lastGameMessage={message_id:msg.id!=null?String(msg.id):null,text:state.raw_message,buttons,received_at:Date.now()};
     this.gameMessages.push(this.lastGameMessage);
     if(this.gameMessages.length>20) this.gameMessages.shift();
     state.game_bot="@"+this.gameUsername;
@@ -261,16 +261,25 @@ class TelegramUserBridge {
     if (!this.state.connected || !this.client) throw new Error("Игровая Telegram-сессия не подключена");
     const target=String(label||"").trim();
     if (!target) throw new Error("Не указана кнопка");
-    const msgs=await this.client.getMessages(this.gameUsername,{limit:10});
-    for (const msg of msgs) {
-      const rows=msg.replyMarkup && msg.replyMarkup.rows ? msg.replyMarkup.rows : [];
-      for (const row of rows) for (const button of (row.buttons||[])) {
-        if (String(button.text||"").trim()!==target) continue;
-        if (typeof msg.click==="function") return msg.click({text:target});
-        if (typeof msg.clickButton==="function") return msg.clickButton(button);
-      }
+
+    // Never execute a button from an arbitrary older game message.
+    // The bot's recommendation is bound to the latest message it observed.
+    const latest=this.lastGameMessage;
+    if (!latest || !latest.message_id) throw new Error("Нет актуального сообщения игры");
+    if (!Array.isArray(latest.buttons) || !latest.buttons.includes(target)) {
+      throw new Error("Кнопка устарела или уже исчезла: "+target);
     }
-    throw new Error("Кнопка не найдена: "+target);
+
+    const msgs=await this.client.getMessages(this.gameUsername,{ids:[Number(latest.message_id)]});
+    const msg=Array.isArray(msgs) ? msgs[0] : msgs;
+    if (!msg) throw new Error("Актуальное сообщение игры больше недоступно");
+    const rows=msg.replyMarkup && msg.replyMarkup.rows ? msg.replyMarkup.rows : [];
+    for (const row of rows) for (const button of (row.buttons||[])) {
+      if (String(button.text||"").trim()!==target) continue;
+      if (typeof msg.click==="function") return msg.click({text:target});
+      if (typeof msg.clickButton==="function") return msg.clickButton(button);
+    }
+    throw new Error("Кнопка не найдена в актуальном сообщении: "+target);
   }
 
   status() {
