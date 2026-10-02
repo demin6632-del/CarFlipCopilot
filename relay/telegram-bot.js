@@ -303,19 +303,24 @@ async function handle(m){
       }
       return send(chat,"🚪 Игровой режим закрыт.");
     }
-    const target=labels.find(x=>String(x).trim()===text.trim());
-    if(target && latest?.message_id){
+    const target=labels.find(x=>String(x).trim()===text.trim()) || text;
+    if(latest?.message_id && text && !["⬅️ Назад","🔄 Обновить игру","🚪 Выйти из игры"].includes(text)){
       gameActionChats.add(String(chat));
       try{
+        // Do not require the cached button list to contain the label: the
+        // game can update its markup a moment before our local state does.
         await userBridge.clickGameButton(target,latest.message_id);
         await waitForGameUpdate(latest.message_id,latest.text||"",latest.buttons||[],10000);
         return renderGame(chat,{messageId:activeGameChats.get(String(chat)+"_message_id")});
       }catch(e){
-        return send(chat,"❌ Не удалось выполнить «"+target+"»: "+String(e.message||e).slice(0,700));
+        // Never fall through to the main-menu fallback while game mode is active.
+        return renderGame(chat,{messageId:activeGameChats.get(String(chat)+"_message_id")});
       }finally{
         gameActionChats.delete(String(chat));
       }
     }
+    // Any stale/unrecognized text in game mode must keep the game keyboard.
+    return renderGame(chat,{messageId:activeGameChats.get(String(chat)+"_message_id")});
   }
   if(text==="🎮 Играть"){ return gameDebug(chat); }
   if(text==="🧠 Что делать сейчас"){ return advice(chat); }
