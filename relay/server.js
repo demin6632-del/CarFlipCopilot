@@ -184,7 +184,19 @@ const server=http.createServer((req,res)=>{
   let body="";req.on("data",x=>body+=x);req.on("end",()=>{try{latest=JSON.parse(body||"{}");latest.source=latest.source||"telegram_user_session";broadcast({type:"state",...latest});return json(res,200,{ok:true})}catch(e){return json(res,400,{error:e.message})}});return;
  }
  if(req.url==="/telegram/advice" && req.method==="POST"){
-  const last=aiHistory.length ? aiHistory[aiHistory.length-1].decision : (latest&&latest.local_decision)||null;
+  // The Telegram game bridge publishes state directly. Do not require a prior
+  // screenshot/OCR run before /advice can produce a decision.
+  let bridgeDecision=(latest&&latest.local_decision)||null;
+  if(!bridgeDecision && latest){
+   try{
+    const sourceText=String(latest.raw_message||latest.ocr||"");
+    if(sourceText.trim()){
+      const parsed=parseState(sourceText);
+      bridgeDecision=decide(parsed, Number(latest.confidence)||70);
+    }
+   }catch(e){ log("BRIDGE ADVICE PARSE ERROR",e.message); }
+  }
+  const last=aiHistory.length ? aiHistory[aiHistory.length-1].decision : bridgeDecision;
   const local=(latest&&latest.memory&&(latest.memory.local_plan||latest.local_plan))||latest?.local_plan||null;
   if(last){
    const d=last;
