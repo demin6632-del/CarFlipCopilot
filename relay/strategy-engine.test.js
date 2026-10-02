@@ -48,3 +48,21 @@ const explicit=s.buildStrategy({raw_text:"Нажми «Продлить объя
 ],{transactions:[],vehicles:[]});
 assert.equal(explicit.actionable,true);
 assert.equal(explicit.actionEvidence,"Продлить объявление");
+
+const purchase=s.buildStrategy({raw_text:"Автомобиль Audi A4\nЦена: 2 000 000 ₽\nКупить",contexts:{purchaseContext:true},buttons:["Купить","Отмена"]},[
+  {label:"Купить",percent:70},{label:"Отмена",percent:30}
+],{transactions:[],vehicles:[]});
+assert.equal(purchase.actionable,true);
+assert.equal(purchase.alternatives.find(x=>x.label==="Купить").type,"buy");
+
+const buyer=s.buildStrategy({raw_text:"Покупатель предлагает 2 900 000 ₽\nПо рукам",contexts:{buyerContext:true},buttons:["По рукам","Продлить","Отмена"]},[
+  {label:"По рукам",percent:70},{label:"Продлить",percent:20},{label:"Отмена",percent:10}
+],{transactions:[],vehicles:[{status:"active",full_cost:2821258}]});
+assert.equal(buyer.actionable,true);
+assert.equal(buyer.alternatives.find(x=>x.label==="По рукам").type,"sell");
+
+const plate=s.buildStrategy({raw_text:"Аукцион госномера\nСтавка 400 000 ₽",contexts:{explicitPlateAuction:true},buttons:["Сделать ставку","Отмена"]},[
+  {label:"Сделать ставку",percent:60},{label:"Отмена",percent:40}
+],{transactions:[],vehicles:[]});
+assert.equal(plate.actionable,true);
+assert.equal(plate.alternatives.find(x=>x.label==="Сделать ставку").type,"plate");
