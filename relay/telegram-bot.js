@@ -44,35 +44,42 @@ function classifyGameButton(label){
 function buttonChoiceAnalysis(decision,state,buttons){
   const list=[...new Set((Array.isArray(buttons)?buttons:[]).map(x=>String(x||"").trim()).filter(Boolean))];
   if(!list.length)return [];
-  const source=normalizeButtonText([decision?.action,decision?.title,decision?.reason,state?.raw_message].filter(Boolean).join(" "));
+  const source=normalizeButtonText([decision?.action,decision?.title,decision?.reason,state?.raw_message,state?.raw_text].filter(Boolean).join(" "));
   const action=normalizeButtonText(decision?.action||"");
-  const type=action.includes("куп")?"buy":action.includes("прод")?"sell":action.includes("осмотр")||action.includes("провер")?"inspect":action.includes("номер")||action.includes("аукцион")?"plate":action.includes("ремонт")?"repair":action.includes("тюнинг")?"tune":null;
-  const financial=state&&(state.price!=null||state.balance!=null||state.vehicle?.name);
-  const raw=String(state?.raw_message||"").toLowerCase();
+  const type=action.includes("куп")?"buy":action.includes("прод")?"sell":action.includes("осмотр")||action.includes("провер")?"inspect":action.includes("номер")||action.includes("аукцион")?"plate":action.includes("ремонт")?"repair":action.includes("тюнинг")?"tune":action.includes("работ")?"work":action.includes("гараж")?"garage":action.includes("отмен")?"cancel":action.includes("продолж")||action.includes("далее")?"continue":null;
+  const financial=!!(state&&(state.price!=null||state.balance!=null||state.vehicle?.name));
+  const raw=String(state?.raw_message||state?.raw_text||"").toLowerCase();
   const weights=list.map(label=>{
     const bt=classifyGameButton(label), n=normalizeButtonText(label);
-    let score=35;
-    if(type&&bt===type)score+=48;
-    if(type&&bt==="confirm"&&["buy","sell","plate","repair","tune"].includes(type))score+=24;
-    if(type&&bt==="cancel")score-=18;
-    if(bt==="inspect"&&(!financial||/провер|осмотр|оцен/i.test(source)))score+=16;
-    if(bt==="sell"&&/предлож|покупател|по\s*рукам|торг/i.test(raw))score+=22;
-    if(bt==="renew"&&/объяв|продл|ставк|предлож/i.test(raw))score+=12;
-    if(bt==="buy"&&/куп|покуп/i.test(raw))score+=12;
-    if(bt==="continue"&&/след|далее|продолж|исслед/i.test(source))score+=10;
-    if(bt==="cancel"&&/отмен|назад/i.test(source))score+=8;
-    for(const w of source.split(/\s+/).filter(x=>x.length>=4))if(n.includes(w))score+=2;
-    if(!financial&&["buy","sell","repair","tune"].includes(bt))score-=10;
-    return {label,type:bt,score:Math.max(5,score)};
+    let score=30;
+    if(type&&bt===type)score+=65;
+    if(type&&bt==="confirm"&&["buy","sell","plate","repair","tune"].includes(type))score+=18;
+    if(type&&bt==="cancel")score-=28;
+    if(bt==="inspect"&&(!financial||/провер|осмотр|оцен/i.test(source)))score+=18;
+    if(bt==="sell"&&/предлож|покупател|по\s*рукам|торг/i.test(raw))score+=28;
+    if(bt==="renew"&&/объяв|продл|ставк|предлож/i.test(raw))score+=16;
+    if(bt==="buy"&&/куп|покуп/i.test(raw))score+=18;
+    if(bt==="continue"&&/след|далее|продолж|исслед/i.test(source))score+=16;
+    if(bt==="cancel"&&/отмен|назад|выйти/i.test(source))score+=12;
+    if(bt==="work"&&/работ|контракт|заказ/i.test(source))score+=16;
+    if(bt==="garage"&&/гараж|машин|авто/i.test(source))score+=12;
+    for(const w of source.split(/\s+/).filter(x=>x.length>=4))if(n.includes(w))score+=1;
+    if(!financial&&["buy","sell","repair","tune"].includes(bt))score-=12;
+    return {label,type:bt,score:Math.max(1,score)};
   });
   const max=Math.max(...weights.map(x=>x.score));
-  const exp=weights.map(x=>({...x,weight:Math.exp((x.score-max)/18)}));
+  const exp=weights.map(x=>({...x,weight:Math.exp((x.score-max)/14)}));
   const total=exp.reduce((s,x)=>s+x.weight,0)||1;
-  let rounded=exp.map(x=>({...x,percent:Math.max(1,Math.round(x.weight/total*100))}));
-  let diff=100-rounded.reduce((s,x)=>s+x.percent,0);
-  rounded.sort((a,b)=>b.score-a.score);
-  if(rounded.length)rounded[0].percent=Math.max(1,rounded[0].percent+diff);
-  return rounded.sort((a,b)=>b.percent-a.percent);
+  const rawPerc=exp.map(x=>x.weight/total*100);
+  const base=rawPerc.map(x=>Math.floor(x));
+  let remaining=100-base.reduce((s,x)=>s+x,0);
+  const order=rawPerc.map((v,i)=>({i,f:v-Math.floor(v)})).sort((a,b)=>b.f-a.f);
+  for(let i=0;i<remaining;i++)base[order[i%order.length].i]+=1;
+  return weights.map((x,i)=>({...x,percent:base[i]})).sort((a,b)=>b.percent-a.percent);
+}
+function buttonScoreText(ranked){
+  if(!ranked.length)return "";
+  return ranked.map((x,i)=>(i===0?"⭐ ":"")+String(i+1)+". «"+x.label+"» — "+x.percent+"%").join("\n");
 }
 function recommendGameButton(decision,buttons,state){
   const ranked=buttonChoiceAnalysis(decision,state,buttons);
@@ -99,7 +106,7 @@ async function notifyBridgeState(state){
   const lines=["🎮 Новое событие из игры","","💰 Баланс: "+(state.balance??"—"),"🚗 Гараж: "+(state.garage??"—")];
   if(state.vehicle?.name)lines.push("🚘 "+state.vehicle.name);
   if(state.vehicle?.price!=null)lines.push("💵 Цена: "+state.vehicle.price);
-  const autoDecision=state.local_decision||decide(state,90);\n  const ranked=buttonChoiceAnalysis(autoDecision,state,state.buttons||[]);\n  if(ranked.length){\n    lines.push("","🧠 АВТОАНАЛИЗ КНОПОК","➡️ Лучше нажать: «"+ranked[0].label+"» — "+ranked[0].percent+"%");\n    lines.push("📊 "+ranked.slice(0,4).map(x=>"«"+x.label+"» "+x.percent+"%").join(" · "));\n  }else lines.push("","Нажми «🧠 Что делать сейчас», чтобы получить решение ИИ.");
+  const autoDecision=state.local_decision||decide(state,90);\n  const ranked=buttonChoiceAnalysis(autoDecision,state,state.buttons||[]);\n  if(ranked.length){\n    lines.push("","🧠 АВТОАНАЛИЗ КНОПОК","➡️ Лучше нажать: «"+ranked[0].label+"» — "+ranked[0].percent+"%");\n    lines.push("📊 ВСЕ КНОПКИ:\\n"+buttonScoreText(ranked));\n  }else lines.push("","Нажми «🧠 Что делать сейчас», чтобы получить решение ИИ.");
   try{await send(chat,lines.join("\n"));}catch(e){console.log("BRIDGE NOTICE ERROR:",e.message);}
 }
 
