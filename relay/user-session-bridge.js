@@ -35,6 +35,8 @@ class TelegramUserBridge {
     this.webhookHandler = null;
     this.phoneAuth = new Map();
     this.databaseUrl = String(opts.databaseUrl || process.env.DATABASE_URL || "").trim();
+    // Load the persistent binding asynchronously; local file remains a fast fallback.
+    this.bindingReady = this.loadBindingFromDatabase();
   }
 
   configured() {
@@ -42,7 +44,8 @@ class TelegramUserBridge {
   }
 
   async loadSession() {
-    if (process.env.TELEGRAM_SESSION) return process.env.TELEGRAM_SESSION;
+    // Render's filesystem is ephemeral. Always prefer the latest session
+    // persisted in Postgres so a deploy/restart never forces Telegram login again.
     if (this.databaseUrl) {
       try {
         const db=new PgClient({connectionString:this.databaseUrl,ssl:{rejectUnauthorized:false}});
@@ -53,6 +56,7 @@ class TelegramUserBridge {
         if (r.rows[0] && r.rows[0].value) return r.rows[0].value;
       } catch(e) { console.log("SESSION DB LOAD ERROR:",e.message); }
     }
+    if (process.env.TELEGRAM_SESSION) return process.env.TELEGRAM_SESSION;
     try { return fs.readFileSync(this.sessionFile,"utf8").trim(); } catch { return ""; }
   }
 
@@ -80,13 +84,34 @@ class TelegramUserBridge {
     } catch {}
   }
 
+  async loadBindingFromDatabase() {
+    if (!this.databaseUrl) return;
+    try {
+      const db=new PgClient({connectionString:this.databaseUrl,ssl:{rejectUnauthorized:false}});
+      await db.connect();
+      await db.query("CREATE TABLE IF NOT EXISTS copilot_state (key text PRIMARY KEY, value text NOT NULL, updated_at timestamptz NOT NULL DEFAULT now())");
+      const r=await db.query("SELECT value FROM copilot_state WHERE key=$1",["telegram_binding"]);
+      await db.end();
+      if (r.rows[0]?.value) this.boundChatId=String(r.rows[0].value);
+    } catch(e) { console.log("BINDING DB LOAD ERROR:",e.message); }
+  }
+
   saveBinding(chatId) {
     this.boundChatId=String(chatId);
     fs.mkdirSync(path.dirname(this.bindingFile),{recursive:true});
     fs.writeFileSync(this.bindingFile,JSON.stringify({chatId:this.boundChatId,updatedAt:Date.now()}),{encoding:"utf8",mode:0o600});
+    if (this.databaseUrl) {
+      const db=new PgClient({connectionString:this.databaseUrl,ssl:{rejectUnauthorized:false}});
+      db.connect().then(async()=>{
+        await db.query("CREATE TABLE IF NOT EXISTS copilot_state (key text PRIMARY KEY, value text NOT NULL, updated_at timestamptz NOT NULL DEFAULT now())");
+        await db.query("INSERT INTO copilot_state(key,value) VALUES($1,$2) ON CONFLICT(key) DO UPDATE SET value=EXCLUDED.value,updated_at=now()",["telegram_binding",this.boundChatId]);
+        await db.end();
+      }).catch(e=>console.log("BINDING DB SAVE ERROR:",e.message));
+    }
   }
 
   async ensureClient() {
+    if (this.bindingReady) await this.bindingReady;
     if (!this.configured()) throw new Error("TELEGRAM_API_ID/TELEGRAM_API_HASH не настроены");
     if (this.client) return this.client;
     const session=await this.loadSession();
