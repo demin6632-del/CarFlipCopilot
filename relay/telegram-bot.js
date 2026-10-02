@@ -45,7 +45,7 @@ function currentGameButton(key){
 }
 function gameButtonData(label,messageId){return "gamebtn:"+String(messageId||"0")+":"+gameButtonKey(label);}
 function confirmButtonData(label,messageId){return "confirmbtn:"+String(messageId||"0")+":"+gameButtonKey(label);}
-function gameButtonRef(data,prefix){const p=String(data||"").split(":");return p.length===3&&p[0]===prefix?{messageId:p[1],key:p[2]}:null;}
+function gameButtonRef(data,prefix){const p=String(data||"").split(":");if(p.length===3&&p[0]===prefix)return{messageId:p[1],key:p[2],legacy:false};if(p.length===2&&p[0]===prefix)return{messageId:null,key:p[1],legacy:true};return null;}
 
 async function notifyBridgeState(state){
   const chat=userBridge.boundChatId;if(!chat||!state||!state.received_at)return;
@@ -281,7 +281,8 @@ async function callback(q){
   if(data.startsWith("confirmbtn:")||data.startsWith("gamebtn:")){
     const prefix=data.startsWith("confirmbtn:")?"confirmbtn":"gamebtn",ref=gameButtonRef(data,prefix),s=userBridge.status(),latest=s.last_game_message;
     if(!ref)return send(chat,"⚠️ Кнопка повреждена. Нажми /game или /advice ещё раз.");
-    if(!latest||String(latest.message_id)!==String(ref.messageId))return send(chat,"⚠️ Экран игры изменился. Обнови кнопки через /game или /advice.");
+    if(!latest)return send(chat,"⚠️ Нет актуального экрана игры. Нажми /game или /advice ещё раз.");
+    if(!ref.legacy&&String(latest.message_id)!==String(ref.messageId))return send(chat,"⚠️ Экран игры изменился. Обнови кнопки через /game или /advice.");
     const label=(latest.buttons||[]).find(x=>gameButtonKey(x)===ref.key);
     if(!label)return send(chat,"⚠️ Эта кнопка больше отсутствует на исходном экране игры. Обнови кнопки.");
     try{await userBridge.clickGameButton(label,ref.messageId);return send(chat,(prefix==="confirmbtn"?"✅ Выполнено в игре: ":"✅ Нажал: ")+label);}catch(e){return send(chat,"❌ Не удалось выполнить «"+label+"»: "+e.message);}
