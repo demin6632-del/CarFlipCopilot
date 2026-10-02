@@ -92,6 +92,14 @@ function scenarioFor(type, state, economics) {
 }
 
 function buildStrategy(state, ranked = [], economy = null) {
+  const screenText = textOf(state);
+  const hasContext = !!(
+    state?.contexts?.buyerContext ||
+    state?.contexts?.explicitPlateAuction ||
+    state?.contexts?.purchaseContext ||
+    state?.contexts?.dealContext ||
+    /(?:купить|покупка|продать|продажа|покупател|продавец|аукцион|ставк|номер|ремонт|почин|тюнинг|улучш|работ|контракт|заказ|продл|объявлен)/i.test(screenText)
+  );
   const buttons = Array.isArray(state?.buttons) ? state.buttons.map(String) : [];
   const history = Array.isArray(economy?.transactions) ? economy.transactions : [];
   const sameActionCount = new Map();
@@ -131,8 +139,10 @@ function buildStrategy(state, ranked = [], economy = null) {
   const explicit = /(?:нажми|выбери|нужно\s+нажать|следует\s+нажать)\s+[«"“]?([^»"”\n]+)[»"”]?/i.exec(textOf(state));
   const evidence = explicit ? buttons.find(x => x.toLowerCase() === explicit[1].trim().toLowerCase()) : null;
 
+  const actionable = !!(evidence || hasContext);
   return {
     actionEvidence: evidence || null,
+    actionable,
     alternatives,
     contract,
     contractFit: contractFitResult,
