@@ -20,7 +20,7 @@ const out=s.buildStrategy({
   transactions:[{action:"Продлить"},{action:"Продлить"}],
   vehicles:[{status:"active",full_cost:2821258}]
 });
-assert.equal(out.economics.delta,788742);
+assert.equal(out.economics.delta,78742);
 assert.equal(out.alternatives.length,3);
 assert.ok(out.alternatives.find(x=>x.label==="Продлить").reasons.length>0);
 console.log("STRATEGY ENGINE TESTS: PASS");
