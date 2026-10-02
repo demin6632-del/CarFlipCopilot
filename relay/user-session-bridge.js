@@ -8,7 +8,7 @@ const keepAliveAgent = new https.Agent({keepAlive:true,maxSockets:16,maxFreeSock
 const QRCode = require("qrcode");
 const { TelegramClient, Api } = require("telegram");
 const { StringSession } = require("telegram/sessions");
-const { NewMessage } = require("telegram/events");
+const { NewMessage, MessageEdited } = require("telegram/events");
 
 class TelegramUserBridge {
   constructor(opts={}) {
@@ -128,7 +128,7 @@ class TelegramUserBridge {
     }
     this.state.username = me.username || null;
     this.state.connected_at = Date.now();
-    this.client.addEventHandler(async event => {
+    const handleEvent = async event => {
       try {
         const msg = event.message;
         const peer = await msg.getChat();
@@ -140,9 +140,13 @@ class TelegramUserBridge {
         if (!sameById && !sameByUsername) return;
         await this.handleGameMessage(msg);
       } catch (e) {
-        console.log("GAME MESSAGE ERROR:",e.message);
+        console.log("GAME MESSAGE ERROR:",e.stack||e.message||e);
       }
-    }, new NewMessage({}));
+    };
+    // The game can either send a new message or edit the existing screen
+    // after a callback. Handle both so the in-chat game stays live.
+    this.client.addEventHandler(handleEvent, new NewMessage({}));
+    this.client.addEventHandler(handleEvent, new MessageEdited({}));
     // Do not send /start automatically on startup or session restore.
     // The game is pinged only by the explicit "Проверить связь с игрой" action.
   }
