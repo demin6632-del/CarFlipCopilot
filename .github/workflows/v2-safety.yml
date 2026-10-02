@@ -25,8 +25,11 @@ jobs:
         run: node relay/diagnostics.test.js
       - name: Run game memory regression tests
         run: node relay/game-memory.test.js
+      - name: Run game economy regression tests
+        run: node relay/game-economy.test.js
       - name: Check JavaScript syntax
         run: |
           node --check relay/game-memory.js
+          node --check relay/game-economy.js
           node --check relay/user-session-bridge.js
           node --check relay/telegram-bot.js
