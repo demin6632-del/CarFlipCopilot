@@ -30,7 +30,7 @@ function parseContract(text) {
   const t = String(text || "");
   const reward = /(?:награда|вознаграждение|бонус)[^0-9]{0,40}([0-9][0-9 .]*)/i.exec(t);
   const max = /(?:макс(?:имум)?|лимит|до)[^0-9]{0,30}([0-9][0-9 .]*)\s*(?:₽|руб)?/i.exec(t);
-  const hp = /(?:не менее|от|>=?)\s*([0-9]{2,4})\s*(?:л\.?\s*с\.?|лс|hp)/i.exec(t);
+  const hp = /(?:не менее|минимум|от|>=?)\s*([0-9]{2,4})\s*(?:л\.?\s*с\.?|лс|hp)/i.exec(t);
   const country = /(?:страна|country)[^\n:]*[:]?\s*([A-Za-zА-Яа-яЁё-]{3,})/i.exec(t);
   if (!/контракт|заказ|производител|требован/i.test(t) && !reward && !max && !hp && !country) return null;
   return {
