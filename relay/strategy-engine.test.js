@@ -45,7 +45,7 @@ assert.ok(/остаток/.test(purchase.alternatives.find(x=>x.label==="Куп�
 const buyer=s.buildStrategy({raw_text:"Покупатель предлагает 2 900 000 ₽\nПо рукам",contexts:{buyerContext:true},buttons:["По рукам","Продлить","Отмена"]},
 [{label:"По рукам",percent:70},{label:"Продлить",percent:20},{label:"Отмена",percent:10}],{transactions:[],vehicles:[{status:"active",full_cost:2821258}]});
 assert.equal(buyer.actionable,true); assert.equal(buyer.alternatives.find(x=>x.label==="По рукам").type,"sell");
-assert.ok(/78742/.test(ru(buyer.alternatives.find(x=>x.label==="По рукам").scenario)));
+assert.ok(/78 742/.test(ru(buyer.alternatives.find(x=>x.label==="По рукам").scenario)));
 assert.equal(buyer.economics.offer,2900000);
 
 const plate=s.buildStrategy({raw_text:"Аукцион госномера\nСтавка 400 000 ₽",contexts:{explicitPlateAuction:true},buttons:["Сделать ставку","Отмена"]},
