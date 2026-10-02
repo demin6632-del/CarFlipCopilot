@@ -305,6 +305,11 @@ async function handle(m){
   if(text==="/start"){users.set(chat,{connected:false});return send(chat,"🚗 CarFlipCopilot\n\nЯ работаю прямо внутри Telegram. Android-приложение для общения со мной не нужно.\n\nМоя задача — смотреть состояние «Симулятора Перекупа», учитывать историю сделок и говорить одно конкретное следующее действие.\n\nНачни с «🔗 Подключить игру».");}
   if(text==="/connect")return connect(chat);if(text==="/state")return state(chat);if(text==="/advice")return advice(chat);if(text==="/probe")return probe(chat);if(text==="/bridge")return bridgeStatus(chat);if(text==="/game")return gameDebug(chat);
   if(text==="/help")return send(chat,"Команды:\n/connect — подключение игры\n/state — состояние\n/advice — что делать сейчас\n/probe — проверить связь с игрой\n/bridge — статус Telegram-моста\n/game — открыть игру прямо в чате\n/help — эта справка\n\nМожно прислать скриншот текущей ситуации — бот разберёт его прямо здесь.");
+  // Main-menu action must be handled before game-mode routing. If a game screen
+  // arrived automatically, activeGameChats may already be set; in that case
+  // pressing «🎮 Играть» must still open/refresh the game screen, not be sent
+  // to the game bot as an unknown game button.
+  if(text==="🎮 Играть"){ return gameDebug(chat); }
   // ReplyKeyboard labels arrive as ordinary text and are handled directly.
   if(activeGameChats.get(String(chat))){
     const latest=userBridge.status().last_game_message;
@@ -361,7 +366,6 @@ async function handle(m){
     // Any stale/unrecognized text in game mode must keep the game keyboard.
     return renderGame(chat,{messageId:activeGameChats.get(String(chat)+"_message_id")});
   }
-  if(text==="🎮 Играть"){ return gameDebug(chat); }
   if(text==="🧠 Что делать сейчас"){ return advice(chat); }
   if(text==="📊 Состояние"){ return state(chat); }
   if(text==="📸 Анализ скрина"){ return send(chat,"📸 Пришли скриншот текущей ситуации из игры."); }
