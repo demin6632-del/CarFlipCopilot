@@ -139,7 +139,16 @@ function kb(chatId){
   if(connectUrl)rows.push([{text:"🎮 Открыть подключение",web_app:{url:connectUrl}}]);
   return {inline_keyboard:rows};
 }
-async function send(chat_id,text,extra={}){return tg("sendMessage",Object.assign({chat_id,text,reply_markup:kb(chat_id),disable_web_page_preview:true},extra));}
+async function clearReplyKeyboard(chat){
+  try{
+    const r=await tg("sendMessage",{chat_id:chat,text:"⠀",reply_markup:{remove_keyboard:true},disable_notification:true,disable_web_page_preview:true});
+    if(r?.message_id) setTimeout(()=>tg("deleteMessage",{chat_id:chat,message_id:r.message_id}).catch(()=>{}),350);
+  }catch(e){console.log("REPLY KEYBOARD CLEANUP ERROR:",e.message);}
+}
+async function send(chat_id,text,extra={}){
+  await clearReplyKeyboard(chat_id);
+  return tg("sendMessage",Object.assign({chat_id,text,reply_markup:kb(chat_id),disable_web_page_preview:true},extra));
+}
 async function relay(path,body={}){if(!RELAY_URL)throw new Error("RELAY_URL не настроен");const u=new URL(RELAY_URL+path),data=JSON.stringify(body);
   return new Promise((resolve,reject)=>{const req=https.request({hostname:u.hostname,port:u.port||443,path:u.pathname+u.search,method:"POST",agent:keepAliveAgent,headers:{"content-type":"application/json","authorization":"Bearer "+RELAY_TOKEN,"content-length":Buffer.byteLength(data)}},res=>{let s="";res.on("data",c=>s+=c);res.on("end",()=>{try{resolve(JSON.parse(s))}catch{resolve({raw:s})}})});req.on("error",reject);req.setTimeout(20000,()=>{req.destroy(new Error("Relay timeout"));});req.write(data);req.end();});
 }
@@ -250,6 +259,15 @@ async function handle(m){
   if(text==="/start"){users.set(chat,{connected:false});try{await tg("sendMessage",{chat_id:chat,text:"🚗 Интерфейс обновлён: теперь все действия — только inline-кнопками.",reply_markup:{remove_keyboard:true},disable_web_page_preview:true});}catch(e){console.log("KEYBOARD REMOVE ERROR:",e.message);}return send(chat,"🚗 CarFlipCopilot\n\nЯ работаю прямо внутри Telegram. Android-приложение для общения со мной не нужно.\n\nМоя задача — смотреть состояние «Симулятора Перекупа», учитывать историю сделок и говорить одно конкретное следующее действие.\n\nНачни с «🔗 Подключить игру».");}
   if(text==="/connect")return connect(chat);if(text==="/state")return state(chat);if(text==="/advice")return advice(chat);if(text==="/probe")return probe(chat);if(text==="/bridge")return bridgeStatus(chat);if(text==="/game")return gameDebug(chat);
   if(text==="/help")return send(chat,"Команды:\n/connect — подключение игры\n/state — состояние\n/advice — что делать сейчас\n/probe — проверить связь с игрой\n/bridge — статус Telegram-моста\n/game — открыть игру прямо в чате\n/help — эта справка\n\nМожно прислать скриншот текущей ситуации — бот разберёт его прямо здесь.");
+  // Legacy ReplyKeyboard labels arrive as ordinary text. Handle them once
+  // and immediately remove the old keyboard, then continue with inline buttons.
+  if(text==="🎮 Играть"){ await clearReplyKeyboard(chat); return gameDebug(chat); }
+  if(text==="🧠 Что делать сейчас"){ await clearReplyKeyboard(chat); return advice(chat); }
+  if(text==="📊 Состояние"){ await clearReplyKeyboard(chat); return state(chat); }
+  if(text==="📸 Анализ скрина"){ await clearReplyKeyboard(chat); return send(chat,"📸 Пришли скриншот текущей ситуации из игры."); }
+  if(text==="🔗 Подключить игру"){ await clearReplyKeyboard(chat); return connect(chat); }
+  if(text==="🧪 Проверить связь с игрой"){ await clearReplyKeyboard(chat); return probe(chat); }
+  if(text==="🎮 Открыть подключение"){ await clearReplyKeyboard(chat); return connect(chat); }
   const forwarded=forwardedInfo(m);
   const forwardedImage=imageFileId(m);
   if(forwardedImage){
