@@ -14,4 +14,7 @@ assert.equal(p.fee,100000);
 assert.equal(p.profit,100000);
 const vi=economy.vehicleInfo({vehicle:{name:"Audi A4"},plate:"У123АА 77"});
 assert.equal(vi.key,"audi a4|у123аа 77");
+const ce=economy.currentVehicleEconomics({vehicle:{name:"Audi A4",invested:800000},plate:"У123АА 77"},1000000,0.10);
+assert.equal(ce.sale.fee,100000);
+assert.equal(ce.sale.profit,100000);
 console.log("GAME ECONOMY TESTS: PASS");
