@@ -385,7 +385,8 @@ async function callback(q){
     const prefix=data.startsWith("confirmbtn:")?"confirmbtn":"gamebtn",ref=gameButtonRef(data,prefix),s=userBridge.status(),latest=s.last_game_message;
     if(!ref)return send(chat,"⚠️ Кнопка повреждена. Нажми /game или /advice ещё раз.");
     if(!latest)return send(chat,"⚠️ Нет актуального экрана игры. Нажми /game или /advice ещё раз.");
-    if(!ref.legacy&&String(latest.message_id)!==String(ref.messageId))return send(chat,"⚠️ Экран игры изменился. Обнови кнопки через /game или /advice.");
+    // The callback is tied to the exact source message. A newer game
+    // message must not invalidate a still-clickable older button.
     let label=null;
     if(ref.legacy) label=(latest.buttons||[]).find(x=>gameButtonKey(x)===ref.key);
     else { try { label=await userBridge.getGameButton(ref.messageId,ref.key); } catch(e) { console.log("GAME BUTTON LOOKUP ERROR:",e.message); } }
