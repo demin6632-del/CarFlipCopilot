@@ -206,7 +206,7 @@ class TelegramUserBridge {
       if (e && (e.errorMessage==="SESSION_PASSWORD_NEEDED" || e.message==="SESSION_PASSWORD_NEEDED")) {
         const pw=String(password||"");
         if (!pw) return {id:r.id,connected:false,needsPassword:true};
-        await this.client.signInWithPassword({password:async()=>pw});
+        await this.client.signInWithPassword({apiId:this.apiId,apiHash:this.apiHash},{password:async()=>pw,onError:async err=>{ console.log("TELEGRAM 2FA ERROR:",err.message); return true; }});
       } else throw e;
     }
     this.saveSession(this.client.session.save());
