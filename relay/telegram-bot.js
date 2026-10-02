@@ -311,14 +311,21 @@ async function renderGame(chat,options={}){
   if(sent?.message_id)activeGameChats.set(String(chat)+"_message_id",sent.message_id);
   return sent;
 }
-async function waitForGameUpdate(previousId,timeoutMs=10000){
+async function waitForGameUpdate(previousId,previousText="",previousButtons=[],timeoutMs=10000){
   const started=Date.now();
+  const oldText=String(previousText||"");
+  const oldButtons=JSON.stringify(previousButtons||[]);
   while(Date.now()-started<timeoutMs){
     const m=userBridge.status().last_game_message;
-    if(m && String(m.message_id)!==String(previousId||""))return m;
-    await new Promise(r=>setTimeout(r,350));
+    if(m){
+      const changedId=String(m.message_id)!==String(previousId||"");
+      const changedText=String(m.text||"")!==oldText;
+      const changedButtons=JSON.stringify(m.buttons||[])!==oldButtons;
+      if(changedId||changedText||changedButtons)return m;
+    }
+    await new Promise(r=>setTimeout(r,300));
   }
-  return userBridge.status().last_game_message||null;
+  return null;
 }
 async function gameDebug(chat){try{return await renderGame(chat);}catch(e){return send(chat,"⚠️ Игровой режим не открылся: "+String(e.message||e).slice(0,700));}}
 async function bridgeStatus(chat){const s=userBridge.status();return send(chat,"🔗 Telegram-мост\n\nСтатус: "+(s.connected?"✅ подключён":"❌ не подключён")+"\nИгровой бот: @"+GAME_USERNAME+"\nПользователь: "+(s.username?"@"+s.username:"не определён")+(s.last_error?"\n\n⚠️ "+s.last_error:""));}
@@ -429,7 +436,7 @@ async function callback(q){
     try{
       await userBridge.clickGameButton(label,ref.messageId);
       if(activeGameChats.get(String(chat))){
-        const next=await waitForGameUpdate(ref.messageId,10000);
+        const beforeScreen=userBridge.status().last_game_message;\n        const next=await waitForGameUpdate(ref.messageId,beforeScreen?.text||"",beforeScreen?.buttons||[],10000);
         const screenId=q.message?.message_id||activeGameChats.get(String(chat)+"_message_id");
         if(screenId)activeGameChats.set(String(chat)+"_message_id",screenId);
         if(next){
