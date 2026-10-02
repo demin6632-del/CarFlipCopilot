@@ -283,7 +283,9 @@ async function callback(q){
     if(!ref)return send(chat,"⚠️ Кнопка повреждена. Нажми /game или /advice ещё раз.");
     if(!latest)return send(chat,"⚠️ Нет актуального экрана игры. Нажми /game или /advice ещё раз.");
     if(!ref.legacy&&String(latest.message_id)!==String(ref.messageId))return send(chat,"⚠️ Экран игры изменился. Обнови кнопки через /game или /advice.");
-    const label=(latest.buttons||[]).find(x=>gameButtonKey(x)===ref.key);
+    let label=null;
+    if(ref.legacy) label=(latest.buttons||[]).find(x=>gameButtonKey(x)===ref.key);
+    else { try { label=await userBridge.getGameButton(ref.messageId,ref.key); } catch(e) { console.log("GAME BUTTON LOOKUP ERROR:",e.message); } }
     if(!label)return send(chat,"⚠️ Эта кнопка больше отсутствует на исходном экране игры. Обнови кнопки.");
     try{await userBridge.clickGameButton(label,ref.messageId);return send(chat,(prefix==="confirmbtn"?"✅ Выполнено в игре: ":"✅ Нажал: ")+label);}catch(e){return send(chat,"❌ Не удалось выполнить «"+label+"»: "+e.message);}
   }
