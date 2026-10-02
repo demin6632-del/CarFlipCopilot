@@ -51,60 +51,31 @@ function buttonChoiceAnalysis(decision,state,buttons){
   if(!list.length)return [];
 
   const raw=String(state?.raw_message||state?.raw_text||"").toLowerCase();
-  const explicit=String(decision?.action||"").toLowerCase();
-  const type=explicit.includes("куп")?"buy":explicit.includes("прод")?"sell":explicit.includes("осмотр")||explicit.includes("провер")?"inspect":explicit.includes("номер")||explicit.includes("аукцион")?"plate":explicit.includes("ремонт")?"repair":explicit.includes("тюнинг")?"tune":explicit.includes("работ")?"work":explicit.includes("гараж")?"garage":explicit.includes("отмен")?"cancel":explicit.includes("продолж")||explicit.includes("далее")?"continue":null;
-  if(!type)return [];
+  const action=String(decision?.action||"").toLowerCase();
+  if(!action || /нет подтверждённого действия|пришли другой скриншот|определи текущий экран/.test(action)) return [];
 
-  // Проценты показываем только там, где экран игры прямо подтверждает
-  // соответствие кнопки текущему действию. Финансовые поля сами по себе
-  // не являются доказательством того, что нужно покупать/продавать/VIP.
-  const source=normalizeButtonText([decision?.title,decision?.reason,raw].filter(Boolean).join(" "));
-  const directContext={
-    buy:/купить|покупка|приобрести|взять\s+авто/i.test(raw),
-    sell:/продать|продажа|по\s*рукам|предложени[ея]\s+покупател|покупател[ья]/i.test(raw),
-    inspect:/осмотр|проверить|диагност|оценить/i.test(source),
-    plate:/аукцион|торги.*номер|номер.*торги|ставка.*номер|номер.*ставка/i.test(raw),
-    repair:/ремонт|почин/i.test(raw),
-    tune:/тюнинг|улучш/i.test(raw),
-    work:/работ|контракт|заказ/i.test(raw),
-    garage:/расширить\s+гараж|боксы\s+гаража|мест.*гараж/i.test(raw),
-    cancel:/отмен|назад|выйти|вернуться/i.test(raw),
-    continue:/далее|продолжить|следующий|исследовать|ехать|вперед/i.test(raw)
-  };
+  // Кнопка считается рекомендованной только при прямом доказательстве
+  // на самом экране. Наличие денег, гаража, машины или одной подходящей
+  // по названию кнопки не является доказательством выгодности действия.
+  const negativeAction=/^не\s+(покупай|бери|продавай|продавай|ремонтируй|трать)/i.test(action);
+  if(negativeAction)return [];
 
-  const scores=list.map(label=>{
-    const bt=classifyGameButton(label);
-    const evidenceParts=[];
-    let evidence=0;
+  const explicitInstruction =
+    /(?:нажми|выбери|нужно\s+нажать|следует\s+нажать|рекомендуется\s+нажать|жми)\s+[«"“]?([^»"”\n]+)[»"”]?/i.exec(raw);
 
-    if(bt===type && directContext[type]){
-      evidence=1;
-      evidenceParts.push("кнопка и действие подтверждены текущим экраном");
-    }
-    if(bt==="confirm" && directContext[type] && ["buy","sell","plate","repair","tune"].includes(type)){
-      evidence=1;
-      evidenceParts.push("экран требует подтверждения действия");
-    }
-    if(bt==="cancel" && directContext.cancel && type==="cancel"){
-      evidence=1;
-      evidenceParts.push("экран прямо указывает на отмену/возврат");
-    }
+  if(!explicitInstruction)return [];
 
-    return {label,type:bt,evidence,evidenceParts};
-  });
+  const instructed=normalizeButtonText(explicitInstruction[1]);
+  const matches=list.filter(label=>normalizeButtonText(label)===instructed);
+  if(matches.length!==1)return [];
 
-  const confirmed=scores.filter(x=>x.evidence>0);
-  if(!confirmed.length)return [];
-
-  // Это распределение только между кнопками, для которых есть прямое
-  // текстовое подтверждение. Неподтверждённым кнопкам 0% не приписываем:
-  // они просто не участвуют в расчёте.
-  const total=confirmed.length;
-  return scores.map(x=>({
-    ...x,
-    percent:x.evidence>0?Math.round(100/total):null,
-    reason:x.evidenceParts.length?x.evidenceParts.join(", "):"нет прямого подтверждения"
-  })).filter(x=>x.evidence>0).sort((a,b)=>b.percent-a.percent);
+  const label=matches[0];
+  return [{
+    label,
+    type:classifyGameButton(label),
+    percent:100,
+    reason:"игра прямо указала эту кнопку в текущем экране"
+  }];
 }
 
 function buttonScoreText(ranked){
