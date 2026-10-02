@@ -15,7 +15,7 @@ const API = "https://api.telegram.org/bot" + BOT_TOKEN;
 let offset=0,polling=false,webhookEnabled=false;
 process.on("unhandledRejection",e=>console.log("UNHANDLED REJECTION:",e?.stack||e?.message||e));
 process.on("uncaughtException",e=>console.log("UNCAUGHT EXCEPTION:",e?.stack||e?.message||e));
-const users=new Map(),pendingGameProbes=new Map(),gameButtonMap=new Map();
+const users=new Map(),pendingGameProbes=new Map();
 const photoFingerprints=new Map();
 const photoFileIds=new Map();
 const processingChats=new Set();
@@ -35,6 +35,14 @@ function recommendGameButton(decision,buttons){
   return best&&best.score>=3?best.label:null;
 }
 function actionRisk(action){return /(куп|покуп|прод|продаж|аукцион|номер|ремонт|тюнинг|оплат|подтверд|оформ)/i.test(normalizeButtonText(action));}
+function gameButtonKey(label){
+  return require("crypto").createHash("sha256").update(String(label||"")).digest("hex").slice(0,16);
+}
+function currentGameButton(key){
+  const buttons=userBridge.status()?.last_game_message?.buttons;
+  if(!Array.isArray(buttons))return null;
+  return buttons.find(label=>gameButtonKey(label)===key)||null;
+}
 
 async function notifyBridgeState(state){
   const chat=userBridge.boundChatId;if(!chat||!state||!state.received_at)return;
@@ -232,15 +240,15 @@ async function connect(chat){
 async function gameDebug(chat){
   const s=userBridge.status(),m=s.last_game_message;if(!m)return send(chat,"🎮 Пока нет сообщения от игрового бота. Сначала подключи игру и нажми «Проверить связь с игрой».");
   const buttons=m.buttons&&m.buttons.length?"\n\n🔘 Кнопки:\n"+m.buttons.map((x,i)=>(i+1)+". "+x).join("\n"):"";
-  const rows=(m.buttons||[]).slice(0,8).map(label=>{const id=require("crypto").randomBytes(8).toString("hex");gameButtonMap.set(id,{chat:String(chat),label,expires:Date.now()+5*60*1000});return [{text:"▶️ "+label,callback_data:"gamebtn:"+id}];});
+  const rows=(m.buttons||[]).slice(0,8).map(label=>[{text:"▶️ "+label,callback_data:"gamebtn:"+gameButtonKey(label)}]);
   return send(chat,"🎮 Последнее сообщение игры:\n\n"+String(m.text||"—").slice(0,6000)+buttons,{reply_markup:{inline_keyboard:rows}});
 }
 async function bridgeStatus(chat){const s=userBridge.status();return send(chat,"🔗 Telegram-мост\n\nСтатус: "+(s.connected?"✅ подключён":"❌ не подключён")+"\nИгровой бот: @"+GAME_USERNAME+"\nПользователь: "+(s.username?"@"+s.username:"не определён")+(s.last_error?"\n\n⚠️ "+s.last_error:""));}
 async function state(chat){try{const s=await relay("/state");return send(chat,"📊 Текущее состояние\n\n💰 Баланс: "+(s.balance??"неизвестно")+"\n🚗 Гараж: "+(s.garage??"неизвестно")+"\n🚘 Машина: "+(s.vehicle?.name||"нет данных")+"\n\nЭто данные, которые игровой мост передал relay.");}catch(e){return send(chat,"⚠️ Состояние пока недоступно: "+e.message);}}
 async function advice(chat){
   try{const r=await relay("/telegram/advice",{chat_id:chat}),observed=(r.game_buttons||[]).slice(0,8),recommended=recommendGameButton(r.decision,observed),rows=[];
-    if(recommended){const id=require("crypto").randomBytes(8).toString("hex"),risk=actionRisk(r.decision?.action||recommended);gameButtonMap.set(id,{chat:String(chat),label:recommended,expires:Date.now()+5*60*1000,confirmed:false});rows.push([{text:(risk?"⚠️ Подтвердить: ":"🤖 Выполнить: ")+recommended,callback_data:"confirmbtn:"+id}]);}
-    for(const label of observed){const id=require("crypto").randomBytes(8).toString("hex");gameButtonMap.set(id,{chat:String(chat),label,expires:Date.now()+5*60*1000,confirmed:false});rows.push([{text:"▶️ "+label,callback_data:"gamebtn:"+id}]);}
+    if(recommended){const risk=actionRisk(r.decision?.action||recommended);rows.push([{text:(risk?"⚠️ Подтвердить: ":"🤖 Выполнить: ")+recommended,callback_data:"confirmbtn:"+gameButtonKey(recommended)}]);}
+    for(const label of observed){rows.push([{text:"▶️ "+label,callback_data:"gamebtn:"+gameButtonKey(label)}]);}
     let out=r.text||"Пока нет актуального решения. Передай состояние игры или скриншот.";if(recommended)out+="\n\n🤖 ИИ сопоставил действие с кнопкой игры: «"+recommended+"».\nНажатие выполняется только после твоего подтверждения.";
     return send(chat,out,rows.length?{reply_markup:{inline_keyboard:rows}}:{});
   }catch(e){return send(chat,"⚠️ Помощник пока не получил состояние игры: "+e.message);}
@@ -267,8 +275,8 @@ async function probe(chat){
 }
 async function callback(q){
   const chat=q.message?.chat?.id,data=q.data;try{await tg("answerCallbackQuery",{callback_query_id:q.id});}catch{}
-  if(data.startsWith("confirmbtn:")){const id=data.slice(11),item=gameButtonMap.get(id);if(!item||item.chat!==String(chat)||item.expires<Date.now())return send(chat,"⚠️ Рекомендация устарела. Нажми /advice ещё раз.");try{await userBridge.clickGameButton(item.label);gameButtonMap.delete(id);return send(chat,"✅ Выполнено в игре: "+item.label);}catch(e){return send(chat,"❌ Не удалось выполнить «"+item.label+"»: "+e.message);}}
-  if(data.startsWith("gamebtn:")){const id=data.slice(8),item=gameButtonMap.get(id);if(!item||item.chat!==String(chat)||item.expires<Date.now())return send(chat,"⚠️ Эта кнопка устарела. Нажми /game ещё раз.");try{await userBridge.clickGameButton(item.label);gameButtonMap.delete(id);return send(chat,"✅ Нажал: "+item.label);}catch(e){return send(chat,"❌ Не удалось нажать «"+item.label+"»: "+e.message);}}
+  if(data.startsWith("confirmbtn:")){const key=data.slice(11),label=currentGameButton(key);if(!label)return send(chat,"⚠️ Рекомендация действительно устарела: кнопки игры уже изменились. Нажми /advice ещё раз.");try{await userBridge.clickGameButton(label);return send(chat,"✅ Выполнено в игре: "+label);}catch(e){return send(chat,"❌ Не удалось выполнить «"+label+"»: "+e.message);}}
+  if(data.startsWith("gamebtn:")){const key=data.slice(8),label=currentGameButton(key);if(!label)return send(chat,"⚠️ Эта кнопка действительно устарела: игра уже показала другой экран. Нажми /game ещё раз.");try{await userBridge.clickGameButton(label);return send(chat,"✅ Нажал: "+label);}catch(e){return send(chat,"❌ Не удалось нажать «"+label+"»: "+e.message);}}
   if(data==="connect")return connect(chat);if(data==="state")return state(chat);if(data==="advice")return advice(chat);if(data==="probe")return probe(chat);if(data==="photo")return send(chat,"📸 Просто отправь сюда скриншот игры.");if(data==="menu")return send(chat,"Главное меню:");
 }
 async function processUpdate(u){
