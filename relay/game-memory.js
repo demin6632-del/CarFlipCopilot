@@ -32,8 +32,11 @@ async function recordScreen(chat,state){
   const text=String(state?.raw_message||state?.raw_text||"").slice(0,12000);
   if(!text)return;
   try{
+    const screenKey=key(text+"|"+JSON.stringify(state?.buttons||[]));
+    const duplicate=await c.query("SELECT 1 FROM game_memory_screens WHERE chat_id=$1 AND screen_key=$2 AND created_at>now()-interval '15 seconds' LIMIT 1",[String(chat),screenKey]);
+    if(duplicate.rowCount)return;
     await c.query("INSERT INTO game_memory_screens(chat_id,screen_key,screen_class,screen_text,buttons,state) VALUES($1,$2,$3,$4,$5,$6)",[
-      String(chat),key(text+"|"+JSON.stringify(state?.buttons||[])),String(state?.screen_class||"other"),text,
+      String(chat),screenKey,String(state?.screen_class||"other"),text,
       JSON.stringify(Array.isArray(state?.buttons)?state.buttons:[]),JSON.stringify(safeState(state))
     ]);
   }catch(e){console.log("GAME MEMORY SCREEN ERROR:",e.message);}
