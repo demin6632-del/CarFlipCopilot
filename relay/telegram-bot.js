@@ -99,7 +99,7 @@ async function notifyBridgeState(state){
   const lines=["🎮 Новое событие из игры","","💰 Баланс: "+(state.balance??"—"),"🚗 Гараж: "+(state.garage??"—")];
   if(state.vehicle?.name)lines.push("🚘 "+state.vehicle.name);
   if(state.vehicle?.price!=null)lines.push("💵 Цена: "+state.vehicle.price);
-  lines.push("","Нажми «🧠 Что делать сейчас», чтобы получить решение ИИ.");
+  const ranked=buttonChoiceAnalysis(state.local_decision||null,state,state.buttons||[]);\n  if(ranked.length){\n    lines.push("","🧠 АВТОАНАЛИЗ КНОПОК","➡️ Лучше нажать: «"+ranked[0].label+"» — "+ranked[0].percent+"%");\n    lines.push("📊 "+ranked.slice(0,4).map(x=>"«"+x.label+"» "+x.percent+"%").join(" · "));\n  }else lines.push("","Нажми «🧠 Что делать сейчас», чтобы получить решение ИИ.");
   try{await send(chat,lines.join("\n"));}catch(e){console.log("BRIDGE NOTICE ERROR:",e.message);}
 }
 
@@ -299,7 +299,7 @@ async function advice(chat){
     const relayButtons=Array.isArray(r.game_buttons)?r.game_buttons:[];
     const observed=(current?.buttons?.length?current.buttons:relayButtons).slice(0,8);
     const sourceMessageId=current?.message_id||null;
-    const recommended=recommendGameButton(r.decision,observed),rows=[];
+    const ranked=buttonChoiceAnalysis(r.decision,{...r.state,...(current||{}),raw_message:current?.text||r.state?.raw_message},observed),recommended=ranked[0]?.label||null,rows=[];
     if(recommended && sourceMessageId){
       const risk=actionRisk(r.decision?.action||recommended);
       rows.push([{text:(risk?"⚠️ Подтвердить: ":"🤖 Выполнить: ")+recommended,callback_data:confirmButtonData(recommended,sourceMessageId)}]);
@@ -308,7 +308,7 @@ async function advice(chat){
       for(const label of observed) rows.push([{text:"▶️ "+label,callback_data:gameButtonData(label,sourceMessageId)}]);
     }
     let out=r.text||"Пока нет актуального решения. Передай состояние игры или скриншот.";
-    if(recommended && sourceMessageId) out+="\n\n🤖 ИИ сопоставил действие с кнопкой игры: «"+recommended+"».\nНажатие выполняется только после твоего подтверждения.";
+    if(recommended && sourceMessageId) out+="\n\n🤖 ЛУЧШИЙ ВЫБОР: «"+recommended+"» — "+(ranked[0]?.percent||0)+"%\n\n📊 Оценка кнопок:\n"+ranked.slice(0,5).map((x,i)=>(i+1)+". «"+x.label+"» — "+x.percent+"%").join("\n")+"\n\nНажатие выполняется только после твоего подтверждения.";
     else if(recommended) out+="\n\nℹ️ Решение построено по сохранённому состоянию игры. Кнопки можно восстановить через «🧪 Проверить связь с игрой» или /game.";
     return send(chat,out,rows.length?{reply_markup:{inline_keyboard:rows}}:{});
   }catch(e){return send(chat,"⚠️ Помощник пока не получил состояние игры: "+e.message);}
