@@ -17,6 +17,7 @@ process.on("unhandledRejection",e=>console.log("UNHANDLED REJECTION:",e?.stack||
 process.on("uncaughtException",e=>console.log("UNCAUGHT EXCEPTION:",e?.stack||e?.message||e));
 const users=new Map(),pendingGameProbes=new Map();
 const activeGameChats=new Map();
+const gameActionChats=new Set();
 const replyKeyboardClearedChats=new Set();
 const photoFingerprints=new Map();
 const photoFileIds=new Map();
@@ -91,7 +92,12 @@ function gameButtonRef(data,prefix){const p=String(data||"").split(":");if(p.len
 
 async function notifyBridgeState(state){
   const chat=userBridge.boundChatId;if(!chat||!state||!state.received_at)return;
-  if(activeGameChats.get(String(chat))){try{const id=activeGameChats.get(String(chat)+"_message_id");if(id)await renderGame(chat,{messageId:id});else await renderGame(chat);}catch(e){console.log("GAME SCREEN PUSH ERROR:",e.message);}return;}
+  if(activeGameChats.get(String(chat))){
+    // A button click renders the next screen itself. Do not render the same
+    // Telegram game update here as well, otherwise one click can create two screens.
+    if(gameActionChats.has(String(chat))) return;
+    try{const id=activeGameChats.get(String(chat)+"_message_id");if(id)await renderGame(chat,{messageId:id});else await renderGame(chat);}catch(e){console.log("GAME SCREEN PUSH ERROR:",e.message);}return;
+  }
   const fingerprint=JSON.stringify({balance:state.balance,garage:state.garage,vehicle:state.vehicle,raw_message:state.raw_message});
   if(fingerprint===lastBridgeFingerprint)return;lastBridgeFingerprint=fingerprint;
   if(Date.now()-lastBridgeNotice<5000)return;lastBridgeNotice=Date.now();
@@ -288,12 +294,15 @@ async function handle(m){
     }
     const target=labels.find(x=>String(x).trim()===text.trim());
     if(target && latest?.message_id){
+      gameActionChats.add(String(chat));
       try{
         await userBridge.clickGameButton(target,latest.message_id);
-        const next=await waitForGameUpdate(latest.message_id,latest.text||"",latest.buttons||[],10000);
+        await waitForGameUpdate(latest.message_id,latest.text||"",latest.buttons||[],10000);
         return renderGame(chat,{messageId:activeGameChats.get(String(chat)+"_message_id")});
       }catch(e){
         return send(chat,"❌ Не удалось выполнить «"+target+"»: "+String(e.message||e).slice(0,700));
+      }finally{
+        gameActionChats.delete(String(chat));
       }
     }
   }
