@@ -5,6 +5,7 @@ const { analyzeImage, parseState, decide, warmup } = require("./free-analyzer");
 const { rankButtons, recordScreen, recordClick } = require("./button-strategy");
 const { recordScreen: recordMemoryScreen, recordAction: recordMemoryAction, recent: recentMemory } = require("./game-memory");
 const { recordTransition: recordEconomyTransition, summary: economySummary, currentVehicleEconomics } = require("./game-economy");
+const { buildStrategy } = require("./strategy-engine");
 
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || "";
 const RELAY_TOKEN = process.env.COPILOT_TOKEN || "";
@@ -497,6 +498,8 @@ async function renderGameNow(chat,options={}){
   const decision=decide(Object.assign({},parsedGame,{raw_text:parsedGame.raw_text,raw_message:latest.text,buttons:latest.buttons}),90);
   const strategyState=Object.assign({},parsedGame,{raw_text:parsedGame.raw_text,raw_message:latest.text,buttons:latest.buttons||[]});
   const ranked=await rankButtons(chat,strategyState,latest.buttons||[]);
+  const economy=await economySummary(chat,120);
+  const strategy=buildStrategy(strategyState,ranked,economy);
   recordScreen(chat,latest.text,latest.buttons||[]).catch(e=>console.log("BUTTON STRATEGY SCREEN ERROR:",e.message));
   recordMemoryScreen(chat,latest).catch(e=>console.log("GAME MEMORY SCREEN ERROR:",e.message));
   const screenConfidence=ranked.length ? 100 : Math.round(Number(decision.confidence)||0);
@@ -504,9 +507,22 @@ async function renderGameNow(chat,options={}){
   if(ranked.length){
     adviceLines.push("💡 Проценты — стратегическая оценка по текущему экрану, сохранённой истории твоей игры и финансовому контексту.");
     adviceLines.push("","👉 РЕКОМЕНДАЦИЯ: «"+ranked[0].label+"» — "+ranked[0].percent+"%","📊 ВСЕ КНОПКИ:\n"+buttonScoreText(ranked));
+    const top=strategy.alternatives.find(x=>x.label===ranked[0].label);
+    if(top) adviceLines.push("⚠️ Риск действия: "+top.risk+"%"+(top.reasons.length?"\n   └ "+top.reasons.join("; "):""));
   }else if(decision.reason){
     adviceLines.push("💬 "+decision.reason);
   }
+  if(strategy.economics){
+    adviceLines.push("","💰 ЭКОНОМИКА СЦЕНАРИЯ: "+Math.round(strategy.economics.delta).toLocaleString("ru-RU")+" ₽ до комиссии");
+  }
+  if(strategy.contract){
+    const parts=[];
+    if(strategy.contract.reward!=null)parts.push("награда "+Math.round(strategy.contract.reward).toLocaleString("ru-RU")+" ₽");
+    if(strategy.contract.maxPrice!=null)parts.push("лимит "+Math.round(strategy.contract.maxPrice).toLocaleString("ru-RU")+" ₽");
+    if(strategy.contract.minHp!=null)parts.push("мощность от "+strategy.contract.minHp+" л.с.");
+    adviceLines.push("📋 КОНТРАКТ: "+(parts.length?parts.join(", "):"условия распознаны"));
+  }
+  if(strategy.warnings.length)adviceLines.push("⚠️ "+strategy.warnings.join("\n⚠️ "));
   const text=adviceLines.join("\n");
   const markup=await gameKeyboard(latest);
   const messageId=options.messageId||activeGameChats.get(String(chat)+"_message_id");
@@ -615,6 +631,8 @@ async function advice(chat){
     const sourceMessageId=currentMessage?.message_id||null;
     const adviceState={...r.state,...(currentMessage||{}),raw_message:currentMessage?.text||r.state?.raw_message};
     const ranked=await rankButtons(chat,adviceState,observed);
+    const economy=await economySummary(chat,120);
+    const strategy=buildStrategy(adviceState,ranked,economy);
     const recommended=ranked[0]?.label||null;
     const rows=[];
     if(recommended && sourceMessageId){
@@ -622,7 +640,19 @@ async function advice(chat){
       rows.push([{text:(risk?"⚠️ Подтвердить: ":"🤖 Выполнить: ")+recommended,callback_data:confirmButtonData(recommended,sourceMessageId)}]);
     }
     let out=r.text||"Пока нет актуального решения.";
-    if(recommended) out+="\n\n➡️ Нажать: «"+recommended+"» — "+ranked[0].percent+"%\n💬 "+ranked[0].reason;
+    if(recommended){
+      const top=strategy.alternatives.find(x=>x.label===recommended);
+      out+="\n\n➡️ Нажать: «"+recommended+"» — "+ranked[0].percent+"%\n💬 "+ranked[0].reason;
+      if(top) out+="\n⚠️ Риск действия: "+top.risk+"%"+(top.reasons.length?"\n   └ "+top.reasons.join("; "):"");
+    }
+    if(strategy.contract){
+      const p=[];
+      if(strategy.contract.reward!=null)p.push("награда "+Math.round(strategy.contract.reward).toLocaleString("ru-RU")+" ₽");
+      if(strategy.contract.maxPrice!=null)p.push("лимит "+Math.round(strategy.contract.maxPrice).toLocaleString("ru-RU")+" ₽");
+      if(strategy.contract.minHp!=null)p.push("мощность от "+strategy.contract.minHp+" л.с.");
+      out+="\n📋 Контракт: "+(p.length?p.join(", "):"условия распознаны");
+    }
+    if(strategy.warnings.length)out+="\n⚠️ "+strategy.warnings.join("\n⚠️ ");
     return send(chat,out);
   }catch(e){return send(chat,"⚠️ Помощник пока не получил состояние игры: "+e.message);}
 }
