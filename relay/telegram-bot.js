@@ -51,25 +51,29 @@ function buttonChoiceAnalysis(decision,state,buttons){
   if(!list.length)return [];
   const action=normalizeButtonText(decision?.action||"");
   const type=action.includes("куп")?"buy":action.includes("прод")?"sell":action.includes("осмотр")||action.includes("провер")?"inspect":action.includes("номер")||action.includes("аукцион")?"plate":action.includes("ремонт")?"repair":action.includes("тюнинг")?"tune":action.includes("работ")?"work":action.includes("гараж")?"garage":action.includes("отмен")?"cancel":action.includes("продолж")||action.includes("далее")?"continue":null;
-  // A generic "check current deal/state" is not a button recommendation.
-  // Never invent a winner when the current decision does not identify an action.
-  if(!type)return [];
   const raw=String(state?.raw_message||state?.raw_text||"").toLowerCase();
   const source=normalizeButtonText([decision?.title,decision?.reason,raw].filter(Boolean).join(" "));
   const weights=list.map(label=>{
     const bt=classifyGameButton(label);
-    let score=0;
-    if(bt===type)score=100;
-    if(bt==="confirm"&&["buy","sell","plate","repair","tune"].includes(type))score=80;
-    if(bt==="cancel"&&type!=="cancel")score=10;
-    if(bt==="sell"&&/предлож|покупател|по\\s*рукам|торг/i.test(raw))score+=20;
-    if(bt==="inspect"&&/провер|осмотр|оцен/i.test(source))score+=20;
-    if(bt==="renew"&&/объяв|продл|ставк|предлож/i.test(raw))score+=15;
-    return {label,type:bt,score,reason:score>=100?"соответствует конкретному действию ИИ":score>0?"может выполнить часть текущего действия":"не относится к текущему действию"};
-  }).filter(x=>x.score>0);
-  if(!weights.length)return [];
+    let score=10; // Every visible button gets a percentage; never hide the alternatives.
+    if(type && bt===type)score+=100;
+    if(type && bt==="confirm"&&["buy","sell","plate","repair","tune"].includes(type))score+=70;
+    if(type==="inspect" && bt==="inspect")score+=55;
+    if(type==="garage" && bt==="garage")score+=55;
+    if(type==="continue" && bt==="continue")score+=45;
+    if(type==="cancel" && bt==="cancel")score+=80;
+    if(bt==="cancel" && type && type!=="cancel")score=Math.max(2,score-5);
+    if(bt==="sell"&&/предлож|покупател|по\s*рукам|торг|продаж/i.test(raw))score+=30;
+    if(bt==="inspect"&&/провер|осмотр|оцен/i.test(source))score+=25;
+    if(bt==="renew"&&/объяв|продл|ставк|предлож/i.test(raw))score+=20;
+    if(bt==="garage"&&/гараж|авто|машин/i.test(raw))score+=15;
+    return {label,type:bt,score,reason:
+      type && bt===type ? "наиболее соответствует текущему решению ИИ" :
+      bt==="cancel" ? "отмена действия" :
+      "альтернативный вариант на текущем экране"};
+  });
   const total=weights.reduce((sum,x)=>sum+x.score,0)||1;
-  return weights.sort((a,b)=>b.score-a.score).map(x=>({...x,percent:Math.round(x.score/total*100)}));
+  return weights.sort((a,b)=>b.score-a.score).map(x=>({...x,percent:Math.max(1,Math.round(x.score/total*100))}));
 }
 function buttonScoreText(ranked){
   if(!ranked.length)return "";
