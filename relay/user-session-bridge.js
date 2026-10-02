@@ -3,6 +3,7 @@ const fs = require("fs");
 const path = require("path");
 const http = require("http");
 const https = require("https");
+const keepAliveAgent = new https.Agent({keepAlive:true,maxSockets:16,maxFreeSockets:4,timeout:60000,freeSocketTimeout:15000});
 const QRCode = require("qrcode");
 const { TelegramClient, Api } = require("telegram");
 const { StringSession } = require("telegram/sessions");
@@ -242,7 +243,7 @@ class TelegramUserBridge {
     const transport=u.protocol==="https:"?https:http;
     await new Promise((resolve,reject)=>{
       const req=transport.request({
-        protocol:u.protocol,hostname:u.hostname,port:u.port||undefined,path:u.pathname+u.search,method:"POST",
+        protocol:u.protocol,hostname:u.hostname,port:u.port||undefined,path:u.pathname+u.search,method:"POST",agent:keepAliveAgent,
         headers:{"content-type":"application/json","authorization":"Bearer "+this.relayToken,"content-length":Buffer.byteLength(body)}
       },res=>{res.resume();res.on("end",resolve)});
       req.on("error",reject);
