@@ -1,0 +1,10 @@
+{
+  "name": "carflip-copilot-workspace",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Workspace manifest for repository-level CI tests",
+  "scripts": {},
+  "engines": {
+    "node": ">=20"
+  }
+}
