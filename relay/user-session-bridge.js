@@ -15,6 +15,7 @@ class TelegramUserBridge {
     this.apiId = Number(opts.apiId || 0);
     this.apiHash = String(opts.apiHash || "");
     this.gameUsername = String(opts.gameUsername || "m0dsbeamngbot").replace(/^@/,"");
+    this.gamePeerId = null;
     this.sessionFile = opts.sessionFile || path.join(process.cwd(),"data","telegram-user-session.txt");
     this.publicUrl = String(opts.publicUrl || process.env.RENDER_EXTERNAL_URL || "").replace(/\/$/,"");
     this.relayUrl = String(opts.relayUrl || "").replace(/\/$/,"");
@@ -117,14 +118,26 @@ class TelegramUserBridge {
     if (!this.state.connected) return;
     const me = await this.client.getMe();
     this.state.user_id = String(me.id);
+    try {
+      const game = await this.client.getEntity(this.gameUsername);
+      this.gamePeerId = game && game.id != null ? String(game.id) : null;
+      console.log("GAME PEER RESOLVED:", this.gameUsername, this.gamePeerId || "unknown");
+    } catch(e) {
+      this.gamePeerId = null;
+      console.log("GAME PEER RESOLVE ERROR:", e.message);
+    }
     this.state.username = me.username || null;
     this.state.connected_at = Date.now();
     this.client.addEventHandler(async event => {
       try {
         const msg = event.message;
         const peer = await msg.getChat();
-        const username = peer && peer.username ? String(peer.username).replace(/^@/,"").toLowerCase() : "";
-        if (username !== this.gameUsername.toLowerCase()) return;
+        const peerUsername = peer && peer.username ? String(peer.username).replace(/^@/,"").toLowerCase() : "";
+        const expectedUsername = String(this.gameUsername || "").replace(/^@/,"").toLowerCase();
+        const peerId = peer && peer.id != null ? String(peer.id) : (msg.senderId != null ? String(msg.senderId) : "");
+        const sameById = !!(this.gamePeerId && peerId && this.gamePeerId === peerId);
+        const sameByUsername = !!(expectedUsername && peerUsername && peerUsername === expectedUsername);
+        if (!sameById && !sameByUsername) return;
         await this.handleGameMessage(msg);
       } catch (e) {
         console.log("GAME MESSAGE ERROR:",e.message);
@@ -275,7 +288,7 @@ class TelegramUserBridge {
     this.publishState(this.state).catch(e=>console.log("RELAY STATE ASYNC ERROR:",e.message));
     if (this.onState) {
       try { await this.onState(this.state); }
-      catch (e) { console.log("GAME STATE NOTIFY ERROR:",e.message); }
+      catch (e) { console.log("GAME STATE NOTIFY ERROR:",e.stack||e.message||e); }
     }
   }
 
@@ -302,10 +315,10 @@ class TelegramUserBridge {
     // NewMessage is normally enough, but game bots can occasionally deliver the
     // response before the event handler is attached/processed. Poll recent
     // messages once so /start and manual probes reliably update state.
-    for (let attempt=0; attempt<6; attempt++) {
-      await new Promise(r=>setTimeout(r,500));
+    for (let attempt=0; attempt<12; attempt++) {
+      await new Promise(r=>setTimeout(r,750));
       try {
-        const msgs=await this.client.getMessages(this.gameUsername,{limit:5});
+        const msgs=await this.client.getMessages(this.gameUsername,{limit:10});
         const list=Array.isArray(msgs)?msgs:[msgs];
         const candidates=list
           .filter(m=>m && Number(m.id||0)>before && String(m.message||"").trim())
