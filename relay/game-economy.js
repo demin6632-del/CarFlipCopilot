@@ -112,4 +112,12 @@ function expectedSale(offer,cost,commission=0){
   const fee=Math.max(0,o*Number(commission||0));
   return {offer:o,cost:c,fee,profit:o-c-fee};
 }
+function currentVehicleEconomics(state,offer,commission=0){
+  const info=vehicleInfo(state);
+  const base=vehicleCostValue(state);
+  const o=num(offer);
+  if(!info||base==null)return null;
+  const sale=expectedSale(o,base,commission);
+  return {vehicle:info,cost:base,offer:o,sale};
+}
 module.exports={recordTransition,summary,classify,expectedSale,RENEWAL_COST,PLATE_REMOVAL_COST,PLATE_AUCTION_COMMISSION,vehicleInfo};
