@@ -1,7 +1,7 @@
 const ACTION_RE = [
   ["buy", /(куп|покуп|приобр|взять)/i],
-  ["renew", /(продл|обновить\\s+объяв)/i],
-  ["sell", /(прод(аж|ать)|сбыть|по\\s*рукам|принять\\s+предлож)/i],
+  ["renew", /(продл|обновить\s+объяв)/i],
+  ["sell", /(прод(аж|ать)|сбыть|по\s*рукам|принять\s+предлож)/i],
   ["plate", /(номер|госномер|аукцион|ставк)/i],
   ["repair", /(ремонт|почин)/i],
   ["tune", /(тюнинг|улучш)/i],
@@ -28,9 +28,9 @@ function numberValue(v) {
 function parseContract(text) {
   const t = String(text || "");
   const reward = /(?:награда|вознаграждение|бонус)[^0-9]{0,40}([0-9][0-9 .]*)/i.exec(t);
-  const max = /(?:макс(?:имум)?|до)[^0-9]{0,30}([0-9][0-9 .]*)\\s*(?:₽|руб)/i.exec(t);
-  const hp = /(?:не менее|от|>=?)\\s*([0-9]{2,4})\\s*(?:л\\.?\\s*с\\.?|hp)/i.exec(t);
-  const country = /(?:страна|country)[^\\n:]*[:]?\\s*([A-Za-zА-Яа-яЁё-]{3,})/i.exec(t);
+  const max = /(?:макс(?:имум)?|до)[^0-9]{0,30}([0-9][0-9 .]*)\s*(?:₽|руб)/i.exec(t);
+  const hp = /(?:не менее|от|>=?)\s*([0-9]{2,4})\s*(?:л\\.?\s*с\\.?|hp)/i.exec(t);
+  const country = /(?:страна|country)[^\\n:]*[:]?\s*([A-Za-zА-Яа-яЁё-]{3,})/i.exec(t);
   if (!/контракт|заказ|производител|требован/i.test(t) && !reward && !max && !hp) return null;
   return {
     reward: reward ? numberValue(reward[1]) : null,
@@ -52,7 +52,7 @@ function riskFor(type, state, history = {}) {
     if (!state?.vehicle?.name) { score += 15; reasons.push("автомобиль не подтверждён"); }
   }
   if (type === "sell") {
-    if (/предлож|покупател|по\\s*рукам/i.test(t)) score += 10;
+    if (/предлож|покупател|по\s*рукам/i.test(t)) score += 10;
     else { score += 15; reasons.push("предложение покупателя не подтверждено"); }
   }
   if (type === "plate") {
@@ -103,7 +103,7 @@ function buildStrategy(state, ranked = [], economy = null) {
     profitBeforeFee: offer - cost
   } : null;
 
-  const explicit = /(?:нажми|выбери|нужно\\s+нажать|следует\\s+нажать)\\s+[«"“]?([^»"”\\n]+)[»"”]?/i.exec(textOf(state));
+  const explicit = /(?:нажми|выбери|нужно\s+нажать|следует\s+нажать)\s+[«"“]?([^»"”\\n]+)[»"”]?/i.exec(textOf(state));
   const evidence = explicit ? buttons.find(x => x.toLowerCase() === explicit[1].trim().toLowerCase()) : null;
 
   return {
