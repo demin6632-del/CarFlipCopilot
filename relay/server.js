@@ -196,7 +196,9 @@ const server=http.createServer((req,res)=>{
     }
    }catch(e){ log("BRIDGE ADVICE PARSE ERROR",e.message); }
   }
-  const last=aiHistory.length ? aiHistory[aiHistory.length-1].decision : bridgeDecision;
+  // Prefer the decision bound to the newest Telegram game state.
+  // aiHistory may contain an older screenshot decision and must never override fresh bridge data.
+  const last=bridgeDecision || (aiHistory.length ? aiHistory[aiHistory.length-1].decision : null);
   const local=(latest&&latest.memory&&(latest.memory.local_plan||latest.local_plan))||latest?.local_plan||null;
   if(last){
    const d=last;
