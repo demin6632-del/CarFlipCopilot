@@ -417,6 +417,7 @@ async function handle(m){
             if(later){
               const afterState=Object.assign({},userBridge.status());
               recordMemoryAction(chat,beforeState,target,afterState).catch(e=>console.log("GAME MEMORY DELAYED ACTION ERROR:",e.message));
+              recordEconomyTransition(chat,beforeState,target,afterState).catch(e=>console.log("GAME ECONOMY DELAYED ACTION ERROR:",e.message));
               await renderGame(chat,{messageId:activeGameChats.get(String(chat)+"_message_id")});
             }
           }catch(e){console.log("GAME LATE UPDATE ERROR:",e.message);}
