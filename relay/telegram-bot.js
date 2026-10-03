@@ -766,6 +766,7 @@ async function callback(q){
     else{try{label=await userBridge.getGameButton(ref.messageId,ref.key);}catch(e){console.log("GAME BUTTON LOOKUP ERROR:",e.message);}}
     if(!label)return send(chat,"⚠️ Эта кнопка больше отсутствует. Нажми «🔄 Обновить игру».");
     gameActionChats.add(String(chat));
+    let backgroundCallbackWait=false;
     try{
       // Capture the exact pre-click screen before sending the action.
       const beforeState=Object.assign({},userBridge.status());
@@ -783,6 +784,7 @@ async function callback(q){
           await renderGame(chat,{messageId:screenId,force:true});
         }else{
           // Keep the current screen visible while waiting for a slow game response.
+          backgroundCallbackWait=true;
           setTimeout(async()=>{
             try{
               const later=await waitForGameUpdate(ref.messageId,beforeScreen?.text||"",beforeScreen?.buttons||[],8000);
@@ -793,6 +795,7 @@ async function callback(q){
                 await renderGame(chat,{messageId:activeGameChats.get(String(chat)+"_message_id"),force:true});
               }
             }catch(e){console.log("GAME CALLBACK LATE UPDATE ERROR:",e.message);}
+            finally{gameActionChats.delete(String(chat));}
           },0);
         }
         return;
@@ -801,7 +804,7 @@ async function callback(q){
     }catch(e){
       return send(chat,"❌ Не удалось выполнить «"+label+"»: "+String(e.message||e).slice(0,700));
     }finally{
-      gameActionChats.delete(String(chat));
+      if(!backgroundCallbackWait)gameActionChats.delete(String(chat));
     }
   }
   if(data==="connect")return connect(chat);
