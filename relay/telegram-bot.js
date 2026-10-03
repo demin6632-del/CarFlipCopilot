@@ -84,7 +84,7 @@ function buttonChoiceAnalysis(decision,state,buttons){
 
 function buttonScoreText(ranked){
   if(!ranked.length)return "";
-  return ranked.map((x,i)=>(i===0?"⭐ ":"")+String(i+1)+". «"+x.label+"» — приоритет "+x.percent+"%\n   └ "+x.reason).join("\n");
+  return ranked.map((x,i)=>(i===0?"⭐ ":"")+String(i+1)+". «"+x.label+"» — оценка модели "+x.percent+"/100\n   └ "+x.reason).join("\n");
 }
 function recommendGameButton(decision,buttons,state){
   const ranked=buttonChoiceAnalysis(decision,state,buttons);
@@ -538,16 +538,20 @@ async function renderGameNow(chat,options={}){
   if(ranked.length){
     adviceLines.push("💡 Приоритет — относительная стратегическая оценка, а не вероятность исхода. Учитываются текущий экран, история игры и финансовый контекст.");
     if(strategy.actionable){
-      adviceLines.push("","👉 РЕКОМЕНДАЦИЯ: «"+ranked[0].label+"» — приоритет "+ranked[0].percent+"%");
+      adviceLines.push("","👉 ЧТО ДЕЛАТЬ СЕЙЧАС: нажать «"+ranked[0].label+"»","   Оценка модели: "+ranked[0].percent+"/100","   Почему: "+ranked[0].reason);
     }else{
-      adviceLines.push("","👉 РЕКОМЕНДАЦИЯ: нет — текущий экран не подтверждает, что нужно нажимать кнопку.");
+      adviceLines.push("","👉 ЧТО ДЕЛАТЬ СЕЙЧАС: не нажимать наугад","   Текущий экран не подтверждает полезное действие. Сначала открой раздел, где есть конкретная сделка, покупка, продажа или другое действие.");
     }
-    adviceLines.push("📊 ВСЕ КНОПКИ:\n"+buttonScoreText(ranked));
+    adviceLines.push("📊 СРАВНЕНИЕ КНОПОК:\n"+buttonScoreText(ranked));
+    const riskLevel=(risk)=>{
+      const n=Number(risk)||0;
+      return n>=70?"🔴 высокий":n>=45?"🟠 средний":"🟢 низкий";
+    };
     const actionLines=strategy.alternatives.map(x=>{
-      const blocked=x.contractBlocked?" ⛔ КОНТРАКТ":"";
-      return "• «"+x.label+"» — риск "+x.risk+"%"+blocked+"\n  ↳ если нажать: "+x.scenario;
+      const blocked=x.contractBlocked?" ⛔ УСЛОВИЯ КОНТРАКТА":"";
+      return "• «"+x.label+"»\n  ├─ Риск: "+riskLevel(x.risk)+" ("+x.risk+"/100)"+blocked+"\n  └─ Если нажать: "+x.scenario;
     });
-    if(actionLines.length)adviceLines.push("🔎 РАЗБОР КАЖДОЙ КНОПКИ:\n"+actionLines.join("\n"));
+    if(actionLines.length)adviceLines.push("🔎 ЧТО ПРОИЗОЙДЁТ ПРИ НАЖАТИИ:\n"+actionLines.join("\n"));
     if(strategy.historyCount)adviceLines.push("📜 ИСТОРИЯ: учтено действий — "+strategy.historyCount+". Повторения: "+Object.entries(strategy.historyByAction).map(([k,v])=>k+" ×"+v).join(", "));
     const top=strategy.alternatives.find(x=>x.label===ranked[0].label);
     if(top){
