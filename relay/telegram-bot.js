@@ -188,6 +188,8 @@ function kb(chatId){
   const connectBase=CONNECT_URL||(BRIDGE_PUBLIC_URL?BRIDGE_PUBLIC_URL+"/connect":"");
   const connectUrl=connectBase&&chatId ? connectBase+(connectBase.includes("?")?"&":"?")+"ticket="+encodeURIComponent(userBridge.createTicket(chatId)) : "";
   if(connectUrl)rows.push([{text:"🎮 Открыть подключение",web_app:{url:connectUrl}}]);
+  // Единственная служебная кнопка в игровом режиме — возврат назад.
+  rows.push([{text:"⬅️ Назад"}]);
   return {keyboard:rows,resize_keyboard:true,one_time_keyboard:false,is_persistent:true};
 }
 async function send(chat_id,text,extra={}){
