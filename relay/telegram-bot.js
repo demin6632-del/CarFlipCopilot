@@ -495,6 +495,8 @@ async function gameKeyboard(message){
     if(labels[i+1])row.push({text:labels[i+1]});
     rows.push(row);
   }
+  // Only one bot navigation control remains in the game panel: Back.
+  rows.push([{text:"⬅️ Назад"}]);
   return {keyboard:rows,resize_keyboard:true,one_time_keyboard:false,is_persistent:true};
 }
 async function renderGameNow(chat,options={}){
