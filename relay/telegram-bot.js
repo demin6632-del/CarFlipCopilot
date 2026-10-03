@@ -395,6 +395,7 @@ async function handle(m){
     const target=labels.find(x=>String(x).trim()===text.trim()) || text;
     if(latest?.message_id && text && !["⬅️ Назад","🔄 Обновить игру","🚪 Выйти из игры"].includes(text)){
       gameActionChats.add(String(chat));
+      let backgroundGameWait=false;
       try{
         // Do not require the cached button list to contain the label: the
         // game can update its markup a moment before our local state does.
@@ -411,6 +412,7 @@ async function handle(m){
           return renderGame(chat,{messageId:activeGameChats.get(String(chat)+"_message_id")});
         }
         const screenId=activeGameChats.get(String(chat)+"_message_id");
+        backgroundGameWait=true;
         setTimeout(async()=>{
           try{
             const later=await waitForGameUpdate(latest.message_id,latest.text||"",latest.buttons||[],8000);
@@ -421,13 +423,14 @@ async function handle(m){
               await renderGame(chat,{messageId:activeGameChats.get(String(chat)+"_message_id")});
             }
           }catch(e){console.log("GAME LATE UPDATE ERROR:",e.message);}
+          finally{gameActionChats.delete(String(chat));}
         },0);
         return renderGame(chat,{messageId:screenId});
       }catch(e){
         // Never fall through to the main-menu fallback while game mode is active.
         return renderGame(chat,{messageId:activeGameChats.get(String(chat)+"_message_id")});
       }finally{
-        gameActionChats.delete(String(chat));
+        if(!backgroundGameWait)gameActionChats.delete(String(chat));
       }
     }
     // Any stale/unrecognized text in game mode must keep the game keyboard.
