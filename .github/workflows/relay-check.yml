@@ -52,4 +52,6 @@ jobs:
           grep -F 'getUpdates' relay/telegram-bot.js
           grep -F 'startGamePolling()' relay/user-session-bridge.js
           grep -F 'getMessages(this.gameUsername,{limit:1})' relay/user-session-bridge.js
+          grep -F 'lastPolledGameKey' relay/user-session-bridge.js
+          grep -F 'приоритет ' relay/telegram-bot.js
           grep -F 'slice(0,3900)' relay/telegram-bot.js
