@@ -11,6 +11,22 @@ const { StringSession } = require("telegram/sessions");
 const { NewMessage } = require("telegram/events");
 const { EditedMessage } = require("telegram/events/EditedMessage");
 const { normalizeScreenText, normalizeButtons, screenFingerprint, isDuplicateScreen, chooseStableState, classifyScreen } = require("./safety-guard");
+
+const OP_TIMEOUTS={
+  telegramRead:8000,
+  telegramWrite:10000,
+  callback:10000,
+  media:10000,
+  eventPipeline:12000
+};
+
+function withTimeout(promise,ms,label){
+  let timer;
+  return Promise.race([
+    Promise.resolve(promise),
+    new Promise((_,reject)=>{ timer=setTimeout(()=>reject(new Error(label+" timeout after "+ms+"ms")),ms); })
+  ]).finally(()=>clearTimeout(timer));
+}
 const diagnostics=require("./diagnostics");
 
 class TelegramUserBridge {
@@ -36,7 +52,8 @@ class TelegramUserBridge {
     this.lastGameMessage = null;
     this.gameMessages = [];
     this.gamePollTimer = null;
-    this.lastPolledGameKey = "";
+    this.lastPolledGameKey = "";\n    this.gamePollInFlight = false;
+    this.gameMessageQueue = Promise.resolve();
     this.webhookHandler = null;
     this.phoneAuth = new Map();
     this.databaseUrl = String(opts.databaseUrl || process.env.DATABASE_URL || "").trim();
@@ -148,10 +165,10 @@ class TelegramUserBridge {
     this.state.connected = await this.client.checkAuthorization();
     if (!this.state.connected) return;
     if (this.attachedClient === this.client) return;
-    const me = await this.client.getMe();
+    const me = await withTimeout(this.client.getMe(),OP_TIMEOUTS.telegramRead,"TELEGRAM GET ME");
     this.state.user_id = String(me.id);
     try {
-      const game = await this.client.getEntity(this.gameUsername);
+      const game = await withTimeout(this.client.getEntity(this.gameUsername),OP_TIMEOUTS.telegramRead,"TELEGRAM RESOLVE GAME");
       this.gamePeerId = game && game.id != null ? String(game.id) : null;
       console.log("GAME PEER RESOLVED:", this.gameUsername, this.gamePeerId || "unknown");
     } catch(e) {
@@ -163,14 +180,14 @@ class TelegramUserBridge {
     const handleEvent = async event => {
       try {
         const msg = event.message;
-        const peer = await msg.getChat();
+        const peer = await withTimeout(msg.getChat(),5000,"GAME CHAT RESOLVE");
         const peerUsername = peer && peer.username ? String(peer.username).replace(/^@/,"").toLowerCase() : "";
         const expectedUsername = String(this.gameUsername || "").replace(/^@/,"").toLowerCase();
         const peerId = peer && peer.id != null ? String(peer.id) : (msg.senderId != null ? String(msg.senderId) : "");
         const sameById = !!(this.gamePeerId && peerId && this.gamePeerId === peerId);
         const sameByUsername = !!(expectedUsername && peerUsername && peerUsername === expectedUsername);
         if (!sameById && !sameByUsername) return;
-        await this.handleGameMessage(msg);
+        await this.enqueueGameMessage(msg);
       } catch (e) {
         console.log("GAME MESSAGE ERROR:",e.stack||e.message||e);
       }
@@ -191,10 +208,17 @@ class TelegramUserBridge {
     // for Telegram/GramJS cases where a bot message or edited message event is
     // missed while the process is reconnecting.
     this.gamePollTimer=setInterval(async()=>{
+      if(this.gamePollInFlight)return;
+      this.gamePollInFlight=true;
       try{
-        // Poll only the current game screen. Reading the last 8 messages and
-        // replaying them every cycle can generate a flood of bot messages.
-        const msgs=await this.client.getMessages(this.gameUsername,{limit:1});
+        // Poll only the current game screen. Never overlap Telegram reads:
+        // an unresolved GramJS request must not create a growing pile of
+        // concurrent requests that makes the bot appear frozen.
+        const msgs=await withTimeout(
+          this.client.getMessages(this.gameUsername,{limit:1}),
+          OP_TIMEOUTS.telegramRead,
+          "GAME POLL"
+        );
         const list=Array.isArray(msgs)?msgs:[msgs];
         const msg=list[0];
         if(msg && (String(msg.message||"").trim() || (msg.replyMarkup&&msg.replyMarkup.rows))){
@@ -203,11 +227,13 @@ class TelegramUserBridge {
           const pollKey=String(msg.id||"")+"|"+String(msg.editDate||"")+"|"+String(msg.message||"")+"|"+JSON.stringify(msg.replyMarkup?.rows||[]);
           if(pollKey!==this.lastPolledGameKey){
             this.lastPolledGameKey=pollKey;
-            await this.handleGameMessage(msg);
+            await this.enqueueGameMessage(msg);
           }
         }
       }catch(e){
         console.log("GAME POLL ERROR:",e.message);
+      }finally{
+        this.gamePollInFlight=false;
       }
     },1500);
     if(this.gamePollTimer.unref)this.gamePollTimer.unref();
@@ -329,6 +355,12 @@ class TelegramUserBridge {
     };
   }
 
+  enqueueGameMessage(msg) {
+    const run=this.gameMessageQueue.catch(()=>{}).then(()=>this.handleGameMessage(msg));
+    this.gameMessageQueue=run.catch(e=>console.log("GAME SCREEN QUEUE ERROR:",e.message));
+    return run;
+  }
+
   async handleGameMessage(msg) {
     const pipelineStarted=Date.now();
     diagnostics.inc("screen.received");
@@ -398,7 +430,7 @@ class TelegramUserBridge {
     diagnostics.observe("screen.pipeline",Date.now()-pipelineStarted);
     this.publishState(this.state).catch(e=>{ diagnostics.inc("relay.publish_error"); console.log("RELAY STATE ASYNC ERROR:",e.message); });
     if (this.onState) {
-      try { await this.onState(this.state); }
+      try { await withTimeout(this.onState(this.state),OP_TIMEOUTS.eventPipeline,"GAME STATE NOTIFY"); }
       catch (e) { console.log("GAME STATE NOTIFY ERROR:", e.stack||e.message||e); }
     }
   }
@@ -428,20 +460,26 @@ class TelegramUserBridge {
     if (!this.state.connected || !this.client) throw new Error("Игровая Telegram-сессия не подключена");
     const before = this.lastGameMessage && Number(this.lastGameMessage.message_id) || 0;
     const startedAt=Date.now();
-    const sent = await this.client.sendMessage(this.gameUsername,{message:String(message)});
+    const sent = await withTimeout(
+      this.client.sendMessage(this.gameUsername,{message:String(message)}),
+      OP_TIMEOUTS.telegramWrite,
+      "GAME SEND"
+    );
     // NewMessage and EditedMessage are both valid game responses. An edited
     // screen keeps the same message ID, so waiting only for id > before can
     // miss the fresh screen entirely.
-    for (let attempt=0; attempt<6; attempt++) {
+    const responseDeadline=startedAt+12000;
+    for (let attempt=0; attempt<6 && Date.now()<responseDeadline; attempt++) {
       await new Promise(r=>setTimeout(r,250));
       if(this.lastGameMessage && Number(this.lastGameMessage.received_at||0)>=startedAt)return sent;
       try {
-        const msgs=await this.client.getMessages(this.gameUsername,{limit:6});
+        const remaining=Math.max(1000,Math.min(OP_TIMEOUTS.telegramRead,responseDeadline-Date.now()));
+        const msgs=await withTimeout(this.client.getMessages(this.gameUsername,{limit:6}),remaining,"GAME RESPONSE POLL");
         const list=Array.isArray(msgs)?msgs:[msgs];
         const candidates=list
           .filter(m=>m && Number(m.id||0)>=before && String(m.message||"").trim())
           .sort((a,b)=>Number(a.id||0)-Number(b.id||0));
-        for (const msg of candidates) await this.handleGameMessage(msg);
+        for (const msg of candidates) await this.enqueueGameMessage(msg);
         if (candidates.length) {
           if(this.lastGameMessage && Number(this.lastGameMessage.received_at||0)>=startedAt)return sent;
           break;
@@ -457,7 +495,7 @@ class TelegramUserBridge {
     if (!this.state.connected || !this.client) throw new Error("Игровая Telegram-сессия не подключена");
     const targetMessageId=Number(messageId);
     if (!Number.isFinite(targetMessageId)) return null;
-    const msgs=await this.client.getMessages(this.gameUsername,{ids:[targetMessageId]});
+    const msgs=await withTimeout(this.client.getMessages(this.gameUsername,{ids:[targetMessageId]}),OP_TIMEOUTS.telegramRead,"GAME BUTTON READ");
     const msg=Array.isArray(msgs) ? msgs[0] : msgs;
     if (!msg) return null;
     const candidates=[];
@@ -493,7 +531,7 @@ class TelegramUserBridge {
     }
     const numericMessageId=Number(targetMessageId);
     if (!Number.isFinite(numericMessageId)) throw new Error("Некорректный ID сообщения игры");
-    const msgs=await this.client.getMessages(this.gameUsername,{ids:[numericMessageId]});
+    const msgs=await withTimeout(this.client.getMessages(this.gameUsername,{ids:[numericMessageId]}),OP_TIMEOUTS.telegramRead,"GAME BUTTON READ");
     const msg=Array.isArray(msgs) ? msgs[0] : msgs;
     if (!msg) throw new Error("Сообщение игры больше недоступно");
 
@@ -516,19 +554,19 @@ class TelegramUserBridge {
       const data=button.data;
       if (data && typeof this.client.invoke==="function") {
         const peer=await this.client.getInputEntity(this.gameUsername);
-        const result=await this.client.invoke(new Api.messages.GetBotCallbackAnswer({
+        const result=await withTimeout(this.client.invoke(new Api.messages.GetBotCallbackAnswer({
           peer,
           msgId:numericMessageId,
           data
-        }));
+        })),OP_TIMEOUTS.callback,"GAME BUTTON CALLBACK");
         console.log("GAME BUTTON CALLBACK:", target, "message", numericMessageId);
         return result;
       }
 
       if (typeof msg.click==="function") {
-        try { return await msg.click({text:target}); } catch(e) { console.log("MESSAGE CLICK FALLBACK ERROR:",e.message); }
+        try { return await withTimeout(msg.click({text:target}),OP_TIMEOUTS.callback,"MESSAGE CLICK"); } catch(e) { console.log("MESSAGE CLICK FALLBACK ERROR:",e.message); }
       }
-      if (typeof msg.clickButton==="function") return msg.clickButton(button);
+      if (typeof msg.clickButton==="function") return withTimeout(msg.clickButton(button),OP_TIMEOUTS.callback,"MESSAGE CLICK BUTTON");
     }
     throw new Error("Кнопка не найдена в сообщении игры: "+target);
   }
@@ -539,7 +577,7 @@ class TelegramUserBridge {
       const msgs=await this.client.getMessages(this.gameUsername,{ids:[Number(messageId)]});
       const msg=Array.isArray(msgs)?msgs[0]:msgs;
       if (!msg || !msg.media || typeof msg.downloadMedia !== "function") return null;
-      const buffer=await msg.downloadMedia({workers:1});
+      const buffer=await withTimeout(msg.downloadMedia({workers:1}),OP_TIMEOUTS.media,"GAME MEDIA");
       if (!buffer || !Buffer.isBuffer(buffer) || !buffer.length) return null;
       return buffer;
     } catch(e) {
