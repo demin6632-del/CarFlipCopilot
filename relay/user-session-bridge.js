@@ -616,11 +616,11 @@ function parseGameText(text) {
   return out;
 }
 
-function createConnectServer(bridge, port=8787) {
+function createConnectServer(bridge, port=8787, options={}) {\n  const webhookSecret=String(options.webhookSecret||"");
   const server=http.createServer(async(req,res)=>{
     const u=new URL(req.url,"http://localhost");
     res.setHeader("cache-control","no-store");
-    if(u.pathname==="/telegram/webhook" && req.method==="POST") {
+    if(u.pathname==="/telegram/webhook" && req.method==="POST") {\n      const providedSecret=String(req.headers["x-telegram-bot-api-secret-token"]||"");\n      if(webhookSecret && providedSecret!==webhookSecret){\n        res.writeHead(403,{"content-type":"application/json"});\n        res.end(JSON.stringify({ok:false,error:"forbidden"}));\n        return;\n      }
       let body="";
       req.on("data",chunk=>{ if(body.length<2*1024*1024) body+=chunk.toString(); });
       req.on("end",async()=>{
