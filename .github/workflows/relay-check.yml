@@ -36,6 +36,9 @@ jobs:
             if (block.includes('text:"'+label+'"')) throw new Error('extra bot control remains in game keyboard: '+label);
           }
           if (!block.includes('text:"⬅️ Назад"')) throw new Error('Back button missing from game keyboard');
+          if(!block.includes('editMessageText')) throw new Error('game screen must be edited, not resent');
+          if(!block.includes('editMessageCaption')) throw new Error('photo game screen must be edited via caption');
+          if(block.includes('tg("deleteMessage",{chat_id:chat,message_id:messageId})')) throw new Error('game refresh must not delete and resend the screen');
           if(!block.includes('return {keyboard:rows')) throw new Error('game keyboard return missing');
           console.log('Game keyboard guard: only current game buttons are exposed.');
           NODE
