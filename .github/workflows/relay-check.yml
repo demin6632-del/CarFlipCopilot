@@ -32,9 +32,10 @@ jobs:
           if(start < 0 || end < 0) throw new Error('gameKeyboard boundary not found');
           const block = s.slice(start, end);
           if(!block.includes('const labels=')) throw new Error('game buttons are not sourced from current game screen');
-          for (const label of ['🧠 Стратегия','📊 Состояние','📜 История','💰 Экономика','🔄 Обновить игру','⬅️ Назад','🚪 Выйти из игры']) {
+          for (const label of ['🧠 Стратегия','📊 Состояние','📜 История','💰 Экономика','🔄 Обновить игру','🚪 Выйти из игры']) {
             if (block.includes('text:"'+label+'"')) throw new Error('extra bot control remains in game keyboard: '+label);
           }
+          if (!block.includes('text:"⬅️ Назад"')) throw new Error('Back button missing from game keyboard');
           if(!block.includes('return {keyboard:rows')) throw new Error('game keyboard return missing');
           console.log('Game keyboard guard: only current game buttons are exposed.');
           NODE
