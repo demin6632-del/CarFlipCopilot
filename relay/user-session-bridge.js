@@ -165,10 +165,10 @@ class TelegramUserBridge {
     this.state.connected = await this.client.checkAuthorization();
     if (!this.state.connected) return;
     if (this.attachedClient === this.client) return;
-    const me = await this.client.getMe();
+    const me = await withTimeout(this.client.getMe(),OP_TIMEOUTS.telegramRead,"TELEGRAM GET ME");
     this.state.user_id = String(me.id);
     try {
-      const game = await this.client.getEntity(this.gameUsername);
+      const game = await withTimeout(this.client.getEntity(this.gameUsername),OP_TIMEOUTS.telegramRead,"TELEGRAM RESOLVE GAME");
       this.gamePeerId = game && game.id != null ? String(game.id) : null;
       console.log("GAME PEER RESOLVED:", this.gameUsername, this.gamePeerId || "unknown");
     } catch(e) {
@@ -180,7 +180,7 @@ class TelegramUserBridge {
     const handleEvent = async event => {
       try {
         const msg = event.message;
-        const peer = await msg.getChat();
+        const peer = await withTimeout(msg.getChat(),5000,"GAME CHAT RESOLVE");
         const peerUsername = peer && peer.username ? String(peer.username).replace(/^@/,"").toLowerCase() : "";
         const expectedUsername = String(this.gameUsername || "").replace(/^@/,"").toLowerCase();
         const peerId = peer && peer.id != null ? String(peer.id) : (msg.senderId != null ? String(msg.senderId) : "");
@@ -468,11 +468,13 @@ class TelegramUserBridge {
     // NewMessage and EditedMessage are both valid game responses. An edited
     // screen keeps the same message ID, so waiting only for id > before can
     // miss the fresh screen entirely.
-    for (let attempt=0; attempt<6; attempt++) {
+    const responseDeadline=startedAt+12000;
+    for (let attempt=0; attempt<6 && Date.now()<responseDeadline; attempt++) {
       await new Promise(r=>setTimeout(r,250));
       if(this.lastGameMessage && Number(this.lastGameMessage.received_at||0)>=startedAt)return sent;
       try {
-        const msgs=await withTimeout(this.client.getMessages(this.gameUsername,{limit:6}),OP_TIMEOUTS.telegramRead,"GAME RESPONSE POLL");
+        const remaining=Math.max(1000,Math.min(OP_TIMEOUTS.telegramRead,responseDeadline-Date.now()));
+        const msgs=await withTimeout(this.client.getMessages(this.gameUsername,{limit:6}),remaining,"GAME RESPONSE POLL");
         const list=Array.isArray(msgs)?msgs:[msgs];
         const candidates=list
           .filter(m=>m && Number(m.id||0)>=before && String(m.message||"").trim())
