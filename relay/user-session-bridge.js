@@ -396,21 +396,25 @@ class TelegramUserBridge {
   async sendGameMessage(message) {
     if (!this.state.connected || !this.client) throw new Error("Игровая Telegram-сессия не подключена");
     const before = this.lastGameMessage && Number(this.lastGameMessage.message_id) || 0;
+    const startedAt=Date.now();
     const sent = await this.client.sendMessage(this.gameUsername,{message:String(message)});
-    // NewMessage/EditedMessage normally updates lastGameMessage immediately.
-    // Keep only a short fallback poll for bots that deliver the response before
-    // the event handler processes it.
+    // NewMessage and EditedMessage are both valid game responses. An edited
+    // screen keeps the same message ID, so waiting only for id > before can
+    // miss the fresh screen entirely.
     for (let attempt=0; attempt<6; attempt++) {
       await new Promise(r=>setTimeout(r,250));
-      if (this.lastGameMessage && Number(this.lastGameMessage.message_id||0)>before) break;
+      if(this.lastGameMessage && Number(this.lastGameMessage.received_at||0)>=startedAt)return sent;
       try {
         const msgs=await this.client.getMessages(this.gameUsername,{limit:6});
         const list=Array.isArray(msgs)?msgs:[msgs];
         const candidates=list
-          .filter(m=>m && Number(m.id||0)>before && String(m.message||"").trim())
+          .filter(m=>m && Number(m.id||0)>=before && String(m.message||"").trim())
           .sort((a,b)=>Number(a.id||0)-Number(b.id||0));
         for (const msg of candidates) await this.handleGameMessage(msg);
-        if (candidates.length) break;
+        if (candidates.length) {
+          if(this.lastGameMessage && Number(this.lastGameMessage.received_at||0)>=startedAt)return sent;
+          break;
+        }
       } catch(e) {
         console.log("GAME RESPONSE POLL ERROR:",e.message);
       }

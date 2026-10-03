@@ -115,10 +115,15 @@ async function notifyBridgeState(state){
   // If the game sends a real screen with buttons before the user opens
   // "Играть", render that screen directly. Sending a separate "Новое событие"
   // first creates the duplicate two-message output seen in Telegram.
-  if(Array.isArray(state.buttons) && state.buttons.length){
+  const hasScreenText=String(state.raw_message||state.raw_text||"").trim().length>0;
+  if((Array.isArray(state.buttons) && state.buttons.length) || hasScreenText){
     try{await renderGame(chat);}catch(e){console.log("GAME SCREEN PUSH ERROR:",e.message);}
     return;
   }
+  const hasParsedState=state.balance!=null || state.garage!=null || state.vehicle?.name || state.vehicle?.price!=null;
+  // Ignore empty bridge heartbeats/events. They are not useful game screens and
+  // must not replace the main menu with a misleading "Баланс: — / Гараж: —".
+  if(!hasParsedState)return;
   const fingerprint=JSON.stringify({balance:state.balance,garage:state.garage,vehicle:state.vehicle,raw_message:state.raw_message});
   if(fingerprint===lastBridgeFingerprint)return;lastBridgeFingerprint=fingerprint;
   if(Date.now()-lastBridgeNotice<5000)return;lastBridgeNotice=Date.now();
@@ -495,7 +500,14 @@ async function gameKeyboard(message){
 }
 async function renderGameNow(chat,options={}){
   const s=userBridge.status();
-  if(!s.last_game_message && userBridge.configured() && s.connected){
+  const lastGameScreen=s.last_game_message;
+  const hasUsableGameScreen=!!(lastGameScreen && (
+    String(lastGameScreen.text||"").trim() ||
+    (Array.isArray(lastGameScreen.buttons) && lastGameScreen.buttons.length)
+  ));
+  // Do not treat an empty/stale bridge event as a game screen. On explicit
+  // "Играть" we request the current screen when the bridge has no usable one.
+  if(!hasUsableGameScreen && userBridge.configured() && s.connected){
     try{userBridge.saveBinding(chat);await userBridge.sendGameMessage("/start");}catch(e){return send(chat,"🎮 ИГРА\n\n❌ Не удалось получить экран игры:\n"+String(e.message||e).slice(0,700));}
   }
   const latest=userBridge.status().last_game_message;
