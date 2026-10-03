@@ -24,10 +24,20 @@ jobs:
         run: npm install --ignore-scripts
       - name: Game dashboard routing guard
         run: |
-          grep -F 'text:"🧠 Стратегия"' relay/telegram-bot.js
-          grep -F 'text:"📊 Состояние"' relay/telegram-bot.js
-          grep -F 'text:"📜 История"' relay/telegram-bot.js
-          grep -F 'text:"💰 Экономика"' relay/telegram-bot.js
+          node - <<'NODE'
+          const fs = require('fs');
+          const s = fs.readFileSync('relay/telegram-bot.js','utf8');
+          const start = s.indexOf('async function gameKeyboard(message){');
+          const end = s.indexOf('\nasync function renderGameNow', start);
+          if(start < 0 || end < 0) throw new Error('gameKeyboard boundary not found');
+          const block = s.slice(start, end);
+          if(!block.includes('const labels=')) throw new Error('game buttons are not sourced from current game screen');
+          for (const label of ['🧠 Стратегия','📊 Состояние','📜 История','💰 Экономика','🔄 Обновить игру','⬅️ Назад','🚪 Выйти из игры']) {
+            if (block.includes('text:"'+label+'"')) throw new Error('extra bot control remains in game keyboard: '+label);
+          }
+          if(!block.includes('return {keyboard:rows')) throw new Error('game keyboard return missing');
+          console.log('Game keyboard guard: only current game buttons are exposed.');
+          NODE
           grep -F 'if(text==="🧠 Стратегия") return advice(chat);' relay/telegram-bot.js
           grep -F 'if(text==="📊 Состояние") return state(chat);' relay/telegram-bot.js
           grep -F 'if(text==="🔄 Обновить игру") return renderGame(chat);' relay/telegram-bot.js
