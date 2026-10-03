@@ -168,7 +168,7 @@ function buildStrategy(state, ranked = [], economy = null) {
 
   const explicit = /(?:нажми|выбери|нужно\s+нажать|следует\s+нажать)\s+[«"“]?([^»"”\n]+)[»"”]?/i.exec(screenText);
   const evidence = explicit ? buttons.find(x => x.toLowerCase() === explicit[1].trim().toLowerCase()) : null;
-  const actionable = !!(evidence || hasContext);
+  // Контекст помогает разобрать экран, но сам по себе не доказывает,\n  // что конкретную кнопку нужно нажимать. Исполняемая рекомендация\n  // разрешается только при явной инструкции текущего экрана.\n  const actionable = !!evidence;
 
   const warnings = [];
   if (!buttons.length) warnings.push("кнопки текущего экрана не распознаны");
