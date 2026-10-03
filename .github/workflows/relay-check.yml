@@ -52,6 +52,8 @@ jobs:
           grep -F 'webhookHandler=processUpdate' relay/telegram-bot.js
           grep -F '{command:"game",description:"Открыть игру в Telegram"}' relay/telegram-bot.js
           grep -F 'gameActionChats.add(String(chat));' relay/telegram-bot.js
+          grep -F 'const recommended=strategy.actionEvidence ? (ranked[0]?.label||null) : null;' relay/telegram-bot.js
+          grep -F 'secret_token:WEBHOOK_SECRET' relay/telegram-bot.js
           grep -F '[],1200);' relay/telegram-bot.js
           grep -F 'setTimeout(()=>resolve(null),700)' relay/telegram-bot.js
           grep -F 'if(s.vehicle?.hp!=null)lines.push("⚙️ Мощность: "+s.vehicle.hp+" л.с.");' relay/telegram-bot.js
