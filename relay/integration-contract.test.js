@@ -9,6 +9,8 @@ const server = read("relay/server.js");
 assert(bridge.includes("new NewMessage({})"), "GramJS NewMessage handler missing");
 assert(bridge.includes("new EditedMessage({})"), "GramJS EditedMessage handler missing");
 assert(bridge.includes("await this.handleGameMessage(msg);"), "Game message pipeline is not attached");
+assert(bridge.includes("this.attachedClient === this.client"), "GramJS attachment must be idempotent");
+assert(bridge.includes("this.attachedClient = this.client;"), "GramJS attachment state must be recorded");
 
 assert(bridge.includes('this.relayUrl+"/bridge/state"'), "Bridge state publish endpoint missing");
 assert(server.includes('req.url==="/bridge/state" && req.method==="POST"'), "Relay state ingestion endpoint missing");
