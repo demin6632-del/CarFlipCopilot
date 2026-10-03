@@ -49,6 +49,7 @@ jobs:
           grep -F 'if(text==="🧠 Стратегия") return advice(chat);' relay/telegram-bot.js
           grep -F 'if(text==="📊 Состояние") return state(chat);' relay/telegram-bot.js
           grep -F 'if(text==="🔄 Обновить игру") return renderGame(chat);' relay/telegram-bot.js
+          grep -F 'webhookHandler=processUpdate' relay/telegram-bot.js
           grep -F '{command:"game",description:"Открыть игру в Telegram"}' relay/telegram-bot.js
           grep -F 'gameActionChats.add(String(chat));' relay/telegram-bot.js
           grep -F '[],1200);' relay/telegram-bot.js
@@ -66,10 +67,12 @@ jobs:
           grep -F 'if(!hasParsedState)return;' relay/telegram-bot.js
           grep -F 'const startedAt=Date.now();' relay/user-session-bridge.js
           grep -F 'Number(this.lastGameMessage.received_at||0)>=startedAt' relay/user-session-bridge.js
-          grep -F 'Telegram delivery mode: long polling; webhook cleared.' relay/telegram-bot.js
-          grep -F 'getUpdates' relay/telegram-bot.js
+          grep -F 'Telegram delivery mode: webhook; url:' relay/telegram-bot.js
+          grep -F 'Telegram webhook active; getUpdates disabled.' relay/telegram-bot.js
+          if grep -Eq 'getUpdates\\s*\\(' relay/telegram-bot.js; then echo 'Unexpected getUpdates call remains'; exit 1; fi
           grep -F 'startGamePolling()' relay/user-session-bridge.js
           grep -F 'getMessages(this.gameUsername,{limit:1})' relay/user-session-bridge.js
           grep -F 'lastPolledGameKey' relay/user-session-bridge.js
-          grep -F 'приоритет ' relay/telegram-bot.js
+          if grep -Fq 'приоритет ' relay/telegram-bot.js; then echo 'Old priority wording remains'; exit 1; fi
+          grep -F 'оценка модели ' relay/telegram-bot.js
           grep -F 'slice(0,3900)' relay/telegram-bot.js
