@@ -191,12 +191,14 @@ class TelegramUserBridge {
     // missed while the process is reconnecting.
     this.gamePollTimer=setInterval(async()=>{
       try{
-        const msgs=await this.client.getMessages(this.gameUsername,{limit:8});
+        // Poll only the current game screen. Reading the last 8 messages and
+        // replaying them every cycle can generate a flood of bot messages.
+        const msgs=await this.client.getMessages(this.gameUsername,{limit:1});
         const list=Array.isArray(msgs)?msgs:[msgs];
-        const candidates=list
-          .filter(m=>m && (String(m.message||"").trim() || (m.replyMarkup&&m.replyMarkup.rows)))
-          .sort((a,b)=>Number(a.id||0)-Number(b.id||0));
-        for(const msg of candidates)await this.handleGameMessage(msg);
+        const msg=list[0];
+        if(msg && (String(msg.message||"").trim() || (msg.replyMarkup&&msg.replyMarkup.rows))){
+          await this.handleGameMessage(msg);
+        }
       }catch(e){
         console.log("GAME POLL ERROR:",e.message);
       }
