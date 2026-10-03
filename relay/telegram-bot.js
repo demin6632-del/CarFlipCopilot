@@ -15,6 +15,7 @@ const CONNECT_URL = process.env.GAME_CONNECT_URL || "";
 const BRIDGE_PUBLIC_URL = String(process.env.BRIDGE_PUBLIC_URL || process.env.RENDER_EXTERNAL_URL || "").replace(/\/$/,"");
 const BRIDGE_PORT = Number(process.env.BRIDGE_PORT || 8787);
 const API = "https://api.telegram.org/bot" + BOT_TOKEN;
+const WEBHOOK_SECRET = BOT_TOKEN ? require("crypto").createHash("sha256").update(BOT_TOKEN).digest("hex") : "";
 
 let offset=0,polling=false,webhookEnabled=false;
 process.on("unhandledRejection",e=>console.log("UNHANDLED REJECTION:",e?.stack||e?.message||e));
@@ -145,7 +146,7 @@ const userBridge=new TelegramUserBridge({
   onState:notifyBridgeState,
   sessionFile:process.env.TELEGRAM_SESSION_FILE||require("path").join(process.cwd(),"data","telegram-user-session.txt")
 });
-createConnectServer(userBridge,BRIDGE_PORT);
+createConnectServer(userBridge,BRIDGE_PORT,{webhookSecret:WEBHOOK_SECRET});
 
 async function registerBotCommands(){
   const commands=[
@@ -894,7 +895,7 @@ async function setupWebhook(){
     const webhookUrl=BRIDGE_PUBLIC_URL+"/telegram/webhook";
     const current=await tg("getWebhookInfo",{});
     if(String(current?.url||"")!==webhookUrl){
-      await tg("setWebhook",{url:webhookUrl,drop_pending_updates:false,allowed_updates:["message","callback_query"]});
+      await tg("setWebhook",{url:webhookUrl,drop_pending_updates:false,secret_token:WEBHOOK_SECRET,allowed_updates:["message","callback_query"]});
     }
     const info=await tg("getWebhookInfo",{});
     webhookEnabled=true;
