@@ -377,7 +377,13 @@ class TelegramUserBridge {
       const req=transport.request({
         protocol:u.protocol,hostname:u.hostname,port:u.port||undefined,path:u.pathname+u.search,method:"POST",agent:keepAliveAgent,
         headers:{"content-type":"application/json","authorization":"Bearer "+this.relayToken,"content-length":Buffer.byteLength(body)}
-      },res=>{res.resume();res.on("end",resolve)});
+      },res=>{
+        res.resume();
+        res.on("end",()=>{
+          if(res.statusCode>=200 && res.statusCode<300) return resolve();
+          reject(new Error("Relay state HTTP "+String(res.statusCode||0)));
+        });
+      });
       req.on("error",reject);
       req.setTimeout(10000,()=>req.destroy(new Error("Relay state timeout")));
       req.write(body);req.end();
