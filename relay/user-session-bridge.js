@@ -25,6 +25,7 @@ class TelegramUserBridge {
     this.relayToken = String(opts.relayToken || "");
     this.onState = typeof opts.onState === "function" ? opts.onState : null;
     this.client = null;
+    this.attachedClient = null;
     this.sessions = new Map();
     this.boundChatId = null;
     this.state = { connected:false, game_bot:this.gameUsername };
@@ -144,6 +145,7 @@ class TelegramUserBridge {
     if (!this.client) return;
     this.state.connected = await this.client.checkAuthorization();
     if (!this.state.connected) return;
+    if (this.attachedClient === this.client) return;
     const me = await this.client.getMe();
     this.state.user_id = String(me.id);
     try {
@@ -175,6 +177,7 @@ class TelegramUserBridge {
     // after a callback. Handle both so the in-chat game stays live.
     this.client.addEventHandler(handleEvent, new NewMessage({}));
     this.client.addEventHandler(handleEvent, new EditedMessage({}));
+    this.attachedClient = this.client;
     // Do not send /start automatically on startup or session restore.
     // The game is pinged only by the explicit "Проверить связь с игрой" action.
   }
