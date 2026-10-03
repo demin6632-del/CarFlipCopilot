@@ -28,11 +28,11 @@ assert(telegram.includes("waitForGameUpdate(latest.message_id"), "Normal game up
 assert(telegram.includes("gameActionChats.add(String(chat));"), "Game action lock missing");
 assert(telegram.includes("backgroundCallbackWait"), "Slow callback lock protection missing");
 assert(telegram.includes("backgroundGameWait"), "Slow game lock protection missing");
-assert(telegram.includes("waitForGameUpdate(latest.message_id,latest.text||\"\",latest.buttons||[],1200);"), "Game action wait must stay at 1200ms";
-assert(telegram.includes("setTimeout(()=>resolve(null),700)"), "Game media wait must stay at 700ms";
-assert(telegram.includes("waitForGameUpdate(latest.message_id,latest.text||\"\",latest.buttons||[],8000);"), "Slow game fallback wait must stay at 8000ms";
-assert(bridge.includes("for (let attempt=0; attempt<6; attempt++)"), "Bridge fallback polling must stay bounded to 6 attempts";
-assert(bridge.includes("await new Promise(r=>setTimeout(r,250));"), "Bridge fallback polling interval must stay at 250ms";
+assert(telegram.includes("waitForGameUpdate(latest.message_id,latest.text||\"\",latest.buttons||[],1200);"), "Game action wait must stay at 1200ms");
+assert(telegram.includes("setTimeout(()=>resolve(null),700)"), "Game media wait must stay at 700ms");
+assert(telegram.includes("waitForGameUpdate(latest.message_id,latest.text||\"\",latest.buttons||[],8000);"), "Slow game fallback wait must stay at 8000ms");
+assert(bridge.includes("for (let attempt=0; attempt<6; attempt++)"), "Bridge fallback polling must stay bounded to 6 attempts");
+assert(bridge.includes("await new Promise(r=>setTimeout(r,250));"), "Bridge fallback polling interval must stay at 250ms");
 assert(bridge.includes('if(res.statusCode>=200 && res.statusCode<300) return resolve();'), "Relay HTTP failures must reject state publication");
 
 console.log("Stage 6 integration contract: PASS");
