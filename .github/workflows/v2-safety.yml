@@ -29,6 +29,8 @@ jobs:
         run: node relay/game-economy.test.js
       - name: Run strategy engine regression tests
         run: node relay/strategy-engine.test.js
+      - name: Run Stage 6 integration contract test
+        run: node relay/integration-contract.test.js
       - name: Check JavaScript syntax
         run: |
           node --check relay/game-memory.js
