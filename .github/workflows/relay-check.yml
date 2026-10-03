@@ -39,3 +39,7 @@ jobs:
           grep -F 'if(offer!=null)lines.push("💵 Предложение: "+offer.toLocaleString("ru-RU")+" ₽");' relay/telegram-bot.js
           grep -F 'if(contract){' relay/telegram-bot.js
           grep -F 'Учтённая себестоимость:' relay/telegram-bot.js
+
+          grep -F 'for (let attempt=0; attempt<6; attempt++)' relay/user-session-bridge.js
+          grep -F 'setTimeout(r=>setTimeout(r,250));' relay/user-session-bridge.js
+          grep -F 'recordEconomyTransition(chat,beforeState,target,afterState).catch' relay/telegram-bot.js
