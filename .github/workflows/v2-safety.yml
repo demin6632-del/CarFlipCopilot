@@ -1,0 +1,41 @@
+name: CarFlipCopilot V2 safety tests
+
+on:
+  push:
+    branches:
+      - v2-safe-update
+      - v2-main-integration
+  workflow_dispatch:
+
+jobs:
+  safety:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Install root dependencies
+        run: npm install
+      - name: Install relay dependencies
+        working-directory: relay
+        run: npm install
+      - name: Run safety guard regression tests
+        run: node relay/safety-guard.test.js
+      - name: Run diagnostics regression tests
+        run: node relay/diagnostics.test.js
+      - name: Run game memory regression tests
+        run: node relay/game-memory.test.js
+      - name: Run game economy regression tests
+        run: node relay/game-economy.test.js
+      - name: Run strategy engine regression tests
+        run: node relay/strategy-engine.test.js
+      - name: Run Stage 6 integration contract test
+        run: node relay/integration-contract.test.js
+      - name: Check JavaScript syntax
+        run: |
+          node --check relay/game-memory.js
+          node --check relay/game-economy.js
+          node --check relay/strategy-engine.js
+          node --check relay/user-session-bridge.js
+          node --check relay/telegram-bot.js

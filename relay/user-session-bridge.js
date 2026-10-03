@@ -10,6 +10,8 @@ const { TelegramClient, Api } = require("telegram");
 const { StringSession } = require("telegram/sessions");
 const { NewMessage } = require("telegram/events");
 const { EditedMessage } = require("telegram/events/EditedMessage");
+const { normalizeScreenText, normalizeButtons, screenFingerprint, isDuplicateScreen, chooseStableState, classifyScreen } = require("./safety-guard");
+const diagnostics=require("./diagnostics");
 
 class TelegramUserBridge {
   constructor(opts={}) {
@@ -23,6 +25,7 @@ class TelegramUserBridge {
     this.relayToken = String(opts.relayToken || "");
     this.onState = typeof opts.onState === "function" ? opts.onState : null;
     this.client = null;
+    this.attachedClient = null;
     this.sessions = new Map();
     this.boundChatId = null;
     this.state = { connected:false, game_bot:this.gameUsername };
@@ -142,6 +145,7 @@ class TelegramUserBridge {
     if (!this.client) return;
     this.state.connected = await this.client.checkAuthorization();
     if (!this.state.connected) return;
+    if (this.attachedClient === this.client) return;
     const me = await this.client.getMe();
     this.state.user_id = String(me.id);
     try {
@@ -173,6 +177,7 @@ class TelegramUserBridge {
     // after a callback. Handle both so the in-chat game stays live.
     this.client.addEventHandler(handleEvent, new NewMessage({}));
     this.client.addEventHandler(handleEvent, new EditedMessage({}));
+    this.attachedClient = this.client;
     // Do not send /start automatically on startup or session restore.
     // The game is pinged only by the explicit "Проверить связь с игрой" action.
   }
@@ -294,16 +299,15 @@ class TelegramUserBridge {
   }
 
   async handleGameMessage(msg) {
-    const text=String(msg.message||"").trim();
-    const state=parseGameText(text);
+    const pipelineStarted=Date.now();
+    diagnostics.inc("screen.received");
+    const receivedAt=Date.now();
+    const text=normalizeScreenText(String(msg.message||""));
     const buttons=[];
     try {
-      // GramJS exposes bot keyboards through replyMarkup.rows, but in some
-      // message versions the normalized buttons are available as msg.buttons.
-      // Read both representations so the relay never loses the game's buttons.
       const seen=new Set();
       const addButton=(b)=>{
-        const label=String(b?.text||"").trim();
+        const label=String(b?.text||b||"").trim();
         if(label&&!seen.has(label)){seen.add(label);buttons.push(label);}
       };
       const rows=msg.replyMarkup && Array.isArray(msg.replyMarkup.rows) ? msg.replyMarkup.rows : [];
@@ -315,24 +319,58 @@ class TelegramUserBridge {
         }
       }
     } catch(e) { console.log("GAME BUTTON PARSE ERROR:",e.message); }
-    state.buttons=buttons;
+
+    const cleanButtons=normalizeButtons(buttons);
+    const fingerprint=screenFingerprint(text,cleanButtons);
+    const current={fingerprint,receivedAt};
+    const previous=this.lastGameMessage && {
+      fingerprint:this.lastGameMessage.fingerprint,
+      receivedAt:this.lastGameMessage.received_at
+    };
+    if(isDuplicateScreen(previous,current,15000)){
+      diagnostics.inc("screen.duplicate");
+      console.log("GAME SCREEN DUPLICATE IGNORED:",msg.id!=null?String(msg.id):"unknown");
+      return;
+    }
+
+    const parsed=parseGameText(text);
+    const stable=chooseStableState(this.state && this.state.raw_message ? this.state : null,parsed);
+    if(!stable.accepted){
+      diagnostics.inc("ocr.rejected");
+      console.log("GAME OCR GUARD:",stable.check.warnings.join(","),msg.id!=null?String(msg.id):"unknown");
+    }
+    const state=Object.assign({},stable.state,parsed);
+    if(!stable.accepted && this.state){
+      for(const key of ["balance","garage","plate","vehicle","price","mileage","hp","owners","contexts","money_values"]){
+        if(this.state[key]!==undefined) state[key]=this.state[key];
+      }
+    }
+
+    state.buttons=cleanButtons;
     state.raw_message=text.slice(0,12000);
-    this.lastGameMessage={message_id:msg.id!=null?String(msg.id):null,text:state.raw_message,buttons,received_at:Date.now()};
+    state.raw_text=text.slice(0,16000);
+    this.lastGameMessage={
+      message_id:msg.id!=null?String(msg.id):null,
+      text:state.raw_message,
+      buttons:cleanButtons,
+      fingerprint,
+      screen_class:classifyScreen(text),
+      received_at:receivedAt
+    };
     this.gameMessages.push(this.lastGameMessage);
     if(this.gameMessages.length>20) this.gameMessages.shift();
     state.game_bot="@"+this.gameUsername;
     state.connected=true;
-    state.received_at=Date.now();
+    state.received_at=receivedAt;
     this.state=Object.assign({},this.state,state);
-    // Do not block the Telegram reply on the Render relay network request.
-    // The local bot response is the latency-critical path; relay persistence runs in parallel.
-    this.publishState(this.state).catch(e=>console.log("RELAY STATE ASYNC ERROR:",e.message));
+    diagnostics.inc("screen.accepted");
+    diagnostics.observe("screen.pipeline",Date.now()-pipelineStarted);
+    this.publishState(this.state).catch(e=>{ diagnostics.inc("relay.publish_error"); console.log("RELAY STATE ASYNC ERROR:",e.message); });
     if (this.onState) {
       try { await this.onState(this.state); }
-      catch (e) { console.log("GAME STATE NOTIFY ERROR:",e.stack||e.message||e); }
+      catch (e) { console.log("GAME STATE NOTIFY ERROR:", e.stack||e.message||e); }
     }
   }
-
   async publishState(state) {
     if (!this.relayUrl) return;
     const body=JSON.stringify(state);
@@ -342,7 +380,13 @@ class TelegramUserBridge {
       const req=transport.request({
         protocol:u.protocol,hostname:u.hostname,port:u.port||undefined,path:u.pathname+u.search,method:"POST",agent:keepAliveAgent,
         headers:{"content-type":"application/json","authorization":"Bearer "+this.relayToken,"content-length":Buffer.byteLength(body)}
-      },res=>{res.resume();res.on("end",resolve)});
+      },res=>{
+        res.resume();
+        res.on("end",()=>{
+          if(res.statusCode>=200 && res.statusCode<300) return resolve();
+          reject(new Error("Relay state HTTP "+String(res.statusCode||0)));
+        });
+      });
       req.on("error",reject);
       req.setTimeout(10000,()=>req.destroy(new Error("Relay state timeout")));
       req.write(body);req.end();
@@ -354,8 +398,8 @@ class TelegramUserBridge {
     const before = this.lastGameMessage && Number(this.lastGameMessage.message_id) || 0;
     const sent = await this.client.sendMessage(this.gameUsername,{message:String(message)});
     // NewMessage/EditedMessage normally updates lastGameMessage immediately.
-    // Keep a short fallback poll for bots that deliver the response before the
-    // event handler processes it. Never make a normal /start or probe wait ~9s.
+    // Keep only a short fallback poll for bots that deliver the response before
+    // the event handler processes it.
     for (let attempt=0; attempt<6; attempt++) {
       await new Promise(r=>setTimeout(r,250));
       if (this.lastGameMessage && Number(this.lastGameMessage.message_id||0)>before) break;
@@ -470,7 +514,7 @@ class TelegramUserBridge {
   }
 
   status() {
-    return Object.assign({},this.state,{game_bot:"@"+this.gameUsername,auth_in_progress:!!this.authPromise,last_game_message:this.lastGameMessage});
+    return Object.assign({},this.state,{game_bot:"@"+this.gameUsername,auth_in_progress:!!this.authPromise,last_game_message:this.lastGameMessage,diagnostics:diagnostics.snapshot()});
   }
 
   async shutdown() {
