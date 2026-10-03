@@ -13,6 +13,8 @@ assert(bridge.includes("await this.handleGameMessage(msg);"), "Game message pipe
 assert(bridge.includes('this.relayUrl+"/bridge/state"'), "Bridge state publish endpoint missing");
 assert(server.includes('req.url==="/bridge/state" && req.method==="POST"'), "Relay state ingestion endpoint missing");
 assert(server.includes('if(req.url==="/state")return json(res,200,latest||{})'), "Relay state endpoint missing");
+assert(server.indexOf('if(!auth(req))return json(res,401,{error:"unauthorized"});') < server.indexOf('if(req.url==="/state")return json(res,200,latest||{})'), "Relay state endpoint must stay behind auth");
+assert(server.includes('if(req.url!=="/ws"||!auth(req))'), "WebSocket bridge must require relay auth");
 
 assert(bridge.includes("process.env.DATABASE_URL"), "PostgreSQL configuration missing");
 assert(bridge.includes('"telegram_session"'), "Telegram session persistence key missing");
