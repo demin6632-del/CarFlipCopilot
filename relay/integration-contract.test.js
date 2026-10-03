@@ -24,5 +24,6 @@ assert(telegram.includes("waitForGameUpdate(latest.message_id"), "Normal game up
 assert(telegram.includes("gameActionChats.add(String(chat));"), "Game action lock missing");
 assert(telegram.includes("backgroundCallbackWait"), "Slow callback lock protection missing");
 assert(telegram.includes("backgroundGameWait"), "Slow game lock protection missing");
+assert(bridge.includes('if(res.statusCode>=200 && res.statusCode<300) return resolve();'), "Relay HTTP failures must reject state publication");
 
 console.log("Stage 6 integration contract: PASS");
