@@ -36,6 +36,7 @@ class TelegramUserBridge {
     this.lastGameMessage = null;
     this.gameMessages = [];
     this.gamePollTimer = null;
+    this.lastPolledGameKey = "";
     this.webhookHandler = null;
     this.phoneAuth = new Map();
     this.databaseUrl = String(opts.databaseUrl || process.env.DATABASE_URL || "").trim();
@@ -197,7 +198,13 @@ class TelegramUserBridge {
         const list=Array.isArray(msgs)?msgs:[msgs];
         const msg=list[0];
         if(msg && (String(msg.message||"").trim() || (msg.replyMarkup&&msg.replyMarkup.rows))){
-          await this.handleGameMessage(msg);
+          // The current screen is polled only as a fallback. Do not feed the
+          // same unchanged message into the pipeline every 1.5s.
+          const pollKey=String(msg.id||"")+"|"+String(msg.editDate||"")+"|"+String(msg.message||"")+"|"+JSON.stringify(msg.replyMarkup?.rows||[]);
+          if(pollKey!==this.lastPolledGameKey){
+            this.lastPolledGameKey=pollKey;
+            await this.handleGameMessage(msg);
+          }
         }
       }catch(e){
         console.log("GAME POLL ERROR:",e.message);
