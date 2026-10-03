@@ -35,6 +35,7 @@ class TelegramUserBridge {
     this.tickets = new Map();
     this.lastGameMessage = null;
     this.gameMessages = [];
+    this.gamePollTimer = null;
     this.webhookHandler = null;
     this.phoneAuth = new Map();
     this.databaseUrl = String(opts.databaseUrl || process.env.DATABASE_URL || "").trim();
@@ -178,8 +179,29 @@ class TelegramUserBridge {
     this.client.addEventHandler(handleEvent, new NewMessage({}));
     this.client.addEventHandler(handleEvent, new EditedMessage({}));
     this.attachedClient = this.client;
+    this.startGamePolling();
     // Do not send /start automatically on startup or session restore.
     // The game is pinged only by the explicit "Проверить связь с игрой" action.
+  }
+
+  startGamePolling() {
+    if(this.gamePollTimer || !this.client || !this.state.connected || !this.gameUsername)return;
+    // Event handlers are the fast path. This low-frequency poll is a safety net
+    // for Telegram/GramJS cases where a bot message or edited message event is
+    // missed while the process is reconnecting.
+    this.gamePollTimer=setInterval(async()=>{
+      try{
+        const msgs=await this.client.getMessages(this.gameUsername,{limit:8});
+        const list=Array.isArray(msgs)?msgs:[msgs];
+        const candidates=list
+          .filter(m=>m && (String(m.message||"").trim() || (m.replyMarkup&&m.replyMarkup.rows)))
+          .sort((a,b)=>Number(a.id||0)-Number(b.id||0));
+        for(const msg of candidates)await this.handleGameMessage(msg);
+      }catch(e){
+        console.log("GAME POLL ERROR:",e.message);
+      }
+    },1500);
+    if(this.gamePollTimer.unref)this.gamePollTimer.unref();
   }
 
   createTicket(chatId) {

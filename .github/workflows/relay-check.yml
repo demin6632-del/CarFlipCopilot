@@ -48,3 +48,6 @@ jobs:
           grep -F 'if(!hasParsedState)return;' relay/telegram-bot.js
           grep -F 'const startedAt=Date.now();' relay/user-session-bridge.js
           grep -F 'Number(this.lastGameMessage.received_at||0)>=startedAt' relay/user-session-bridge.js
+          grep -F 'Telegram delivery mode: long polling; webhook cleared.' relay/telegram-bot.js
+          grep -F 'getUpdates' relay/telegram-bot.js
+          grep -F 'startGamePolling()' relay/user-session-bridge.js

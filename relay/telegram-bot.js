@@ -838,33 +838,46 @@ async function processUpdate(u){
 }
 async function setupWebhook(){
   if(!BOT_TOKEN){console.log("Telegram bot disabled: TELEGRAM_BOT_TOKEN missing");return false;}
-  const base=(BRIDGE_PUBLIC_URL||process.env.RENDER_EXTERNAL_URL||"").replace(/\/$/,"");
-  if(!base){console.log("Telegram webhook disabled: public URL missing");return false;}
-  const url=base+"/telegram/webhook";
   try{
+    // Render webhooks have occasionally accepted Telegram's webhook setup while
+    // updates still failed to reach the service. Use long polling as the primary
+    // delivery path; it is persistent and does not depend on the public callback.
     await tg("deleteWebhook",{drop_pending_updates:false});
-    await tg("setWebhook",{url,allowed_updates:["message","callback_query"],drop_pending_updates:false});
     const info=await tg("getWebhookInfo",{});
-    webhookEnabled=!!info?.url;
-    console.log("Telegram webhook:",webhookEnabled?info.url:"not enabled", "pending:",info?.pending_update_count??0);
-    return webhookEnabled;
+    webhookEnabled=false;
+    console.log("Telegram delivery mode: long polling; webhook cleared. pending:",info?.pending_update_count??0);
+    return true;
   }catch(e){
-    console.log("Telegram webhook setup error:",e.message);
+    console.log("Telegram delivery setup error:",e.message);
     return false;
+  }
+}
+async function pollBotUpdates(){
+  if(!BOT_TOKEN)return;
+  try{
+    const updates=await tg("getUpdates",{
+      offset,
+      limit:100,
+      timeout:20,
+      allowed_updates:["message","callback_query"]
+    });
+    if(!Array.isArray(updates))return;
+    for(const update of updates){
+      try{await processUpdate(update);}
+      catch(e){console.log("TELEGRAM UPDATE ERROR:",e.stack||e.message||e);}
+    }
+  }catch(e){
+    console.log("TELEGRAM POLLING ERROR:",e.message);
+    await new Promise(r=>setTimeout(r,1500));
   }
 }
 async function loop(){
   if(polling)return;
   polling=true;
-  while(true){
-    const ok=await setupWebhook();
-    if(ok){
-      console.log("Telegram webhook active; polling disabled.");
-      return;
-    }
-    console.log("Telegram webhook unavailable; retrying in 5000ms. Polling is disabled to avoid webhook/getUpdates conflicts.");
-    await new Promise(r=>setTimeout(r,5000));
-  }
+  const ready=await setupWebhook();
+  if(!ready)return;
+  console.log("Telegram long polling active.");
+  while(true)await pollBotUpdates();
 }
 userBridge.webhookHandler=processUpdate;
 async function gracefulShutdown(signal){
