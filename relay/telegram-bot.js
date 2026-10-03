@@ -29,6 +29,27 @@ const replyKeyboardClearedChats=new Set();
 const photoFingerprints=new Map();
 const photoFileIds=new Map();
 const processingChats=new Set();
+const updateQueues=new Map();
+const BOT_REQUEST_TIMEOUT=15000;
+
+function withTimeout(promise,ms,label){
+  let timer;
+  return Promise.race([
+    Promise.resolve(promise),
+    new Promise((_,reject)=>{timer=setTimeout(()=>reject(new Error(label+" timeout after "+ms+"ms")),ms);})
+  ]).finally(()=>clearTimeout(timer));
+}
+
+function enqueueChatUpdate(chatId,task){
+  const key=String(chatId||"global");
+  const previous=updateQueues.get(key)||Promise.resolve();
+  const current=previous.catch(()=>{}).then(()=>task());
+  updateQueues.set(key,current);
+  return current.finally(()=>{
+    if(updateQueues.get(key)===current)updateQueues.delete(key);
+  });
+}
+
 let lastBridgeNotice=0,lastBridgeFingerprint="";
 
 function normalizeButtonText(s){return String(s||"").toLowerCase().replace(/ё/g,"е").replace(/[^a-zа-я0-9]+/gi," ").trim();}
@@ -165,7 +186,7 @@ function tg(method,body){return new Promise((resolve,reject)=>{
   const data=JSON.stringify(body||{}),u=new URL(API+"/"+method);
   const req=https.request({hostname:u.hostname,path:u.pathname,method:"POST",agent:keepAliveAgent,headers:{"content-type":"application/json","content-length":Buffer.byteLength(data)}},res=>{
     let s="";res.on("data",c=>s+=c);res.on("end",()=>{try{const j=JSON.parse(s);if(!j.ok)return reject(new Error(j.description||"Telegram API error"));resolve(j.result);}catch(e){reject(e);}});
-  });req.on("error",reject);req.setTimeout(35000,()=>req.destroy(new Error("Telegram API timeout")));req.write(data);req.end();
+  });req.on("error",reject);req.setTimeout(BOT_REQUEST_TIMEOUT,()=>req.destroy(new Error("Telegram API timeout")));req.write(data);req.end();
 });}function tgPhoto(chat_id,buffer,caption,reply_markup){
   return new Promise((resolve,reject)=>{
     const boundary="----CarFlipCopilot"+require("crypto").randomBytes(8).toString("hex");
@@ -209,7 +230,7 @@ async function send(chat_id,text,extra={}){
   return tg("sendMessage",payload);
 }
 async function relay(path,body={}){if(!RELAY_URL)throw new Error("RELAY_URL не настроен");const u=new URL(RELAY_URL+path),data=JSON.stringify(body);
-  return new Promise((resolve,reject)=>{const req=https.request({hostname:u.hostname,port:u.port||443,path:u.pathname+u.search,method:"POST",agent:keepAliveAgent,headers:{"content-type":"application/json","authorization":"Bearer "+RELAY_TOKEN,"content-length":Buffer.byteLength(data)}},res=>{let s="";res.on("data",c=>s+=c);res.on("end",()=>{try{resolve(JSON.parse(s))}catch{resolve({raw:s})}})});req.on("error",reject);req.setTimeout(20000,()=>{req.destroy(new Error("Relay timeout"));});req.write(data);req.end();});
+  return new Promise((resolve,reject)=>{const req=https.request({hostname:u.hostname,port:u.port||443,path:u.pathname+u.search,method:"POST",agent:keepAliveAgent,headers:{"content-type":"application/json","authorization":"Bearer "+RELAY_TOKEN,"content-length":Buffer.byteLength(data)}},res=>{let s="";res.on("data",c=>s+=c);res.on("end",()=>{try{resolve(JSON.parse(s))}catch{resolve({raw:s})}})});req.on("error",reject);req.setTimeout(BOT_REQUEST_TIMEOUT,()=>{req.destroy(new Error("Relay timeout"));});req.write(data);req.end();});
 }
 async function downloadTelegramFile(fileId){const file=await tg("getFile",{file_id:fileId});if(!file?.file_path)throw new Error("Telegram не вернул путь к файлу");const u=new URL("https://api.telegram.org/file/bot"+BOT_TOKEN+"/"+file.file_path);
   return new Promise((resolve,reject)=>{const req=https.get(u,{agent:keepAliveAgent},res=>{
@@ -882,8 +903,20 @@ async function callback(q){
 async function processUpdate(u){
   if(!u || typeof u!=="object") return;
   if(u.update_id!=null) offset=Math.max(offset,Number(u.update_id)+1);
-  if(u.callback_query) return callback(u.callback_query);
-  if(u.message) return handle(u.message);
+  const chatId=u.callback_query?.message?.chat?.id ?? u.message?.chat?.id ?? "global";
+  return enqueueChatUpdate(chatId,async()=>{
+    try{
+      if(u.callback_query) return await callback(u.callback_query);
+      if(u.message) return await handle(u.message);
+    }catch(e){
+      console.log("UPDATE HANDLER ERROR:",e?.stack||e?.message||e);
+      try{
+        if(chatId!=="global") await send(chatId,"⚠️ Команда не завершилась корректно. Повторная попытка доступна сразу.");
+      }catch(sendError){
+        console.log("UPDATE ERROR MESSAGE FAILED:",sendError?.message||sendError);
+      }
+    }
+  });
 }
 async function setupWebhook(){
   if(!BOT_TOKEN){console.log("Telegram bot disabled: TELEGRAM_BOT_TOKEN missing");return false;}
