@@ -53,6 +53,7 @@ class TelegramUserBridge {
     this.gameMessages = [];
     this.gamePollTimer = null;
     this.lastPolledGameKey = "";\n    this.gamePollInFlight = false;
+    this.gameMessageQueue = Promise.resolve();
     this.webhookHandler = null;
     this.phoneAuth = new Map();
     this.databaseUrl = String(opts.databaseUrl || process.env.DATABASE_URL || "").trim();
@@ -186,7 +187,7 @@ class TelegramUserBridge {
         const sameById = !!(this.gamePeerId && peerId && this.gamePeerId === peerId);
         const sameByUsername = !!(expectedUsername && peerUsername && peerUsername === expectedUsername);
         if (!sameById && !sameByUsername) return;
-        await this.handleGameMessage(msg);
+        await this.enqueueGameMessage(msg);
       } catch (e) {
         console.log("GAME MESSAGE ERROR:",e.stack||e.message||e);
       }
@@ -226,7 +227,7 @@ class TelegramUserBridge {
           const pollKey=String(msg.id||"")+"|"+String(msg.editDate||"")+"|"+String(msg.message||"")+"|"+JSON.stringify(msg.replyMarkup?.rows||[]);
           if(pollKey!==this.lastPolledGameKey){
             this.lastPolledGameKey=pollKey;
-            await this.handleGameMessage(msg);
+            await this.enqueueGameMessage(msg);
           }
         }
       }catch(e){
@@ -354,6 +355,12 @@ class TelegramUserBridge {
     };
   }
 
+  enqueueGameMessage(msg) {
+    const run=this.gameMessageQueue.catch(()=>{}).then(()=>this.handleGameMessage(msg));
+    this.gameMessageQueue=run.catch(e=>console.log("GAME SCREEN QUEUE ERROR:",e.message));
+    return run;
+  }
+
   async handleGameMessage(msg) {
     const pipelineStarted=Date.now();
     diagnostics.inc("screen.received");
@@ -423,7 +430,7 @@ class TelegramUserBridge {
     diagnostics.observe("screen.pipeline",Date.now()-pipelineStarted);
     this.publishState(this.state).catch(e=>{ diagnostics.inc("relay.publish_error"); console.log("RELAY STATE ASYNC ERROR:",e.message); });
     if (this.onState) {
-      try { await this.onState(this.state); }
+      try { await withTimeout(this.onState(this.state),OP_TIMEOUTS.eventPipeline,"GAME STATE NOTIFY"); }
       catch (e) { console.log("GAME STATE NOTIFY ERROR:", e.stack||e.message||e); }
     }
   }
@@ -470,7 +477,7 @@ class TelegramUserBridge {
         const candidates=list
           .filter(m=>m && Number(m.id||0)>=before && String(m.message||"").trim())
           .sort((a,b)=>Number(a.id||0)-Number(b.id||0));
-        for (const msg of candidates) await this.handleGameMessage(msg);
+        for (const msg of candidates) await this.enqueueGameMessage(msg);
         if (candidates.length) {
           if(this.lastGameMessage && Number(this.lastGameMessage.received_at||0)>=startedAt)return sent;
           break;
