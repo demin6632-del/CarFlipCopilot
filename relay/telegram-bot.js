@@ -582,11 +582,50 @@ async function renderGameNow(chat,options={}){
   const text=adviceLines.join("\n").slice(0,3900);
   const markup=await gameKeyboard(latest);
   const messageId=options.messageId||activeGameChats.get(String(chat)+"_message_id");
+
+  // Обновление игрового экрана должно редактировать уже существующее
+  // сообщение, а не создавать новое сообщение после каждого обновления.
   if(messageId){
     try{
-      await tg("deleteMessage",{chat_id:chat,message_id:messageId});
-    }catch(e){if(!/message to delete not found/i.test(String(e.message||""))) console.log("GAME SCREEN DELETE ERROR:",e.message);}
+      const edited=await tg("editMessageText",{
+        chat_id:chat,
+        message_id:messageId,
+        text:text,
+        reply_markup:markup,
+        disable_web_page_preview:true
+      });
+      activeGameChats.set(String(chat)+"_message_id",messageId);
+      lastRenderedGameFingerprints.set(String(chat),gameFingerprint);
+      return edited;
+    }catch(e){
+      const msg=String(e.message||"");
+      // Если текущее сообщение содержит фотографию, Telegram не позволяет
+      // заменить caption на text. Редактируем caption того же сообщения.
+      if(/there is no text in the message|message can't be edited|text.*message/i.test(msg)){
+        try{
+          const edited=await tg("editMessageCaption",{
+            chat_id:chat,
+            message_id:messageId,
+            caption:text.slice(0,1024),
+            reply_markup:markup
+          });
+          activeGameChats.set(String(chat)+"_message_id",messageId);
+          lastRenderedGameFingerprints.set(String(chat),gameFingerprint);
+          return edited;
+        }catch(captionError){
+          const captionMsg=String(captionError.message||"");
+          if(!/message is not modified/i.test(captionMsg)) console.log("GAME SCREEN EDIT ERROR:",captionMsg);
+        }
+      }else if(!/message is not modified/i.test(msg)){
+        console.log("GAME SCREEN EDIT ERROR:",msg);
+      }
+      if(/message is not modified/i.test(msg)){
+        lastRenderedGameFingerprints.set(String(chat),gameFingerprint);
+        return {message_id:messageId,deduplicated:true};
+      }
+    }
   }
+
   let sent=null;
   try {
     const image=await Promise.race([userBridge.getGameMedia(latest.message_id),new Promise(resolve=>setTimeout(()=>resolve(null),700))]);
