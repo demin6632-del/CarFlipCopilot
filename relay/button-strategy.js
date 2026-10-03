@@ -60,10 +60,16 @@ function scoreButtons(buttons,state,history){
   const list=[...new Set((buttons||[]).map(x=>String(x||"").trim()).filter(Boolean))];
   if(!list.length)return [];
   const raw=String(state?.raw_message||state?.raw_text||""), t=norm(raw), ctx=contextKey(raw);
-  const balance=Number(state?.balance),price=Number(state?.price);
-  const hasBalance=Number.isFinite(balance)&&balance>0, hasPrice=Number.isFinite(price)&&price>0;
+  const currentScreenKey=screenKey(raw);
   const counts={};
-  for(const h of history||[]){const label=String(h.clicked_button||"");if(label)counts[norm(label)]=(counts[norm(label)]||0)+(h.context_key===ctx?2:1);}
+  const sameScreenCounts={};
+  for(const h of history||[]){
+    const label=String(h.clicked_button||"");
+    if(!label)continue;
+    const key=norm(label);
+    if(h.context_key===ctx)counts[key]=(counts[key]||0)+1;
+    if(h.screen_key===currentScreenKey)sameScreenCounts[key]=(sameScreenCounts[key]||0)+1;
+  }
   const scores=list.map(label=>{
     const type=buttonType(label),n=norm(label); let score=10;
     if(type==="cancel")score-=7;
@@ -78,13 +84,27 @@ function scoreButtons(buttons,state,history){
     if(type==="garage")score+=/гараж|мест|слот/.test(t)?6:-2;
     if(type==="confirm")score+=/подтверд|оформ|готов|соглас/.test(t)?6:-2;
     if(type==="continue")score+=/далее|продолж|след|ехать|вперед|вперёд/.test(t)?7:0;
-    if(type==="buy"&&hasBalance&&hasPrice){if(price>balance)score-=25;else if(price<=balance*.55)score+=7;else if(price<=balance*.8)score+=3;else score-=3;}
-    if(type==="sell"&&hasPrice&&/влож|себесто|купил|затрат/.test(t))score+=6;
-    score+=Math.min(18,Math.log1p(counts[n]||0)*4);
+    if(type==="buy"&&Number.isFinite(Number(state?.balance))&&Number(state?.balance)>0&&Number.isFinite(Number(state?.price))&&Number(state?.price)>0){
+      const balance=Number(state.balance),price=Number(state.price);
+      if(price>balance)score-=25;
+      else if(price<=balance*.55)score+=7;
+      else if(price<=balance*.8)score+=3;
+      else score-=3;
+    }
+    if(type==="sell"&&Number.isFinite(Number(state?.price))&&/влож|себесто|купил|затрат/.test(t))score+=6;
+
+    // History is evidence, not a reason to recommend the same action again.
+    // A click already made on this exact unchanged screen gets a strong penalty.
+    // Repeated actions in the same context also get a smaller penalty.
+    const sameScreenCount=sameScreenCounts[n]||0;
+    const contextCount=counts[n]||0;
+    if(sameScreenCount>0)score-=Math.min(45,30+(sameScreenCount-1)*10);
+    else if(contextCount>0)score-=Math.min(15,contextCount*3);
+
     const escaped=n.replace(/[.*+?^$()|[\]\\]/g,"\\$&");
     const direct=new RegExp("(?:нажми|выбери|нужно нажать|следует нажать|рекомендуется нажать)\\s+[«\\\"“]?"+escaped+"[»\\\"”]?","i");
     if(direct.test(raw))score+=40;
-    return {label,type,rawScore:Math.max(.1,score)};
+    return {label,type,rawScore:Math.max(.1,score),sameScreenCount,contextCount};
   });
   const min=Math.min(...scores.map(x=>x.rawScore));
   const shifted=scores.map(x=>({...x,weight:x.rawScore-min+2}));
@@ -93,7 +113,10 @@ function scoreButtons(buttons,state,history){
 }
 async function rankButtons(chat,state,buttons){
   const c=await db(); let history=[];
-  if(c&&chat!=null)try{const r=await c.query("SELECT context_key,clicked_button FROM button_strategy_history WHERE chat_id=$1 AND clicked_button IS NOT NULL ORDER BY id DESC LIMIT 500",[String(chat)]);history=r.rows;}catch(e){console.log("BUTTON STRATEGY HISTORY ERROR:",e.message);}
+  if(c&&chat!=null)try{
+    const r=await c.query("SELECT screen_key,context_key,clicked_button FROM button_strategy_history WHERE chat_id=$1 AND clicked_button IS NOT NULL ORDER BY id DESC LIMIT 500",[String(chat)]);
+    history=r.rows;
+  }catch(e){console.log("BUTTON STRATEGY HISTORY ERROR:",e.message);}
   const ranked=scoreButtons(buttons,state,history);
   if(ranked.length){
     const diff=100-ranked.reduce((a,x)=>a+x.percent,0); ranked[0].percent+=diff;
@@ -102,13 +125,16 @@ async function rankButtons(chat,state,buttons){
   return ranked;
 }
 function reasonFor(x,state,history){
-  const t=norm(state?.raw_message||state?.raw_text),r=[];
+  const raw=String(state?.raw_message||state?.raw_text||"");
+  const t=norm(raw), currentScreenKey=screenKey(raw),r=[];
   if(x.type==="buy"&&/купить|покупка|продавец/.test(t))r.push("экран содержит контекст покупки");
   if(x.type==="sell"&&/продать|продажа|покупател|предложение/.test(t))r.push("экран содержит контекст продажи");
   if(x.type==="plate"&&/номер|аукцион|ставка/.test(t))r.push("обнаружен контекст госномера/аукциона");
   if(x.type==="inspect")r.push("проверка снижает риск перед финансовым действием");
-  const learned=(history||[]).filter(h=>norm(h.clicked_button)===norm(x.label)).length;
-  if(learned)r.push("учтена история этой кнопки в твоих игровых экранах");
+  const sameScreen=(history||[]).filter(h=>h.screen_key===currentScreenKey&&norm(h.clicked_button)===norm(x.label)).length;
+  const contextual=(history||[]).filter(h=>h.context_key===contextKey(raw)&&norm(h.clicked_button)===norm(x.label)).length;
+  if(sameScreen)r.push("это действие уже выполнялось на текущем экране — приоритет снижен");
+  else if(contextual)r.push("это действие уже выполнялось в этом игровом контексте — приоритет снижен");
   return r.join("; ")||"оценка по текущему экрану и общей модели игровой стратегии";
 }
 module.exports={rankButtons,recordScreen,recordClick};
