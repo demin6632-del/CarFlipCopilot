@@ -3,6 +3,9 @@ const keepAliveAgent = new https.Agent({keepAlive:true,maxSockets:32,maxFreeSock
 const { TelegramUserBridge, createConnectServer } = require("./user-session-bridge");
 const { analyzeImage, parseState, decide, warmup } = require("./free-analyzer");
 const { rankButtons, recordScreen, recordClick } = require("./button-strategy");
+const { recordScreen: recordMemoryScreen, recordAction: recordMemoryAction, recent: recentMemory } = require("./game-memory");
+const { recordTransition: recordEconomyTransition, summary: economySummary, currentVehicleEconomics } = require("./game-economy");
+const { buildStrategy, parseContract } = require("./strategy-engine");
 
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || "";
 const RELAY_TOKEN = process.env.COPILOT_TOKEN || "";
@@ -145,6 +148,7 @@ async function registerBotCommands(){
     {command:"connect",description:"Подключить игру"},
     {command:"state",description:"Показать состояние игры"},
     {command:"advice",description:"Что делать сейчас"},
+    {command:"game",description:"Открыть игру в Telegram"},
     {command:"probe",description:"Проверить связь с игрой"},
     {command:"help",description:"Помощь и список команд"}
   ];
@@ -171,7 +175,8 @@ function kb(chatId){
   const rows=[
     [{text:"🎮 Играть"}],
     [{text:"🧠 Что делать сейчас"}],
-    [{text:"📊 Состояние"},{text:"📸 Анализ скрина"}],
+    [{text:"📊 Состояние"},{text:"📜 История"},{text:"💰 Экономика"}],
+    [{text:"📸 Анализ скрина"}],
     [{text:"🔗 Подключить игру"}],
     [{text:"🧪 Проверить связь с игрой"}]
   ];
@@ -310,6 +315,57 @@ async function handle(m){
   // pressing «🎮 Играть» must still open/refresh the game screen, not be sent
   // to the game bot as an unknown game button.
   if(text==="🎮 Играть"){ return gameDebug(chat); }
+  if(text==="💰 Экономика"){
+    const e=await economySummary(chat,200);
+    const live=userBridge.status();
+    const liveText=String(live?.last_game_message?.text||live?.last_game_message?.raw_text||"");
+    const offerMatch=liveText.match(/(?:предлож(?:ение|ил)|цена продажи|купит за|купят за)[^0-9]{0,30}([0-9][0-9 .]{2,})/i);
+    const offer=offerMatch?Number(offerMatch[1].replace(/\s/g,"")):null;
+    const liveEco=currentVehicleEconomics(live,offer,0);
+    if(!e.transactions.length)return send(chat,"💰 ЭКОНОМИКА\n\nИстория финансовых изменений пока пуста.");
+    const k=e.byKind||{};
+    const lines=["💰 ЭКОНОМИКА","",
+      "📈 Чистое изменение баланса: "+Math.round(e.net)+" ₽",
+      "📤 Расходы: "+Math.round(e.spent)+" ₽",
+      "📥 Поступления: "+Math.round(e.received)+" ₽","",
+      "🛒 Покупки: "+Math.round(k.purchase||0)+" ₽",
+      "💵 Продажи: "+Math.round(k.sale||0)+" ₽",
+      "🔄 Продления: "+Math.round(k.renewal||0)+" ₽",
+      "🔧 Ремонт: "+Math.round(k.repair||0)+" ₽",
+      "⚙️ Тюнинг: "+Math.round(k.tuning||0)+" ₽",
+      "🔢 Номера: "+Math.round((k.plate||0)+(k.plate_removal||0))+" ₽"];
+    if(Array.isArray(e.vehicles)&&e.vehicles.length){
+      lines.push("","🚗 СЕБЕСТОИМОСТЬ И ПРИБЫЛЬ");
+      e.vehicles.slice(0,8).forEach((v,i)=>{
+        lines.push("",(i+1)+". "+(v.vehicle_name||"Автомобиль")+(v.plate?" · "+v.plate:""));
+        lines.push("   Себестоимость: "+Math.round(v.full_cost||0)+" ₽");
+        if(v.status==="sold") lines.push("   Реализовано: "+Math.round(v.realized_proceeds||0)+" ₽","   Комиссии: "+Math.round(v.fees||0)+" ₽","   Итог: "+Math.round(v.realized_profit||0)+" ₽");
+        else lines.push("   Вложено дополнительно: "+Math.round(v.extra_cost||0)+" ₽","   Статус: в гараже");
+      });
+    }
+    if(liveEco?.sale){
+      lines.push("","🎯 ТЕКУЩЕЕ ПРЕДЛОЖЕНИЕ");
+      lines.push("Предложение: "+Math.round(liveEco.sale.offer)+" ₽");
+      lines.push("Себестоимость: "+Math.round(liveEco.sale.cost)+" ₽");
+      lines.push("Разница до комиссии: "+Math.round(liveEco.sale.offer-liveEco.sale.cost)+" ₽");
+      lines.push("Расчётная комиссия: "+Math.round(liveEco.sale.fee)+" ₽");
+      lines.push("Расчётный результат: "+Math.round(liveEco.sale.profit)+" ₽");
+    }
+    return send(chat,lines.join("\n"));
+  }
+  if(text==="📜 История"){
+    const rows=await recentMemory(chat,20);
+    if(!rows.length) return send(chat,"📜 ИСТОРИЯ\n\nИстория действий пока пуста. Сначала подключи игру и выполни действие.");
+    const lines=["📜 ИСТОРИЯ ПОСЛЕДНИХ ДЕЙСТВИЙ",""]; 
+    rows.slice(0,12).forEach((r,i)=>{
+      const before=String(r.before_text||"").replace(/\\s+/g," ").slice(0,90);
+      const after=String(r.after_text||"").replace(/\\s+/g," ").slice(0,90);
+      lines.push((i+1)+". 👉 "+String(r.button||"—")+" "+(r.changed?"→ экран изменился":"→ экран не изменился"));
+      lines.push("   До: "+before);
+      if(after) lines.push("   После: "+after);
+    });
+    return send(chat,lines.join("\\n"));
+  }
   // ReplyKeyboard labels arrive as ordinary text and are handled directly.
   if(activeGameChats.get(String(chat))){
     const latest=userBridge.status().last_game_message;
@@ -325,6 +381,8 @@ async function handle(m){
       return send(chat,"Главное меню:");
     }
     if(text==="🔄 Обновить игру") return renderGame(chat);
+    if(text==="🧠 Стратегия") return advice(chat);
+    if(text==="📊 Состояние") return state(chat);
     if(text==="🚪 Выйти из игры"){
       const screenId=activeGameChats.get(String(chat)+"_message_id");
       activeGameChats.delete(String(chat));
@@ -337,30 +395,42 @@ async function handle(m){
     const target=labels.find(x=>String(x).trim()===text.trim()) || text;
     if(latest?.message_id && text && !["⬅️ Назад","🔄 Обновить игру","🚪 Выйти из игры"].includes(text)){
       gameActionChats.add(String(chat));
+      let backgroundGameWait=false;
       try{
         // Do not require the cached button list to contain the label: the
         // game can update its markup a moment before our local state does.
+        const beforeState=Object.assign({},userBridge.status());
         await userBridge.clickGameButton(target,latest.message_id);
         recordClick(chat,latest.text||"",latest.buttons||[],target,userBridge.status().last_game_message?.text||"").catch(e=>console.log("BUTTON STRATEGY CLICK ERROR:",e.message));
         // Do not make the user wait 10 seconds for a slow game response.
         // If the game answers later, the background waiter will refresh the screen.
         const updated=await waitForGameUpdate(latest.message_id,latest.text||"",latest.buttons||[],1200);
         if(updated){
+          const afterState=Object.assign({},userBridge.status());
+          recordMemoryAction(chat,beforeState,target,afterState).catch(e=>console.log("GAME MEMORY ACTION ERROR:",e.message));
+          recordEconomyTransition(chat,beforeState,target,afterState).catch(e=>console.log("GAME ECONOMY ERROR:",e.message));
           return renderGame(chat,{messageId:activeGameChats.get(String(chat)+"_message_id")});
         }
         const screenId=activeGameChats.get(String(chat)+"_message_id");
+        backgroundGameWait=true;
         setTimeout(async()=>{
           try{
             const later=await waitForGameUpdate(latest.message_id,latest.text||"",latest.buttons||[],8000);
-            if(later) await renderGame(chat,{messageId:activeGameChats.get(String(chat)+"_message_id")});
+            if(later){
+              const afterState=Object.assign({},userBridge.status());
+              recordMemoryAction(chat,beforeState,target,afterState).catch(e=>console.log("GAME MEMORY DELAYED ACTION ERROR:",e.message));
+              recordEconomyTransition(chat,beforeState,target,afterState).catch(e=>console.log("GAME ECONOMY DELAYED ACTION ERROR:",e.message));
+              await renderGame(chat,{messageId:activeGameChats.get(String(chat)+"_message_id")});
+            }
           }catch(e){console.log("GAME LATE UPDATE ERROR:",e.message);}
+          finally{gameActionChats.delete(String(chat));}
         },0);
         return renderGame(chat,{messageId:screenId});
       }catch(e){
         // Never fall through to the main-menu fallback while game mode is active.
         return renderGame(chat,{messageId:activeGameChats.get(String(chat)+"_message_id")});
       }finally{
-        gameActionChats.delete(String(chat));
+        if(!backgroundGameWait)gameActionChats.delete(String(chat));
       }
     }
     // Any stale/unrecognized text in game mode must keep the game keyboard.
@@ -410,9 +480,17 @@ async function connect(chat){
   return send(chat,"🔗 Подключение игры\n\nИгра: @"+GAME_USERNAME+"\n\nПользовательский Telegram-мост: "+(userBridge.configured()?"готов":"не настроен")+"\n\n📸 Скриншотный режим уже работает без API-данных. Пришли скриншот или перешли сообщение из игры — бот разберёт его прямо в Telegram.\n\n🔐 Не отправляй API hash, коды входа, пароль 2FA или сессию в чат.");
 }
 async function gameKeyboard(message){
-  const rows=(message?.buttons||[]).map(label=>[{text:String(label)}]);
-  rows.push([{text:"⬅️ Назад"}]);
-  rows.push([{text:"🔄 Обновить игру"},{text:"🚪 Выйти из игры"}]);
+  const labels=[...new Set((message?.buttons||[]).map(x=>String(x||"").trim()).filter(Boolean))];
+  const rows=[];
+  for(let i=0;i<labels.length;i+=2){
+    const row=[{text:labels[i]}];
+    if(labels[i+1])row.push({text:labels[i+1]});
+    rows.push(row);
+  }
+  rows.push([{text:"🧠 Стратегия"},{text:"📊 Состояние"}]);
+  rows.push([{text:"📜 История"},{text:"💰 Экономика"}]);
+  rows.push([{text:"🔄 Обновить игру"},{text:"⬅️ Назад"}]);
+  rows.push([{text:"🚪 Выйти из игры"}]);
   return {keyboard:rows,resize_keyboard:true,one_time_keyboard:false,is_persistent:true};
 }
 async function renderGameNow(chat,options={}){
@@ -435,15 +513,55 @@ async function renderGameNow(chat,options={}){
   const decision=decide(Object.assign({},parsedGame,{raw_text:parsedGame.raw_text,raw_message:latest.text,buttons:latest.buttons}),90);
   const strategyState=Object.assign({},parsedGame,{raw_text:parsedGame.raw_text,raw_message:latest.text,buttons:latest.buttons||[]});
   const ranked=await rankButtons(chat,strategyState,latest.buttons||[]);
+  const economy=await economySummary(chat,120);
+  const strategy=buildStrategy(strategyState,ranked,economy);
   recordScreen(chat,latest.text,latest.buttons||[]).catch(e=>console.log("BUTTON STRATEGY SCREEN ERROR:",e.message));
+  recordMemoryScreen(chat,latest).catch(e=>console.log("GAME MEMORY SCREEN ERROR:",e.message));
   const screenConfidence=ranked.length ? 100 : Math.round(Number(decision.confidence)||0);
-  const adviceLines=["🎮 ИГРА","",""+String(latest.text||"—").slice(0,7000),"","🧠 КАК ПОСТУПИТЬ: "+(ranked.length?"АНАЛИЗ КНОПОК":"НЕТ КНОПОК"),"🔎 Распознавание кнопок: "+screenConfidence+"%"];
+  const rawGameText=String(latest.text||"—");
+  const adviceLines=["🎮 ИГРА","",""+rawGameText.slice(0,7000),"","🧠 КАК ПОСТУПИТЬ: "+(ranked.length?"АНАЛИЗ КНОПОК":"НЕТ КНОПОК"),"🔎 Распознавание кнопок: "+screenConfidence+"%"];
   if(ranked.length){
     adviceLines.push("💡 Проценты — стратегическая оценка по текущему экрану, сохранённой истории твоей игры и финансовому контексту.");
-    adviceLines.push("","👉 РЕКОМЕНДАЦИЯ: «"+ranked[0].label+"» — "+ranked[0].percent+"%","📊 ВСЕ КНОПКИ:\n"+buttonScoreText(ranked));
+    if(strategy.actionable){
+      adviceLines.push("","👉 РЕКОМЕНДАЦИЯ: «"+ranked[0].label+"» — "+ranked[0].percent+"%");
+    }else{
+      adviceLines.push("","👉 РЕКОМЕНДАЦИЯ: нет — текущий экран не подтверждает, что нужно нажимать кнопку.");
+    }
+    adviceLines.push("📊 ВСЕ КНОПКИ:\n"+buttonScoreText(ranked));
+    const actionLines=strategy.alternatives.map(x=>{
+      const blocked=x.contractBlocked?" ⛔ КОНТРАКТ":"";
+      return "• «"+x.label+"» — риск "+x.risk+"%"+blocked+"\n  ↳ если нажать: "+x.scenario;
+    });
+    if(actionLines.length)adviceLines.push("🔎 РАЗБОР КАЖДОЙ КНОПКИ:\n"+actionLines.join("\n"));
+    if(strategy.historyCount)adviceLines.push("📜 ИСТОРИЯ: учтено действий — "+strategy.historyCount+". Повторения: "+Object.entries(strategy.historyByAction).map(([k,v])=>k+" ×"+v).join(", "));
+    const top=strategy.alternatives.find(x=>x.label===ranked[0].label);
+    if(top){
+      adviceLines.push("⚠️ Риск действия: "+top.risk+"%"+(top.reasons.length?"\n   └ "+top.reasons.join("; "):""));
+      adviceLines.push("🔮 ЕСЛИ НАЖАТЬ: "+top.scenario);
+    }
   }else if(decision.reason){
     adviceLines.push("💬 "+decision.reason);
   }
+  if(strategy.economics){
+    adviceLines.push("","💰 ЭКОНОМИКА СЦЕНАРИЯ: "+Math.round(strategy.economics.delta).toLocaleString("ru-RU")+" ₽ до комиссии");
+  }
+  if(strategy.contract){
+    const parts=[];
+    if(strategy.contract.reward!=null)parts.push("награда "+Math.round(strategy.contract.reward).toLocaleString("ru-RU")+" ₽");
+    if(strategy.contract.maxPrice!=null)parts.push("лимит "+Math.round(strategy.contract.maxPrice).toLocaleString("ru-RU")+" ₽");
+    if(strategy.contract.minHp!=null)parts.push("мощность от "+strategy.contract.minHp+" л.с.");
+    adviceLines.push("📋 КОНТРАКТ: "+(parts.length?parts.join(", "):"условия распознаны"));
+    if(strategy.contractFit?.checks?.length){
+      const fitText=strategy.contractFit.checks.map(x=>{
+        const status=x.ok===true?"✅":x.ok===false?"❌":"❔";
+        const actual=x.actual!=null?(" сейчас "+x.actual):" не распознано";
+        const required=x.required!=null?(" / нужно "+x.required):"";
+        return status+" "+x.name+actual+required;
+      }).join("; ");
+      adviceLines.push("🧾 СООТВЕТСТВИЕ КОНТРАКТУ: "+fitText);
+    }
+  }
+  if(strategy.warnings.length)adviceLines.push("⚠️ "+strategy.warnings.join("\n⚠️ "));
   const text=adviceLines.join("\n");
   const markup=await gameKeyboard(latest);
   const messageId=options.messageId||activeGameChats.get(String(chat)+"_message_id");
@@ -514,7 +632,43 @@ async function state(chat){
       : await relay("/state");
     const hasData=s&&(s.balance!=null||s.garage!=null||s.vehicle?.name||s.raw_message);
     if(!hasData)return send(chat,"📊 Текущее состояние\n\n⚠️ Игра ещё не передала состояние. Нажми «🧪 Проверить связь с игрой» или «🧠 Что делать сейчас».");
-    return send(chat,"📊 Текущее состояние\n\n💰 Баланс: "+(s.balance??"неизвестно")+"\n🚗 Гараж: "+(s.garage??"неизвестно")+"\n🚘 Машина: "+(s.vehicle?.name||"нет данных"));
+
+    const raw=String(s.raw_message||s.last_game_message?.text||"");
+    const parsed=raw?parseState(raw):s;
+    const strategyState=Object.assign({},parsed,{raw_message:raw,raw_text:parsed.raw_text,buttons:s.buttons||s.last_game_message?.buttons||[]});
+    const economy=await economySummary(chat,120);
+    const offerMatch=/(?:предлож(?:ение)?\s*(?:покупателя)?|покупатель\s+предлагает|предлагает)[^0-9]{0,30}([0-9][0-9 .]*)\s*(?:₽|руб)/i.exec(raw);
+    const offer=offerMatch?Number(offerMatch[1].replace(/[^0-9]/g,"")):null;
+    const vehicleEconomics=currentVehicleEconomics(strategyState,offer,0);
+    const contract=parseContract(raw);
+    const lines=[
+      "📊 ТЕКУЩЕЕ СОСТОЯНИЕ","",
+      "💰 Баланс: "+(s.balance!=null?Number(s.balance).toLocaleString("ru-RU")+" ₽":"неизвестно"),
+      "🚗 Гараж: "+(s.garage??"неизвестно"),
+      "🚘 Машина: "+(s.vehicle?.name||"нет данных")
+    ];
+    if(s.vehicle?.hp!=null)lines.push("⚙️ Мощность: "+s.vehicle.hp+" л.с.");
+    if(s.vehicle?.mileage!=null)lines.push("🛣 Пробег: "+Number(s.vehicle.mileage).toLocaleString("ru-RU")+" км");
+    if(s.plate)lines.push("🔢 Номер: "+s.plate);
+    if(offer!=null)lines.push("💵 Предложение: "+offer.toLocaleString("ru-RU")+" ₽");
+    if(vehicleEconomics?.sale){
+      const delta=vehicleEconomics.sale.profit;
+      lines.push("📈 Результат продажи: "+(delta>=0?"+":"")+Math.round(delta).toLocaleString("ru-RU")+" ₽");
+    }
+    const activeVehicles=Array.isArray(economy?.vehicles)?economy.vehicles.filter(v=>v.status==="active"):[]; 
+    if(activeVehicles.length){
+      const v=activeVehicles[0];
+      lines.push("🧾 Учтённая себестоимость: "+Math.round(v.full_cost).toLocaleString("ru-RU")+" ₽");
+      if(v.realized_profit!=null)lines.push("📚 Учтённый результат: "+(v.realized_profit>=0?"+":"")+Math.round(v.realized_profit).toLocaleString("ru-RU")+" ₽");
+    }
+    if(contract){
+      const cp=[];
+      if(contract.reward!=null)cp.push("награда "+Math.round(contract.reward).toLocaleString("ru-RU")+" ₽");
+      if(contract.maxPrice!=null)cp.push("лимит "+Math.round(contract.maxPrice).toLocaleString("ru-RU")+" ₽");
+      if(contract.minHp!=null)cp.push("от "+contract.minHp+" л.с.");
+      lines.push("📋 Контракт: "+(cp.length?cp.join(", "):"условия распознаны"));
+    }
+    return send(chat,lines.join("\n"));
   }catch(e){return send(chat,"⚠️ Состояние пока недоступно: "+e.message);}
 }
 async function advice(chat){
@@ -552,14 +706,28 @@ async function advice(chat){
     const sourceMessageId=currentMessage?.message_id||null;
     const adviceState={...r.state,...(currentMessage||{}),raw_message:currentMessage?.text||r.state?.raw_message};
     const ranked=await rankButtons(chat,adviceState,observed);
-    const recommended=ranked[0]?.label||null;
+    const economy=await economySummary(chat,120);
+    const strategy=buildStrategy(adviceState,ranked,economy);
+    const recommended=strategy.actionable ? (ranked[0]?.label||null) : null;
     const rows=[];
     if(recommended && sourceMessageId){
       const risk=actionRisk(r.decision?.action||recommended);
       rows.push([{text:(risk?"⚠️ Подтвердить: ":"🤖 Выполнить: ")+recommended,callback_data:confirmButtonData(recommended,sourceMessageId)}]);
     }
     let out=r.text||"Пока нет актуального решения.";
-    if(recommended) out+="\n\n➡️ Нажать: «"+recommended+"» — "+ranked[0].percent+"%\n💬 "+ranked[0].reason;
+    if(recommended){
+      const top=strategy.alternatives.find(x=>x.label===recommended);
+      out+="\n\n➡️ Нажать: «"+recommended+"» — "+ranked[0].percent+"%\n💬 "+ranked[0].reason;
+      if(top) out+="\n⚠️ Риск действия: "+top.risk+"%"+(top.reasons.length?"\n   └ "+top.reasons.join("; "):"");
+    }
+    if(strategy.contract){
+      const p=[];
+      if(strategy.contract.reward!=null)p.push("награда "+Math.round(strategy.contract.reward).toLocaleString("ru-RU")+" ₽");
+      if(strategy.contract.maxPrice!=null)p.push("лимит "+Math.round(strategy.contract.maxPrice).toLocaleString("ru-RU")+" ₽");
+      if(strategy.contract.minHp!=null)p.push("мощность от "+strategy.contract.minHp+" л.с.");
+      out+="\n📋 Контракт: "+(p.length?p.join(", "):"условия распознаны");
+    }
+    if(strategy.warnings.length)out+="\n⚠️ "+strategy.warnings.join("\n⚠️ ");
     return send(chat,out);
   }catch(e){return send(chat,"⚠️ Помощник пока не получил состояние игры: "+e.message);}
 }
@@ -601,26 +769,36 @@ async function callback(q){
     else{try{label=await userBridge.getGameButton(ref.messageId,ref.key);}catch(e){console.log("GAME BUTTON LOOKUP ERROR:",e.message);}}
     if(!label)return send(chat,"⚠️ Эта кнопка больше отсутствует. Нажми «🔄 Обновить игру».");
     gameActionChats.add(String(chat));
+    let backgroundCallbackWait=false;
     try{
+      // Capture the exact pre-click screen before sending the action.
+      const beforeState=Object.assign({},userBridge.status());
+      const beforeScreen=beforeState.last_game_message;
       await userBridge.clickGameButton(label,ref.messageId);
-      recordClick(chat,latest.text||"",latest.buttons||[],label,userBridge.status().last_game_message?.text||"").catch(e=>console.log("BUTTON STRATEGY CALLBACK ERROR:",e.message));
+      recordClick(chat,beforeScreen?.text||"",beforeScreen?.buttons||[],label,userBridge.status().last_game_message?.text||"").catch(e=>console.log("BUTTON STRATEGY CALLBACK ERROR:",e.message));
       if(activeGameChats.get(String(chat))){
-        const beforeScreen=userBridge.status().last_game_message;
         const next=await waitForGameUpdate(ref.messageId,beforeScreen?.text||"",beforeScreen?.buttons||[],1200);
         const screenId=q.message?.message_id||activeGameChats.get(String(chat)+"_message_id");
         if(screenId)activeGameChats.set(String(chat)+"_message_id",screenId);
-        // Use the same renderer as every other game update so the image,
-        // strategy, percentages and keyboard never diverge after a click.
         if(next){
+          const afterState=Object.assign({},userBridge.status());
+          recordMemoryAction(chat,beforeState,label,afterState).catch(e=>console.log("GAME MEMORY CALLBACK ERROR:",e.message));
+          recordEconomyTransition(chat,beforeState,label,afterState).catch(e=>console.log("GAME ECONOMY CALLBACK ERROR:",e.message));
           await renderGame(chat,{messageId:screenId,force:true});
         }else{
-          // Do not delete/re-send the old screen. Wait for the slow game
-          // response in the background and render it when it actually arrives.
+          // Keep the current screen visible while waiting for a slow game response.
+          backgroundCallbackWait=true;
           setTimeout(async()=>{
             try{
               const later=await waitForGameUpdate(ref.messageId,beforeScreen?.text||"",beforeScreen?.buttons||[],8000);
-              if(later) await renderGame(chat,{messageId:activeGameChats.get(String(chat)+"_message_id"),force:true});
+              if(later){
+                const afterState=Object.assign({},userBridge.status());
+                recordMemoryAction(chat,beforeState,label,afterState).catch(e=>console.log("GAME MEMORY LATE CALLBACK ERROR:",e.message));
+                recordEconomyTransition(chat,beforeState,label,afterState).catch(e=>console.log("GAME ECONOMY LATE CALLBACK ERROR:",e.message));
+                await renderGame(chat,{messageId:activeGameChats.get(String(chat)+"_message_id"),force:true});
+              }
             }catch(e){console.log("GAME CALLBACK LATE UPDATE ERROR:",e.message);}
+            finally{gameActionChats.delete(String(chat));}
           },0);
         }
         return;
@@ -629,7 +807,7 @@ async function callback(q){
     }catch(e){
       return send(chat,"❌ Не удалось выполнить «"+label+"»: "+String(e.message||e).slice(0,700));
     }finally{
-      gameActionChats.delete(String(chat));
+      if(!backgroundCallbackWait)gameActionChats.delete(String(chat));
     }
   }
   if(data==="connect")return connect(chat);
