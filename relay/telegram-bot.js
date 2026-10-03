@@ -485,6 +485,9 @@ async function connect(chat){
   return send(chat,"🔗 Подключение игры\n\nИгра: @"+GAME_USERNAME+"\n\nПользовательский Telegram-мост: "+(userBridge.configured()?"готов":"не настроен")+"\n\n📸 Скриншотный режим уже работает без API-данных. Пришли скриншот или перешли сообщение из игры — бот разберёт его прямо в Telegram.\n\n🔐 Не отправляй API hash, коды входа, пароль 2FA или сессию в чат.");
 }
 async function gameKeyboard(message){
+  // In game mode the lower ReplyKeyboard must contain only the real buttons
+  // exposed by the current game screen. Bot utility controls are intentionally
+  // kept out of the game panel to avoid clutter and accidental game clicks.
   const labels=[...new Set((message?.buttons||[]).map(x=>String(x||"").trim()).filter(Boolean))];
   const rows=[];
   for(let i=0;i<labels.length;i+=2){
@@ -492,10 +495,6 @@ async function gameKeyboard(message){
     if(labels[i+1])row.push({text:labels[i+1]});
     rows.push(row);
   }
-  rows.push([{text:"🧠 Стратегия"},{text:"📊 Состояние"}]);
-  rows.push([{text:"📜 История"},{text:"💰 Экономика"}]);
-  rows.push([{text:"🔄 Обновить игру"},{text:"⬅️ Назад"}]);
-  rows.push([{text:"🚪 Выйти из игры"}]);
   return {keyboard:rows,resize_keyboard:true,one_time_keyboard:false,is_persistent:true};
 }
 async function renderGameNow(chat,options={}){
