@@ -788,6 +788,7 @@ async function callback(q){
               if(later){
                 const afterState=Object.assign({},userBridge.status());
                 recordMemoryAction(chat,beforeState,label,afterState).catch(e=>console.log("GAME MEMORY LATE CALLBACK ERROR:",e.message));
+                recordEconomyTransition(chat,beforeState,label,afterState).catch(e=>console.log("GAME ECONOMY LATE CALLBACK ERROR:",e.message));
                 await renderGame(chat,{messageId:activeGameChats.get(String(chat)+"_message_id"),force:true});
               }
             }catch(e){console.log("GAME CALLBACK LATE UPDATE ERROR:",e.message);}
