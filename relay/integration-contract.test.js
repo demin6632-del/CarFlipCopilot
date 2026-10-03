@@ -23,6 +23,9 @@ assert(bridge.includes('"telegram_session"'), "Telegram session persistence key 
 assert(bridge.includes('"telegram_binding"'), "Telegram binding persistence key missing");
 
 assert(telegram.includes("userBridge.clickGameButton(label,ref.messageId)"), "Game click is not bound to source message");
+assert(telegram.includes("secret_token:WEBHOOK_SECRET"), "Telegram webhook secret is not configured");
+assert(telegram.includes("createConnectServer(userBridge,BRIDGE_PORT,{webhookSecret:WEBHOOK_SECRET})"), "Webhook secret is not passed to HTTP server");
+assert(bridge.includes("x-telegram-bot-api-secret-token"), "Telegram webhook secret validation missing");
 assert(telegram.includes("waitForGameUpdate(ref.messageId"), "Callback update wait is missing");
 assert(telegram.includes("waitForGameUpdate(latest.message_id"), "Normal game update wait is missing");
 assert(telegram.includes("gameActionChats.add(String(chat));"), "Game action lock missing");
