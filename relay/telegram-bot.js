@@ -574,7 +574,9 @@ async function renderGameNow(chat,options={}){
     }
   }
   if(strategy.warnings.length)adviceLines.push("⚠️ "+strategy.warnings.join("\n⚠️ "));
-  // Telegram sendMessage has a 4096-character limit. Keep the full game screen\n  // logic, but never let a verbose strategy report break delivery.\n  const text=adviceLines.join("\n").slice(0,3900);
+  // Telegram sendMessage has a 4096-character limit. Keep the full game screen
+  // logic, but never let a verbose strategy report break delivery.
+  const text=adviceLines.join("\n").slice(0,3900);
   const markup=await gameKeyboard(latest);
   const messageId=options.messageId||activeGameChats.get(String(chat)+"_message_id");
   if(messageId){
