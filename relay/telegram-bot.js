@@ -769,7 +769,7 @@ async function advice(chat){
     const ranked=await rankButtons(chat,adviceState,observed);
     const economy=await economySummary(chat,120);
     const strategy=buildStrategy(adviceState,ranked,economy);
-    const recommended=strategy.actionable ? (ranked[0]?.label||null) : null;
+    const recommended=strategy.actionEvidence ? (ranked[0]?.label||null) : null;
     const rows=[];
     if(recommended && sourceMessageId){
       const risk=actionRisk(r.decision?.action||recommended);
