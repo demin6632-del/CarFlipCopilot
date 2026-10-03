@@ -84,7 +84,7 @@ function buttonChoiceAnalysis(decision,state,buttons){
 
 function buttonScoreText(ranked){
   if(!ranked.length)return "";
-  return ranked.map((x,i)=>(i===0?"⭐ ":"")+String(i+1)+". «"+x.label+"» — "+x.percent+"%\n   └ "+x.reason).join("\n");
+  return ranked.map((x,i)=>(i===0?"⭐ ":"")+String(i+1)+". «"+x.label+"» — приоритет "+x.percent+"%\n   └ "+x.reason).join("\n");
 }
 function recommendGameButton(decision,buttons,state){
   const ranked=buttonChoiceAnalysis(decision,state,buttons);
@@ -133,7 +133,7 @@ async function notifyBridgeState(state){
   const autoDecision=state.local_decision||decide(state,90);
   const ranked=await rankButtons(chat,state,state.buttons||[]);
   if(ranked.length){
-    lines.push("","🧠 АВТОАНАЛИЗ КНОПОК","➡️ Лучше нажать: «"+ranked[0].label+"» — "+ranked[0].percent+"%");
+    lines.push("","🧠 АВТОАНАЛИЗ КНОПОК","➡️ Рекомендация: «"+ranked[0].label+"» — приоритет "+ranked[0].percent+"%");
     lines.push("📊 ВСЕ КНОПКИ:\n"+buttonScoreText(ranked));
   }else lines.push("","Нажми «🧠 Что делать сейчас», чтобы получить решение ИИ.");
   try{await send(chat,lines.join("\n"));}catch(e){console.log("BRIDGE NOTICE ERROR:",e.message);}
@@ -533,9 +533,9 @@ async function renderGameNow(chat,options={}){
   const rawGameText=String(latest.text||"—");
   const adviceLines=["🎮 ИГРА","",""+rawGameText.slice(0,7000),"","🧠 КАК ПОСТУПИТЬ: "+(ranked.length?"АНАЛИЗ КНОПОК":"НЕТ КНОПОК"),"🔎 Распознавание кнопок: "+screenConfidence+"%"];
   if(ranked.length){
-    adviceLines.push("💡 Проценты — стратегическая оценка по текущему экрану, сохранённой истории твоей игры и финансовому контексту.");
+    adviceLines.push("💡 Приоритет — относительная стратегическая оценка, а не вероятность исхода. Учитываются текущий экран, история игры и финансовый контекст.");
     if(strategy.actionable){
-      adviceLines.push("","👉 РЕКОМЕНДАЦИЯ: «"+ranked[0].label+"» — "+ranked[0].percent+"%");
+      adviceLines.push("","👉 РЕКОМЕНДАЦИЯ: «"+ranked[0].label+"» — приоритет "+ranked[0].percent+"%");
     }else{
       adviceLines.push("","👉 РЕКОМЕНДАЦИЯ: нет — текущий экран не подтверждает, что нужно нажимать кнопку.");
     }
@@ -582,7 +582,7 @@ async function renderGameNow(chat,options={}){
   if(messageId){
     try{
       await tg("deleteMessage",{chat_id:chat,message_id:messageId});
-    }catch(e){console.log("GAME SCREEN DELETE ERROR:",e.message);}
+    }catch(e){if(!/message to delete not found/i.test(String(e.message||""))) console.log("GAME SCREEN DELETE ERROR:",e.message);}
   }
   let sent=null;
   try {
@@ -731,7 +731,7 @@ async function advice(chat){
     let out=r.text||"Пока нет актуального решения.";
     if(recommended){
       const top=strategy.alternatives.find(x=>x.label===recommended);
-      out+="\n\n➡️ Нажать: «"+recommended+"» — "+ranked[0].percent+"%\n💬 "+ranked[0].reason;
+      out+="\n\n➡️ Нажать: «"+recommended+"» — приоритет "+ranked[0].percent+"%\n💬 "+ranked[0].reason;
       if(top) out+="\n⚠️ Риск действия: "+top.risk+"%"+(top.reasons.length?"\n   └ "+top.reasons.join("; "):"");
     }
     if(strategy.contract){
