@@ -37,7 +37,7 @@ async function db(){
   if(!process.env.DATABASE_URL) return null;
   if(!dbPromise){
     dbPromise=(async()=>{
-      const c=new Client({connectionString:process.env.DATABASE_URL,ssl:{rejectUnauthorized:false}});
+      const c=new Client({connectionString:process.env.DATABASE_URL,ssl:{rejectUnauthorized:false,connectionTimeoutMillis:5000},connectionTimeoutMillis:5000,query_timeout:5000,statement_timeout:5000});
       await c.connect();
       await c.query("CREATE TABLE IF NOT EXISTS button_strategy_history (id bigserial PRIMARY KEY,chat_id text NOT NULL,screen_key text NOT NULL,context_key text NOT NULL,screen_text text NOT NULL,buttons jsonb NOT NULL,clicked_button text,next_screen_key text,created_at timestamptz NOT NULL DEFAULT now())");
       await c.query("CREATE INDEX IF NOT EXISTS button_strategy_history_chat_idx ON button_strategy_history(chat_id,created_at DESC)");
