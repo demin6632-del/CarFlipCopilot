@@ -58,15 +58,19 @@ async function recordClick(chat,text,buttons,label,nextText){
 }
 function saleEconomics(state,raw){
   const text=String(raw||"");
-  const offerMatch=/(?:предлож(?:ение)?\s*(?:покупателя)?|покупатель\s+предлагает|предлагает)[^0-9]{0,40}([0-9][0-9 .]*)\s*(?:₽|руб)?/i.exec(text);
-  const investedMatch=/(?:вложено\s+в\s+авто|вложено|себестоимость|затрат(?:ы)?)[^0-9]{0,40}([0-9][0-9 .]*)\s*(?:₽|руб)?/i.exec(text);
+  const offerMatch=/(?:предложение(?:\\s+покупателя)?|покупатель\\s+предлагает|предлагает)[^0-9]{0,80}([0-9][0-9 .]*)\\s*(?:₽|руб)?/i.exec(text);
+  const investedMatch=/(?:вложено\\s+в\\s+авто|вложено|себестоимость|затраты)[^0-9]{0,80}([0-9][0-9 .]*)\\s*(?:₽|руб)?/i.exec(text);
+  const lossMatch=/(?:убыток|прибыль|разница)[^0-9-]{0,30}(-?[0-9][0-9 .]*)\\s*(?:₽|руб)?/i.exec(text);
   const offer=offerMatch?Number(offerMatch[1].replace(/[^0-9]/g,"")):null;
   const investedFromText=investedMatch?Number(investedMatch[1].replace(/[^0-9]/g,"")):null;
+  const loss=lossMatch?Number(lossMatch[1].replace(/[^0-9-]/g,"")):null;
   const vehicle=state?.vehicle||{};
   const investedCandidates=[vehicle.invested,vehicle.cost_basis,vehicle.cost,state?.invested,investedFromText];
   const cost=investedCandidates.map(v=>Number(v)).find(v=>Number.isFinite(v)&&v>0)||null;
-  if(offer==null||cost==null)return null;
-  return {offer,cost,delta:offer-cost,renewedCost:cost+1500};
+  const inferredCost=offer!=null&&loss!=null&&loss<0?offer+Math.abs(loss):null;
+  const finalCost=cost||inferredCost;
+  if(offer==null||finalCost==null)return null;
+  return {offer,cost:finalCost,delta:offer-finalCost,renewedCost:finalCost+1500};
 }
 
 function scoreButtons(buttons,state,history){
