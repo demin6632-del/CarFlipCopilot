@@ -58,9 +58,9 @@ async function recordClick(chat,text,buttons,label,nextText){
 }
 function saleEconomics(state,raw){
   const text=String(raw||"");
-  const offerMatch=/(?:предложение(?:\\s+покупателя)?|покупатель\\s+предлагает|предлагает)[^0-9]{0,80}([0-9][0-9 .]*)\\s*(?:₽|руб)?/i.exec(text);
-  const investedMatch=/(?:вложено\\s+в\\s+авто|вложено|себестоимость|затраты)[^0-9]{0,80}([0-9][0-9 .]*)\\s*(?:₽|руб)?/i.exec(text);
-  const lossMatch=/(?:убыток|прибыль|разница)[^0-9-]{0,30}(-?[0-9][0-9 .]*)\\s*(?:₽|руб)?/i.exec(text);
+  const offerMatch=/(?:предложение(?:\\s+покупателя)?|покупатель\\s+предлагает|предлагает)[^0-9]{0,80}([0-9][0-9 .,]*)\\s*(?:₽|руб)?/i.exec(text);
+  const investedMatch=/(?:вложено\\s+в\\s+авто|вложено|себестоимость|затраты)[^0-9]{0,80}([0-9][0-9 .,]*)\\s*(?:₽|руб)?/i.exec(text);
+  const lossMatch=/(?:убыток|прибыль|разница)[^0-9-]{0,30}(-?[0-9][0-9 .,]*)\\s*(?:₽|руб)?/i.exec(text);
   const offer=offerMatch?Number(offerMatch[1].replace(/[^0-9]/g,"")):null;
   const investedFromText=investedMatch?Number(investedMatch[1].replace(/[^0-9]/g,"")):null;
   const loss=lossMatch?Number(lossMatch[1].replace(/[^0-9-]/g,"")):null;
