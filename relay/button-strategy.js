@@ -117,12 +117,12 @@ function scoreButtons(buttons,state,history){
     const sale=saleEconomics(state,raw);
     if(sale){
       if(type==="sell" && sale.delta<0){
-        score-=55;
-        if(sale.offer < sale.cost-5000) score-=15;
+        score-=70;
+        if(sale.offer < sale.cost-5000) score-=25;
       }
       if(type==="renew" && sale.delta<0){
-        score+=30;
-        if(sale.offer < sale.cost-5000) score+=10;
+        score+=45;
+        if(sale.offer < sale.cost-5000) score+=20;
       }
       if(type==="sell" && sale.delta>=0)score+=25;
       if(type==="renew" && sale.delta>=0)score-=20;
@@ -137,7 +137,7 @@ function scoreButtons(buttons,state,history){
     else if(contextCount>0)score-=Math.min(15,contextCount*3);
 
     const escaped=n.replace(/[.*+?^$()|[\]\\]/g,"\\$&");
-    const direct=new RegExp("(?:нажми|выбери|нужно нажать|следует нажать|рекомендуется нажать)\s+[«\\\"“]?"+escaped+"[»\\\"”]?","i");
+    const direct=new RegExp("(?:нажми|выбери|нужно нажать|следует нажать|рекомендуется нажать)\\s+[«\\\"“]?"+escaped+"[»\\\"”]?","i");
     if(direct.test(raw))score+=40;
     return {label,type,rawScore:Math.max(.1,score),sameScreenCount,contextCount};
   });
@@ -152,7 +152,24 @@ async function rankButtons(chat,state,buttons){
     const r=await c.query("SELECT screen_key,context_key,clicked_button FROM button_strategy_history WHERE chat_id=$1 AND clicked_button IS NOT NULL ORDER BY id DESC LIMIT 500",[String(chat)]);
     history=r.rows;
   }catch(e){console.log("BUTTON STRATEGY HISTORY ERROR:",e.message);}
-  const ranked=scoreButtons(buttons,state,history);
+  let ranked=scoreButtons(buttons,state,history);
+  // When a buyer offers materially below the confirmed cost basis, renewing
+  // is the economically correct default if that real button exists. History
+  // must not be strong enough to make "Cancel" or a loss-making sale win.
+  const sale=saleEconomics(state,String(state?.raw_message||state?.raw_text||""));
+  if(sale && sale.delta < -5000){
+    const renew=ranked.find(x=>x.type==="renew");
+    const sell=ranked.find(x=>x.type==="sell");
+    if(renew){
+      const bestOther=Math.max(...ranked.filter(x=>x!==renew).map(x=>x.rawScore),0);
+      renew.rawScore=Math.max(renew.rawScore,bestOther+60);
+    }
+    if(sell)sell.rawScore=Math.min(sell.rawScore,.1);
+    const min=Math.min(...ranked.map(x=>x.rawScore));
+    const shifted=ranked.map(x=>({...x,weight:x.rawScore-min+2}));
+    const total=shifted.reduce((a,x)=>a+x.weight,0);
+    ranked=shifted.map(x=>({...x,percent:Math.round(x.weight/total*100)})).sort((a,b)=>b.percent-a.percent);
+  }
   if(ranked.length){
     const diff=100-ranked.reduce((a,x)=>a+x.percent,0); ranked[0].percent+=diff;
     for(const x of ranked)x.reason=reasonFor(x,state,history);
