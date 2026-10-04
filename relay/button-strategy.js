@@ -56,6 +56,19 @@ async function recordClick(chat,text,buttons,label,nextText){
   try{await c.query("UPDATE button_strategy_history SET clicked_button=$1,next_screen_key=$2 WHERE id=(SELECT id FROM button_strategy_history WHERE chat_id=$3 AND screen_key=$4 ORDER BY id DESC LIMIT 1)",[String(label||""),screenKey(nextText||""),String(chat),screenKey(text||"")]);}
   catch(e){console.log("BUTTON STRATEGY CLICK RECORD ERROR:",e.message);}
 }
+function saleEconomics(state,raw){
+  const text=String(raw||"");
+  const offerMatch=/(?:предлож(?:ение)?\\s*(?:покупателя)?|покупатель\\s+предлагает|предлагает)[^0-9]{0,40}([0-9][0-9 .]*)\\s*(?:₽|руб)?/i.exec(text);
+  const investedMatch=/(?:вложено\\s+в\\s+авто|вложено|себестоимость|затрат(?:ы)?)[^0-9]{0,40}([0-9][0-9 .]*)\\s*(?:₽|руб)?/i.exec(text);
+  const offer=offerMatch?Number(offerMatch[1].replace(/[^0-9]/g,"")):null;
+  const investedFromText=investedMatch?Number(investedMatch[1].replace(/[^0-9]/g,"")):null;
+  const vehicle=state?.vehicle||{};
+  const investedCandidates=[vehicle.invested,vehicle.cost_basis,vehicle.cost,state?.invested,investedFromText];
+  const cost=investedCandidates.map(v=>Number(v)).find(v=>Number.isFinite(v)&&v>0)||null;
+  if(offer==null||cost==null)return null;
+  return {offer,cost,delta:offer-cost,renewedCost:cost+1500};
+}
+
 function scoreButtons(buttons,state,history){
   const list=[...new Set((buttons||[]).map(x=>String(x||"").trim()).filter(Boolean))];
   if(!list.length)return [];
@@ -93,6 +106,24 @@ function scoreButtons(buttons,state,history){
     }
     if(type==="sell"&&Number.isFinite(Number(state?.price))&&/влож|себесто|купил|затрат/.test(t))score+=6;
 
+    // Жёсткое экономическое правило для экрана продажи автомобиля.
+    // Если предложение ниже подтверждённой себестоимости, продажа в минус
+    // не должна выигрывать у продления объявления только из-за общего
+    // контекста продажи. Учитываем и стоимость следующего продления.
+    const sale=saleEconomics(state,raw);
+    if(sale){
+      if(type==="sell" && sale.delta<0){
+        score-=55;
+        if(sale.offer < sale.cost-5000) score-=15;
+      }
+      if(type==="renew" && sale.delta<0){
+        score+=30;
+        if(sale.offer < sale.cost-5000) score+=10;
+      }
+      if(type==="sell" && sale.delta>=0)score+=25;
+      if(type==="renew" && sale.delta>=0)score-=20;
+    }
+
     // History is evidence, not a reason to recommend the same action again.
     // A click already made on this exact unchanged screen gets a strong penalty.
     // Repeated actions in the same context also get a smaller penalty.
@@ -129,6 +160,9 @@ function reasonFor(x,state,history){
   const t=norm(raw), currentScreenKey=screenKey(raw),r=[];
   if(x.type==="buy"&&/купить|покупка|продавец/.test(t))r.push("экран содержит контекст покупки");
   if(x.type==="sell"&&/продать|продажа|покупател|предложение/.test(t))r.push("экран содержит контекст продажи");
+  const sale=saleEconomics(state,raw);
+  if(sale && x.type==="sell" && sale.delta<0)r.push("предложение ниже себестоимости на "+Math.abs(Math.round(sale.delta)).toLocaleString("ru-RU")+" ₽ — продажа фиксирует убыток");
+  if(sale && x.type==="renew" && sale.delta<0)r.push("предложение ниже себестоимости — продление сохраняет возможность получить более выгодную цену");
   if(x.type==="plate"&&/номер|аукцион|ставка/.test(t))r.push("обнаружен контекст госномера/аукциона");
   if(x.type==="inspect")r.push("проверка снижает риск перед финансовым действием");
   const sameScreen=(history||[]).filter(h=>h.screen_key===currentScreenKey&&norm(h.clicked_button)===norm(x.label)).length;
