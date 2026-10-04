@@ -1075,8 +1075,12 @@ async function pollBotUpdates(){
         // A second getUpdates consumer must never be allowed to fight the
         // active instance. Drop this consumer until the lock can be reacquired.
         if(/Conflict: terminated by other getUpdates request/i.test(msg)){
-          polling=false;
-          break;
+          // During a rolling deploy an old instance can still own getUpdates.
+          // Do not permanently stop the new instance: keep the process alive,
+          // wait for the old consumer to disappear, then retry the same poll.
+          console.log("TELEGRAM POLLING CONFLICT: waiting for previous consumer");
+          await new Promise(r=>setTimeout(r,5000));
+          continue;
         }
         await new Promise(r=>setTimeout(r,1500));
       }
