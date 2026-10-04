@@ -33,6 +33,8 @@ async function db(){
     await c.query("CREATE INDEX IF NOT EXISTS game_economy_chat_idx ON game_economy_transactions(chat_id,created_at DESC)");
     await c.query("CREATE TABLE IF NOT EXISTS game_economy_vehicles (chat_id text NOT NULL,vehicle_key text NOT NULL,vehicle_name text,plate text,purchase_cost numeric NOT NULL DEFAULT 0,extra_cost numeric NOT NULL DEFAULT 0,realized_proceeds numeric NOT NULL DEFAULT 0,fees numeric NOT NULL DEFAULT 0,status text NOT NULL DEFAULT 'active',updated_at timestamptz NOT NULL DEFAULT now(),PRIMARY KEY(chat_id,vehicle_key))");
     await c.query("CREATE INDEX IF NOT EXISTS game_economy_vehicle_chat_idx ON game_economy_vehicles(chat_id,updated_at DESC)");
+    await c.query("CREATE TABLE IF NOT EXISTS game_plate_warehouse (chat_id text NOT NULL,plate text NOT NULL,status text NOT NULL DEFAULT 'available',last_event text,auction_count integer NOT NULL DEFAULT 0,no_bid_count integer NOT NULL DEFAULT 0,last_seen_at timestamptz NOT NULL DEFAULT now(),PRIMARY KEY(chat_id,plate))");
+    await c.query("CREATE INDEX IF NOT EXISTS game_plate_warehouse_chat_idx ON game_plate_warehouse(chat_id,status,last_seen_at DESC)");
     return c;
   })().catch(e=>{console.log("GAME ECONOMY DB INIT ERROR:",e.message);dbPromise=null;return null;});
   return dbPromise;
@@ -95,6 +97,33 @@ async function recordTransition(chat,before,button,after){
     }
   }catch(e){console.log("GAME ECONOMY RECORD ERROR:",e.message);}
 }
+async function recordPlateAuctionReturn(chat,plates,screenText){
+  const c=await db(); if(!c||chat==null||!Array.isArray(plates)||!plates.length)return {stored:0};
+  let stored=0;
+  for(const rawPlate of plates){
+    const plate=String(rawPlate||"").replace(/\\s+/g," ").trim();
+    if(!plate)continue;
+    try{
+      await c.query(
+        "INSERT INTO game_plate_warehouse(chat_id,plate,status,last_event,auction_count,no_bid_count,last_seen_at) VALUES($1,$2,'available',$3,1,1,now()) ON CONFLICT(chat_id,plate) DO UPDATE SET status='available',last_event=excluded.last_event,auction_count=game_plate_warehouse.auction_count+1,no_bid_count=game_plate_warehouse.no_bid_count+1,last_seen_at=now()",
+        [String(chat),plate,String(screenText||"").slice(0,2000)]
+      );
+      stored++;
+    }catch(e){console.log("PLATE WAREHOUSE RECORD ERROR:",e.message);}
+  }
+  return {stored};
+}
+async function plateWarehouse(chat,limit=50){
+  const c=await db(); if(!c||chat==null)return [];
+  try{
+    const r=await c.query("SELECT plate,status,auction_count,no_bid_count,last_seen_at FROM game_plate_warehouse WHERE chat_id=$1 ORDER BY last_seen_at DESC LIMIT $2",[String(chat),Math.max(1,Math.min(200,Number(limit)||50))]);
+    return r.rows;
+  }catch(e){return [];}
+}
+function plateDecision(plate){
+  const p=String(plate||"").trim();
+  return p ? {plate:p,action:"hold",reason:"торги завершились без ставок — не выставлять повторно автоматически; сначала проверить спрос и цену"} : null;
+}
 async function summary(chat,limit=100){
   const c=await db();if(!c||chat==null)return {transactions:[],net:0,spent:0,received:0,byKind:{},vehicles:[]};
   try{
@@ -120,4 +149,4 @@ function currentVehicleEconomics(state,offer,commission=0){
   const sale=expectedSale(o,base,commission);
   return {vehicle:info,cost:base,offer:o,sale};
 }
-module.exports={recordTransition,summary,classify,expectedSale,RENEWAL_COST,PLATE_REMOVAL_COST,PLATE_AUCTION_COMMISSION,vehicleInfo,currentVehicleEconomics};
+module.exports={recordTransition,recordPlateAuctionReturn,plateWarehouse,plateDecision,summary,classify,expectedSale,RENEWAL_COST,PLATE_REMOVAL_COST,PLATE_AUCTION_COMMISSION,vehicleInfo,currentVehicleEconomics};
