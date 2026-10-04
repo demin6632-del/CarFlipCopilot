@@ -639,7 +639,7 @@ function parseGameText(text) {
   const mileage=s.match(/(?:пробег|mileage)[^0-9]{0,20}([0-9][0-9\\s.,]*)/i);
   const owners=s.match(/(?:владельц(?:а|ев)?|владельцев|owners)[^0-9]{0,20}(\\d+)/i);
   const plate=s.match(/(?:номер|госномер|гос\\.?\\s*номер|plate)[^A-ZА-Я0-9]{0,20}([A-ZА-Я]\\s*\\d{3}\\s*[A-ZА-Я]{2}\\s*\\d{2,3})/i);
-  const vehicleLine=s.match(/(?:автомобиль|машина|vehicle)\\s*[:：-]\\s*([^\\n]+)/i);
+  const vehicleLine=s.match(/(?:автомобиль|машина|vehicle)\\s*[:：-]\\s*([^\n]+)/i);
 
   if(balanceMatch) out.balance=money(balanceMatch[1]);
   if(garageMatch) out.garage=Number(garageMatch[1])+"/"+Number(garageMatch[2]);
@@ -655,7 +655,8 @@ function parseGameText(text) {
   return out;
 }
 
-function createConnectServer(bridge, port=8787, options={}) {\n  const webhookSecret=String(options.webhookSecret||"");
+function createConnectServer(bridge, port=8787, options={}) {
+  const webhookSecret=String(options.webhookSecret||"");
   const server=http.createServer(async(req,res)=>{
     const u=new URL(req.url,"http://localhost");
     res.setHeader("cache-control","no-store");
