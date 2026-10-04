@@ -740,7 +740,38 @@ async function waitForGameUpdate(previousId,previousText="",previousButtons=[],t
   }
   return null;
 }
-async function gameDebug(chat){try{return await renderGame(chat,{force:true});}catch(e){return send(chat,"⚠️ Игровой режим не открылся: "+String(e.message||e).slice(0,700));}}
+async function gameDebug(chat){
+  try{
+    if(!userBridge.configured() || !userBridge.status().connected){
+      return send(chat,"🎮 ИГРА\n\n⚠️ Игра не подключена. Сначала нажми «🔗 Подключить игру», затем «🧪 Проверить связь с игрой».");
+    }
+
+    // /perekup must start from a fresh game screen. A cached "Новости игры"
+    // message often has no action buttons and was the reason the bot kept
+    // showing "НЕТ КНОПОК" after entering the mode.
+    userBridge.saveBinding(chat);
+    const before=userBridge.status().last_game_message;
+    const beforeKey=before
+      ? String(before.message_id||"")+"|"+String(before.text||"")+"|"+JSON.stringify(before.buttons||[])
+      : "";
+
+    await userBridge.sendGameMessage("/start");
+
+    const after=userBridge.status().last_game_message;
+    const afterKey=after
+      ? String(after.message_id||"")+"|"+String(after.text||"")+"|"+JSON.stringify(after.buttons||[])
+      : "";
+
+    if(!after || (beforeKey && afterKey===beforeKey)){
+      return send(chat,"🎮 ИГРА\n\n⚠️ Игра не прислала новый экран после /start. Нажми «🔄 Обновить игру» ещё раз.");
+    }
+
+    return await renderGame(chat,{force:true});
+  }catch(e){
+    console.log("PEREKUP OPEN ERROR:",e.stack||e.message||e);
+    return send(chat,"⚠️ Игровой режим не открылся: "+String(e.message||e).slice(0,700));
+  }
+}
 async function bridgeStatus(chat){const s=userBridge.status();return send(chat,"🔗 Telegram-мост\n\nСтатус: "+(s.connected?"✅ подключён":"❌ не подключён")+"\nИгровой бот: @"+GAME_USERNAME+"\nПользователь: "+(s.username?"@"+s.username:"не определён")+(s.last_error?"\n\n⚠️ "+s.last_error:""));}
 async function state(chat){
   try{
