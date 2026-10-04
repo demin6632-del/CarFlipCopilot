@@ -3,6 +3,7 @@ const keepAliveAgent = new https.Agent({keepAlive:true,maxSockets:32,maxFreeSock
 const { TelegramUserBridge, createConnectServer } = require("./user-session-bridge");
 const { analyzeImage, parseState, decide, warmup } = require("./free-analyzer");
 const { rankButtons, recordScreen, recordClick } = require("./button-strategy");
+const { acquireTelegramPollLock, releaseTelegramPollLock } = require("./telegram-poll-lock");
 const { recordScreen: recordMemoryScreen, recordAction: recordMemoryAction, recent: recentMemory } = require("./game-memory");
 const { recordTransition: recordEconomyTransition, summary: economySummary, currentVehicleEconomics } = require("./game-economy");
 const { buildStrategy, parseContract } = require("./strategy-engine");
@@ -719,7 +720,20 @@ async function renderGameNow(chat,options={}){
   return sent;
 }
 async function renderGame(chat,options={}){
-  return withTimeout(renderGameNow(chat,options),18000,"GAME RENDER");
+  const key=String(chat);
+  const previous=gameRenderQueues.get(key)||Promise.resolve();
+  let release;
+  const current=new Promise(resolve=>{release=resolve;});
+  gameRenderQueues.set(key,current);
+  try{
+    // Serialize all renders for one player. Telegram rejects concurrent edits
+    // of the same message, especially while the game emits OCR/event updates.
+    await previous.catch(()=>{});
+    return await withTimeout(renderGameNow(chat,options),18000,"GAME RENDER");
+  }finally{
+    release();
+    if(gameRenderQueues.get(key)===current)gameRenderQueues.delete(key);
+  }
 }
 async function renderGameLegacyDisabled(chat,options={}){
   const key=String(chat);
@@ -1032,24 +1046,43 @@ async function setupTelegramDelivery(){
 }
 async function pollBotUpdates(){
   if(!BOT_TOKEN)return;
-  while(polling){
-    try{
-      const updates=await tgLongPoll({
-        offset,
-        timeout:20,
-        limit:100,
-        allowed_updates:["message","callback_query"]
-      });
-      if(!Array.isArray(updates))continue;
-      for(const update of updates){
-        try{ await processUpdate(update); }
-        catch(e){ console.log("POLL UPDATE ERROR:",e.stack||e.message||e); }
+  // Render performs rolling deploys, so for a short period old and new
+  // instances can overlap. Telegram Bot API permits only one getUpdates
+  // consumer. A PostgreSQL advisory lock makes the consumer singleton.
+  const lock=await acquireTelegramPollLock();
+  if(!lock){
+    console.log("Telegram delivery passive; another instance owns polling.");
+    return;
+  }
+  try{
+    while(polling){
+      try{
+        const updates=await tgLongPoll({
+          offset,
+          timeout:20,
+          limit:100,
+          allowed_updates:["message","callback_query"]
+        });
+        if(!Array.isArray(updates))continue;
+        for(const update of updates){
+          try{ await processUpdate(update); }
+          catch(e){ console.log("POLL UPDATE ERROR:",e.stack||e.message||e); }
+        }
+      }catch(e){
+        if(!polling)break;
+        const msg=String(e.message||e);
+        console.log("TELEGRAM POLLING ERROR:",msg);
+        // A second getUpdates consumer must never be allowed to fight the
+        // active instance. Drop this consumer until the lock can be reacquired.
+        if(/Conflict: terminated by other getUpdates request/i.test(msg)){
+          polling=false;
+          break;
+        }
+        await new Promise(r=>setTimeout(r,1500));
       }
-    }catch(e){
-      if(!polling)break;
-      console.log("TELEGRAM POLLING ERROR:",e.message||e);
-      await new Promise(r=>setTimeout(r,1500));
     }
+  }finally{
+    await releaseTelegramPollLock();
   }
 }
 async function loop(){
@@ -1062,12 +1095,24 @@ async function loop(){
     return;
   }
   console.log("Telegram delivery active; long polling started.");
-  pollBotUpdates().catch(e=>console.log("TELEGRAM POLLING FATAL:",e.stack||e.message||e));
+  pollBotUpdates().then(()=>{
+    if(!polling){
+      console.log("Telegram polling stopped.");
+      return;
+    }
+    // Passive Render instances retry acquisition instead of exiting forever.
+    setTimeout(loop,3000);
+  }).catch(e=>{
+    console.log("TELEGRAM POLLING FATAL:",e.stack||e.message||e);
+    polling=false;
+    setTimeout(loop,3000);
+  });
 }
 userBridge.webhookHandler=processUpdate;
 async function gracefulShutdown(signal){
   console.log("RENDER SHUTDOWN:",signal);
   polling=false;
+  try { await releaseTelegramPollLock(); } catch(e) { console.log("TELEGRAM POLL LOCK SHUTDOWN ERROR:",e.message); }
   try { if (userBridge?.httpServer) await new Promise(resolve=>userBridge.httpServer.close(()=>resolve())); } catch(e) { console.log("HTTP SERVER SHUTDOWN ERROR:",e.message); }
   try { if (typeof userBridge.shutdown==="function") await userBridge.shutdown(); } catch(e) { console.log("TELEGRAM BRIDGE SHUTDOWN ERROR:",e.message); }
   process.exit(0);
