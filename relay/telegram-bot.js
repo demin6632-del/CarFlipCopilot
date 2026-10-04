@@ -205,7 +205,32 @@ function tg(method,body){return new Promise((resolve,reject)=>{
   const req=https.request({hostname:u.hostname,path:u.pathname,method:"POST",agent:keepAliveAgent,headers:{"content-type":"application/json","content-length":Buffer.byteLength(data)}},res=>{
     let s="";res.on("data",c=>s+=c);res.on("end",()=>{try{const j=JSON.parse(s);if(!j.ok)return reject(new Error(j.description||"Telegram API error"));resolve(j.result);}catch(e){reject(e);}});
   });req.on("error",reject);req.setTimeout(BOT_REQUEST_TIMEOUT,()=>req.destroy(new Error("Telegram API timeout")));req.write(data);req.end();
-});}function tgPhoto(chat_id,buffer,caption,reply_markup){
+});}
+function tgLongPoll(body){
+  return new Promise((resolve,reject)=>{
+    const data=JSON.stringify(body||{}),u=new URL(API+"/getUpdates");
+    const req=https.request({
+      hostname:u.hostname,path:u.pathname,method:"POST",agent:keepAliveAgent,
+      headers:{"content-type":"application/json","content-length":Buffer.byteLength(data)}
+    },res=>{
+      let s="";
+      res.on("data",c=>s+=c);
+      res.on("end",()=>{
+        try{
+          const j=JSON.parse(s);
+          if(!j.ok)return reject(new Error(j.description||"Telegram getUpdates error"));
+          resolve(Array.isArray(j.result)?j.result:[]);
+        }catch(e){reject(e);}
+      });
+    });
+    req.on("error",reject);
+    // Telegram long polling may legitimately wait up to 20 seconds.
+    req.setTimeout(30000,()=>req.destroy(new Error("Telegram getUpdates timeout")));
+    req.write(data);
+    req.end();
+  });
+}
+function tgPhoto(chat_id,buffer,caption,reply_markup){
   return new Promise((resolve,reject)=>{
     const boundary="----CarFlipCopilot"+require("crypto").randomBytes(8).toString("hex");
     const parts=[],add=(n,v)=>parts.push(Buffer.from("--"+boundary+"\r\nContent-Disposition: form-data; name=\""+n+"\"\r\n\r\n"+String(v)+"\r\n"));
@@ -945,39 +970,57 @@ async function processUpdate(u){
     }
   });
 }
-async function setupWebhook(){
+async function setupTelegramDelivery(){
   if(!BOT_TOKEN){console.log("Telegram bot disabled: TELEGRAM_BOT_TOKEN missing");return false;}
   try{
-    // Use a Telegram webhook instead of getUpdates. Long polling causes a hard
-    // Telegram conflict whenever Render temporarily has two instances during
-    // a rolling deploy/restart. Webhook delivery has no competing pollers.
-    if(!BRIDGE_PUBLIC_URL)throw new Error("RENDER_EXTERNAL_URL/BRIDGE_PUBLIC_URL не настроен");
-    const webhookUrl=BRIDGE_PUBLIC_URL+"/telegram/webhook";
-    const current=await tg("getWebhookInfo",{});
-    if(String(current?.url||"")!==webhookUrl){
-      await tg("setWebhook",{url:webhookUrl,drop_pending_updates:false,secret_token:WEBHOOK_SECRET,allowed_updates:["message","callback_query"]});
+    // Webhook delivery was intermittently accepted by Telegram but produced
+    // zero HTTP requests on Render. Use one resilient long-poll consumer instead.
+    // This also avoids stale webhook state after deploys.
+    try{ await tg("deleteWebhook",{drop_pending_updates:false}); }catch(e){
+      console.log("Telegram webhook cleanup warning:",e.message);
     }
     const info=await tg("getWebhookInfo",{});
-    webhookEnabled=true;
-    console.log("Telegram delivery mode: webhook; url:",webhookUrl,"pending:",info?.pending_update_count??0);
-    return String(info?.url||"")===webhookUrl;
+    console.log("Telegram delivery mode: polling; webhook:",String(info?.url||"none"),
+      "pending:",info?.pending_update_count??0);
+    return true;
   }catch(e){
-    webhookEnabled=false;
     console.log("Telegram delivery setup error:",e.stack||e.message||e);
     return false;
   }
 }
 async function pollBotUpdates(){
-  // Kept as a safety stub. Telegram webhook mode is the only bot-update
-  // delivery mechanism, preventing competing getUpdates consumers.
-  return;
+  if(!BOT_TOKEN)return;
+  while(polling){
+    try{
+      const updates=await tgLongPoll({
+        offset,
+        timeout:20,
+        limit:100,
+        allowed_updates:["message","callback_query"]
+      });
+      if(!Array.isArray(updates))continue;
+      for(const update of updates){
+        try{ await processUpdate(update); }
+        catch(e){ console.log("POLL UPDATE ERROR:",e.stack||e.message||e); }
+      }
+    }catch(e){
+      if(!polling)break;
+      console.log("TELEGRAM POLLING ERROR:",e.message||e);
+      await new Promise(r=>setTimeout(r,1500));
+    }
+  }
 }
 async function loop(){
   if(polling)return;
   polling=true;
-  const ready=await setupWebhook();
-  if(!ready){polling=false;setTimeout(loop,5000);return;}
-  console.log("Telegram webhook active; getUpdates disabled.");
+  const ready=await setupTelegramDelivery();
+  if(!ready){
+    polling=false;
+    setTimeout(loop,5000);
+    return;
+  }
+  console.log("Telegram delivery active; long polling started.");
+  pollBotUpdates().catch(e=>console.log("TELEGRAM POLLING FATAL:",e.stack||e.message||e));
 }
 userBridge.webhookHandler=processUpdate;
 async function gracefulShutdown(signal){
