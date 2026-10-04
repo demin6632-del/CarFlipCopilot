@@ -71,7 +71,7 @@ class TelegramUserBridge {
     // persisted in Postgres so a deploy/restart never forces Telegram login again.
     if (this.databaseUrl) {
       try {
-        const db=new PgClient({connectionString:this.databaseUrl,ssl:{rejectUnauthorized:false}});
+        const db=new PgClient({connectionString:this.databaseUrl,ssl:{rejectUnauthorized:false},connectionTimeoutMillis:5000,query_timeout:5000,statement_timeout:5000});
         await db.connect();
         await db.query("CREATE TABLE IF NOT EXISTS copilot_state (key text PRIMARY KEY, value text NOT NULL, updated_at timestamptz NOT NULL DEFAULT now())");
         const r=await db.query("SELECT value FROM copilot_state WHERE key=$1",["telegram_session"]);
@@ -357,8 +357,17 @@ class TelegramUserBridge {
   }
 
   enqueueGameMessage(msg) {
-    const run=this.gameMessageQueue.catch(()=>{}).then(()=>this.handleGameMessage(msg));
-    this.gameMessageQueue=run.catch(e=>console.log("GAME SCREEN QUEUE ERROR:",e.message));
+    // A single broken DB/Telegram operation must never poison the per-game
+    // queue forever. Advance the queue after a hard watchdog timeout.
+    const run=this.gameMessageQueue.catch(()=>{}).then(()=>withTimeout(
+      this.handleGameMessage(msg),
+      OP_TIMEOUTS.eventPipeline + 3000,
+      "GAME SCREEN PIPELINE"
+    ));
+    this.gameMessageQueue=run.catch(e=>{
+      diagnostics.inc("screen.pipeline_timeout");
+      console.log("GAME SCREEN QUEUE ERROR:",e.stack||e.message||e);
+    });
     return run;
   }
 

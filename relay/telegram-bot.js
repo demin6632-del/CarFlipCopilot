@@ -30,7 +30,7 @@ const photoFingerprints=new Map();
 const photoFileIds=new Map();
 const processingChats=new Set();
 const updateQueues=new Map();
-const BOT_REQUEST_TIMEOUT=15000;
+const BOT_REQUEST_TIMEOUT=10000;
 
 function withTimeout(promise,ms,label){
   let timer;
@@ -43,7 +43,11 @@ function withTimeout(promise,ms,label){
 function enqueueChatUpdate(chatId,task){
   const key=String(chatId||"global");
   const previous=updateQueues.get(key)||Promise.resolve();
-  const current=previous.catch(()=>{}).then(()=>task());
+  // Never let one stuck command block every later message from this chat.
+  // The underlying operation is already guarded internally; this watchdog is
+  // the final queue breaker for unexpected third-party hangs.
+  const guarded=withTimeout(Promise.resolve().then(task),22000,"TELEGRAM UPDATE");
+  const current=previous.catch(()=>{}).then(()=>guarded);
   updateQueues.set(key,current);
   return current.finally(()=>{
     if(updateQueues.get(key)===current)updateQueues.delete(key);
@@ -679,6 +683,9 @@ async function renderGameNow(chat,options={}){
   return sent;
 }
 async function renderGame(chat,options={}){
+  return withTimeout(renderGameNow(chat,options),18000,"GAME RENDER");
+}
+async function renderGameLegacyDisabled(chat,options={}){
   const key=String(chat);
   const previous=gameRenderQueues.get(key)||Promise.resolve();
   let release;  const current=new Promise(resolve=>{release=resolve;});

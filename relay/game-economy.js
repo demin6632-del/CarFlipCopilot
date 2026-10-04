@@ -25,7 +25,7 @@ function vehicleCostValue(state){
 async function db(){
   if(!process.env.DATABASE_URL)return null;
   if(!dbPromise)dbPromise=(async()=>{
-    const c=new Client({connectionString:process.env.DATABASE_URL,ssl:{rejectUnauthorized:false}});
+    const c=new Client({connectionString:process.env.DATABASE_URL,ssl:{rejectUnauthorized:false,connectionTimeoutMillis:5000},connectionTimeoutMillis:5000,query_timeout:5000,statement_timeout:5000});
     await c.connect();
     await c.query("CREATE TABLE IF NOT EXISTS game_economy_transactions (id bigserial PRIMARY KEY,chat_id text NOT NULL,action text,kind text NOT NULL,amount numeric NOT NULL,balance_before numeric,balance_after numeric,screen_text text NOT NULL,vehicle_key text,fee numeric NOT NULL DEFAULT 0,created_at timestamptz NOT NULL DEFAULT now())");
     await c.query("ALTER TABLE game_economy_transactions ADD COLUMN IF NOT EXISTS vehicle_key text");

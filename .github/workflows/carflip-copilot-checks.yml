@@ -1,0 +1,26 @@
+name: CarFlipCopilot checks
+on:
+  push:
+    branches: ["bot-stability-2026-10-04"]
+  pull_request:
+    branches: ["main"]
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: relay
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: npm install
+      - run: node --check telegram-bot.js
+      - run: node --check user-session-bridge.js
+      - run: node --check free-analyzer.js
+      - run: node --check strategy-engine.js
+      - run: node --check button-strategy.js
+      - run: node --check game-memory.js
+      - run: node --check game-economy.js
+      - run: npm test

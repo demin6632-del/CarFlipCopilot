@@ -136,7 +136,8 @@ function findVehicle(lines) {
     const sb = (brands.test(b.text) ? 3 : 0) + (classWords.test(b.text) ? 1 : 0);
     return sb - sa;
   });
-  return candidates[0]?.text || null;
+  const value=candidates[0]?.text || null;
+  return value ? value.replace(/^(?:автомобиль|машина|vehicle)\s*[:：-]\s*/i,"").trim() : null;
 }
 
 function parseState(text) {
@@ -221,20 +222,23 @@ function decide(state, ocr = 0) {
   // Решение строится только из признаков конкретного экрана.
   // Наличие баланса/гаража/автомобиля само по себе НЕ означает,
   // что сейчас нужно покупать, продавать, расширять гараж или покупать VIP.
-  if (state.contexts?.buyerContext) {
-    return {
-      action: "ПРОВЕРЬ ПРЕДЛОЖЕНИЕ ПОКУПАТЕЛЯ",
-      title: "Найдено предложение покупателя",
-      reason: "Сначала сравни предложение с полной себестоимостью машины и ожидаемой прибылью.",
-      confidence: confidenceFor(state, ocr)
-    };
-  }
-
+  // Госномер/аукцион имеет более высокий приоритет, чем общий маркер
+  // «ставка/предложение»: иначе экран аукциона номера ошибочно попадал
+  // в ветку покупателя.
   if (state.contexts?.explicitPlateAuction) {
     return {
       action: "ПРОВЕРЬ СТАВКУ НА НОМЕР",
       title: "Аукцион номера",
       reason: "В этой игре аукцион относится к госномерам. Проверь ставку, комиссию и возможную цену перепродажи.",
+      confidence: confidenceFor(state, ocr)
+    };
+  }
+
+  if (state.contexts?.buyerContext) {
+    return {
+      action: "ПРОВЕРЬ ПРЕДЛОЖЕНИЕ ПОКУПАТЕЛЯ",
+      title: "Найдено предложение покупателя",
+      reason: "Сначала сравни предложение с полной себестоимостью машины и ожидаемой прибылью.",
       confidence: confidenceFor(state, ocr)
     };
   }
