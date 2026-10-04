@@ -153,10 +153,15 @@ async function notifyBridgeState(state){
   if(state.vehicle?.name)lines.push("🚘 "+state.vehicle.name);
   if(state.vehicle?.price!=null)lines.push("💵 Цена: "+state.vehicle.price);
   const autoDecision=state.local_decision||decide(state,90);
-  const ranked=await rankButtons(chat,state,state.buttons||[]);
-  if(ranked.length){
-    lines.push("","🧠 АВТОАНАЛИЗ КНОПОК","➡️ Рекомендация: «"+ranked[0].label+"» — приоритет "+ranked[0].percent+"%");
+  const strategyState=Object.assign({},state,{raw_message:state.raw_message||state.raw_text||"",raw_text:state.raw_text||state.raw_message||""});
+  const ranked=await rankButtons(chat,strategyState,state.buttons||[]);
+  const strategy=buildStrategy(strategyState,ranked,await economySummary(chat,120));
+  const recommended=strategy.actionEvidence ? ranked[0]?.label : null;
+  if(recommended){
+    lines.push("","🧠 АНАЛИЗ КНОПОК","👉 ЧТО ДЕЛАТЬ СЕЙЧАС: нажать «"+recommended+"»","   Оценка модели: "+ranked[0].percent+"/100","   Почему: "+ranked[0].reason);
     lines.push("📊 ВСЕ КНОПКИ:\n"+buttonScoreText(ranked));
+  }else if(ranked.length){
+    lines.push("","🧠 АНАЛИЗ КНОПОК","👉 ЧТО ДЕЛАТЬ СЕЙЧАС: не нажимать наугад","   Текущий экран не содержит достаточного подтверждения для конкретного действия.","📊 ВСЕ КНОПКИ:\n"+buttonScoreText(ranked));
   }else lines.push("","Нажми «🧠 Что делать сейчас», чтобы получить решение ИИ.");
   try{await send(chat,lines.join("\n"));}catch(e){console.log("BRIDGE NOTICE ERROR:",e.message);}
 }
@@ -179,8 +184,17 @@ async function registerBotCommands(){
     {command:"probe",description:"Проверить связь с игрой"},
     {command:"help",description:"Помощь и список команд"}
   ];
-  try{ await tg("setMyCommands",{commands,scope:{type:"all_private_chats"}}); console.log("Telegram commands registered"); }
-  catch(e){ console.log("COMMANDS REGISTER ERROR:",e.message); }
+  for(let attempt=1;attempt<=5;attempt++){
+    try{
+      await tg("setMyCommands",{commands,scope:{type:"all_private_chats"}});
+      console.log("Telegram commands registered");
+      return true;
+    }catch(e){
+      console.log("COMMANDS REGISTER ERROR attempt="+attempt+":",e.stack||e.message||e);
+      if(attempt<5) await new Promise(r=>setTimeout(r,Math.min(5000,attempt*1000)));
+    }
+  }
+  return false;
 }
 function tg(method,body){return new Promise((resolve,reject)=>{
   const data=JSON.stringify(body||{}),u=new URL(API+"/"+method);
@@ -799,8 +813,10 @@ async function advice(chat){
     let out=r.text||"Пока нет актуального решения.";
     if(recommended){
       const top=strategy.alternatives.find(x=>x.label===recommended);
-      out+="\n\n➡️ Нажать: «"+recommended+"» — приоритет "+ranked[0].percent+"%\n💬 "+ranked[0].reason;
-      if(top) out+="\n⚠️ Риск действия: "+top.risk+"%"+(top.reasons.length?"\n   └ "+top.reasons.join("; "):"");
+      out+="\n\n👉 ЧТО ДЕЛАТЬ СЕЙЧАС: нажать «"+recommended+"»\n📊 Оценка модели: "+ranked[0].percent+"/100\n💬 "+ranked[0].reason;
+      if(top) out+="\n⚠️ Риск действия: "+top.risk+"/100"+(top.reasons.length?"\n   └ "+top.reasons.join("; "):"");
+    }else if(ranked.length){
+      out+="\n\n👉 ЧТО ДЕЛАТЬ СЕЙЧАС: не нажимать наугад\n💬 Текущий экран не подтверждает конкретное действие.";
     }
     if(strategy.contract){
       const p=[];
@@ -810,7 +826,7 @@ async function advice(chat){
       out+="\n📋 Контракт: "+(p.length?p.join(", "):"условия распознаны");
     }
     if(strategy.warnings.length)out+="\n⚠️ "+strategy.warnings.join("\n⚠️ ");
-    return send(chat,out);
+    return send(chat,out,rows.length?{reply_markup:{inline_keyboard:rows}}:{});
   }catch(e){return send(chat,"⚠️ Помощник пока не получил состояние игры: "+e.message);}
 }
 async function probe(chat){
@@ -850,7 +866,11 @@ async function callback(q){
     if(ref.legacy)label=(latest.buttons||[]).find(x=>gameButtonKey(x)===ref.key);
     else{try{label=await userBridge.getGameButton(ref.messageId,ref.key);}catch(e){console.log("GAME BUTTON LOOKUP ERROR:",e.message);}}
     if(!label)return send(chat,"⚠️ Эта кнопка больше отсутствует. Нажми «🔄 Обновить игру».");
-    gameActionChats.add(String(chat));
+    const chatKey=String(chat);
+    if(gameActionChats.has(chatKey)){
+      return send(chat,"⏳ Предыдущее действие ещё выполняется. Дождись нового экрана игры.");
+    }
+    gameActionChats.add(chatKey);
     let backgroundCallbackWait=false;
     try{
       // Capture the exact pre-click screen before sending the action.
@@ -935,7 +955,8 @@ async function setupWebhook(){
     console.log("Telegram delivery mode: webhook; url:",webhookUrl,"pending:",info?.pending_update_count??0);
     return String(info?.url||"")===webhookUrl;
   }catch(e){
-    console.log("Telegram delivery setup error:",e.message);
+    webhookEnabled=false;
+    console.log("Telegram delivery setup error:",e.stack||e.message||e);
     return false;
   }
 }
