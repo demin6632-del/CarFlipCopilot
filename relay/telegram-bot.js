@@ -186,6 +186,7 @@ async function registerBotCommands(){
     {command:"advice",description:"Что делать сейчас"},
     {command:"game",description:"Открыть игру в Telegram"},
     {command:"probe",description:"Проверить связь с игрой"},
+    {command:"perekup",description:"Режим Симулятора Перекупа"},
     {command:"help",description:"Помощь и список команд"}
   ];
   for(let attempt=1;attempt<=5;attempt++){
@@ -380,7 +381,7 @@ async function handlePhoto(chat,photo){
 async function handle(m){
   const chat=m.chat?.id;if(!chat)return;const text=String(m.text||"").trim();
   if(text==="/start"){users.set(chat,{connected:false});return send(chat,"🚗 CarFlipCopilot\n\nЯ работаю прямо внутри Telegram. Android-приложение для общения со мной не нужно.\n\nМоя задача — смотреть состояние «Симулятора Перекупа», учитывать историю сделок и говорить одно конкретное следующее действие.\n\nНачни с «🔗 Подключить игру».");}
-  if(text==="/connect")return connect(chat);if(text==="/state")return state(chat);if(text==="/advice")return advice(chat);if(text==="/probe")return probe(chat);if(text==="/bridge")return bridgeStatus(chat);if(text==="/game")return gameDebug(chat);
+  if(text==="/connect")return connect(chat);if(text==="/state")return state(chat);if(text==="/advice")return advice(chat);if(text==="/probe")return probe(chat);if(text==="/perekup")return gameDebug(chat);if(text==="/bridge")return bridgeStatus(chat);if(text==="/game")return gameDebug(chat);
   if(text==="/help")return send(chat,"Команды:\n/connect — подключение игры\n/state — состояние\n/advice — что делать сейчас\n/probe — проверить связь с игрой\n/bridge — статус Telegram-моста\n/game — открыть игру прямо в чате\n/help — эта справка\n\nМожно прислать скриншот текущей ситуации — бот разберёт его прямо здесь.");
   // Main-menu action must be handled before game-mode routing. If a game screen
   // arrived automatically, activeGameChats may already be set; in that case
