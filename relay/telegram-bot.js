@@ -5,7 +5,7 @@ const { analyzeImage, parseState, decide, warmup } = require("./free-analyzer");
 const { rankButtons, recordScreen, recordClick } = require("./button-strategy");
 const { acquireTelegramPollLock, releaseTelegramPollLock } = require("./telegram-poll-lock");
 const { recordScreen: recordMemoryScreen, recordAction: recordMemoryAction, recent: recentMemory } = require("./game-memory");
-const { recordTransition: recordEconomyTransition, summary: economySummary, currentVehicleEconomics } = require("./game-economy");
+const { recordTransition: recordEconomyTransition, summary: economySummary, currentVehicleEconomics, recordPlateAuctionReturn, plateWarehouse, plateDecision } = require("./game-economy");
 const { buildStrategy, parseContract } = require("./strategy-engine");
 
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || "";
@@ -597,6 +597,15 @@ async function renderGameNow(chat,options={}){
   const ranked=await rankButtons(chat,strategyState,latest.buttons||[]);
   const economy=await economySummary(chat,120);
   const strategy=buildStrategy(strategyState,ranked,economy);
+
+  // Номера, вернувшиеся после торгов без ставок, сохраняются в отдельном
+  // складе. Повторный рендер того же экрана не создаёт дубликатов.
+  const plateReturn=parsedGame.plateAuction;
+  if(plateReturn?.status==="returned_no_bids" && plateReturn.plates?.length){
+    await recordPlateAuctionReturn(chat,plateReturn.plates,latest.text);
+  }
+  const warehouse=await plateWarehouse(chat,20);
+
   recordScreen(chat,latest.text,latest.buttons||[]).catch(e=>console.log("BUTTON STRATEGY SCREEN ERROR:",e.message));
   recordMemoryScreen(chat,latest).catch(e=>console.log("GAME MEMORY SCREEN ERROR:",e.message));
   const screenConfidence=ranked.length ? 100 : Math.round(Number(decision.confidence)||0);
@@ -650,6 +659,20 @@ async function renderGameNow(chat,options={}){
     }
   }
   if(strategy.warnings.length)adviceLines.push("⚠️ "+strategy.warnings.join("\n⚠️ "));
+
+  if(plateReturn?.status==="returned_no_bids" && plateReturn.plates?.length){
+    adviceLines.push("","📦 СКЛАД НОМЕРОВ: возвращены после торгов без ставок");
+    for(const plate of plateReturn.plates){
+      const d=plateDecision(plate);
+      adviceLines.push("• "+plate+" — "+(d?.action==="hold"?"ПОКА НЕ ВЫСТАВЛЯТЬ":"проверить рынок"));
+    }
+    adviceLines.push("💡 Автоматически повторно на торги не выставляю: сначала проверяем спрос и цену.");
+  }
+  if(warehouse.length){
+    const unique=warehouse.filter(x=>x.status==="available").slice(0,12);
+    if(unique.length) adviceLines.push("📋 ДОСТУПНЫЕ НОМЕРА НА СКЛАДЕ: "+unique.map(x=>x.plate).join(", "));
+  }
+
   // Telegram sendMessage has a 4096-character limit. Keep the full game screen
   // logic, but never let a verbose strategy report break delivery.
   const text=adviceLines.join("\n").slice(0,3900);
