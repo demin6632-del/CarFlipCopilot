@@ -58,8 +58,8 @@ async function recordClick(chat,text,buttons,label,nextText){
 }
 function saleEconomics(state,raw){
   const text=String(raw||"");
-  const offerMatch=/(?:предлож(?:ение)?\\s*(?:покупателя)?|покупатель\\s+предлагает|предлагает)[^0-9]{0,40}([0-9][0-9 .]*)\\s*(?:₽|руб)?/i.exec(text);
-  const investedMatch=/(?:вложено\\s+в\\s+авто|вложено|себестоимость|затрат(?:ы)?)[^0-9]{0,40}([0-9][0-9 .]*)\\s*(?:₽|руб)?/i.exec(text);
+  const offerMatch=/(?:предлож(?:ение)?\s*(?:покупателя)?|покупатель\s+предлагает|предлагает)[^0-9]{0,40}([0-9][0-9 .]*)\s*(?:₽|руб)?/i.exec(text);
+  const investedMatch=/(?:вложено\s+в\s+авто|вложено|себестоимость|затрат(?:ы)?)[^0-9]{0,40}([0-9][0-9 .]*)\s*(?:₽|руб)?/i.exec(text);
   const offer=offerMatch?Number(offerMatch[1].replace(/[^0-9]/g,"")):null;
   const investedFromText=investedMatch?Number(investedMatch[1].replace(/[^0-9]/g,"")):null;
   const vehicle=state?.vehicle||{};
@@ -133,7 +133,7 @@ function scoreButtons(buttons,state,history){
     else if(contextCount>0)score-=Math.min(15,contextCount*3);
 
     const escaped=n.replace(/[.*+?^$()|[\]\\]/g,"\\$&");
-    const direct=new RegExp("(?:нажми|выбери|нужно нажать|следует нажать|рекомендуется нажать)\\s+[«\\\"“]?"+escaped+"[»\\\"”]?","i");
+    const direct=new RegExp("(?:нажми|выбери|нужно нажать|следует нажать|рекомендуется нажать)\s+[«\\\"“]?"+escaped+"[»\\\"”]?","i");
     if(direct.test(raw))score+=40;
     return {label,type,rawScore:Math.max(.1,score),sameScreenCount,contextCount};
   });
