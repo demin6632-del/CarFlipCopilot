@@ -104,11 +104,14 @@ async function recordPlateAuctionReturn(chat,plates,screenText){
     const plate=String(rawPlate||"").replace(/\\s+/g," ").trim();
     if(!plate)continue;
     try{
+      const eventText=String(screenText||"").slice(0,2000);
+      const existing=await c.query("SELECT last_event FROM game_plate_warehouse WHERE chat_id=$1 AND plate=$2",[String(chat),plate]);
+      const isNew=existing.rowCount===0 || String(existing.rows[0]?.last_event||"")!==eventText;
       await c.query(
-        "INSERT INTO game_plate_warehouse(chat_id,plate,status,last_event,auction_count,no_bid_count,last_seen_at) VALUES($1,$2,'available',$3,1,1,now()) ON CONFLICT(chat_id,plate) DO UPDATE SET status='available',last_event=excluded.last_event,auction_count=game_plate_warehouse.auction_count+1,no_bid_count=game_plate_warehouse.no_bid_count+1,last_seen_at=now()",
-        [String(chat),plate,String(screenText||"").slice(0,2000)]
+        "INSERT INTO game_plate_warehouse(chat_id,plate,status,last_event,auction_count,no_bid_count,last_seen_at) VALUES($1,$2,'available',$3,1,1,now()) ON CONFLICT(chat_id,plate) DO UPDATE SET status='available',last_event=excluded.last_event,last_seen_at=now(),auction_count=game_plate_warehouse.auction_count+$4,no_bid_count=game_plate_warehouse.no_bid_count+$4",
+        [String(chat),plate,eventText,isNew?1:0]
       );
-      stored++;
+      if(isNew)stored++;
     }catch(e){console.log("PLATE WAREHOUSE RECORD ERROR:",e.message);}
   }
   return {stored};
