@@ -52,7 +52,8 @@ class TelegramUserBridge {
     this.lastGameMessage = null;
     this.gameMessages = [];
     this.gamePollTimer = null;
-    this.lastPolledGameKey = "";\n    this.gamePollInFlight = false;
+    this.lastPolledGameKey = "";
+    this.gamePollInFlight = false;
     this.gameMessageQueue = Promise.resolve();
     this.webhookHandler = null;
     this.phoneAuth = new Map();
