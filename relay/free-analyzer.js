@@ -179,6 +179,20 @@ function parseState(text) {
   const dealContext = /(?:по\s*рукам|торг|продать|продажа|предложение|покупател|купить|покупка|осмотр|ставка|лот|цена|стоимость)/i.test(raw)
     || (price != null && (vehicleName || plate || mileage != null || hp != null));
 
+  // Обработка возврата номера после торгов без ставок. Это отдельное
+  // состояние склада, а не продажа/доход: номер остаётся активом игрока.
+  const plateReturnMatches = [...raw.matchAll(/(?:торги|аукцион)[^\\n]{0,80}(?:без\\s+ставок|без\\s+ставки)[^\\n]{0,120}(?:номер\\s*)?([А-ЯA-Z]\\s*\\d{3}\\s*[А-ЯA-Z]{2}\\s*\\d{2,3})/giu)];
+  const plateReturnDirect = [...raw.matchAll(/(?:номер)\\s*\\n?([А-ЯA-Z]\\s*\\d{3}\\s*[А-ЯA-Z]{2}\\s*\\d{2,3})[^\\n]{0,100}(?:возвращен|возвращён)[^\\n]{0,100}(?:склад|торги|ставк)/giu)];
+  const returnedPlates = [...plateReturnMatches,...plateReturnDirect]
+    .map(m=>String(m[1]||"").replace(/\\s+/g," ").trim())
+    .filter(Boolean)
+    .filter((v,i,a)=>a.indexOf(v)===i);
+  const plateAuctionReturn = returnedPlates.length ? {
+    status:"returned_no_bids",
+    plates:returnedPlates,
+    count:returnedPlates.length
+  } : null;
+
   return {
     balance,
     garage,
@@ -189,6 +203,7 @@ function parseState(text) {
     hp,
     owners,
     contexts: { explicitPlateAuction, buyerContext, purchaseContext, dealContext },
+    plateAuction: plateAuctionReturn,
     money_values: numberCandidates(raw).map(x => x.value).filter(x => x >= 1000).slice(0, 50),
     raw_text: raw.slice(0, 16000)
   };
