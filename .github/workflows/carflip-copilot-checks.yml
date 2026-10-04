@@ -15,9 +15,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: npm
-          cache-dependency-path: relay/package-lock.json
-      - run: npm ci
+      - run: npm install
       - run: node --check telegram-bot.js
       - run: node --check user-session-bridge.js
       - run: node --check free-analyzer.js
