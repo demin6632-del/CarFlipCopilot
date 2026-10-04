@@ -407,7 +407,7 @@ async function handle(m){
       lines.push("   До: "+before);
       if(after) lines.push("   После: "+after);
     });
-    return send(chat,lines.join("\\n"));
+    return send(chat,lines.join("\n"));
   }
   // ReplyKeyboard labels arrive as ordinary text and are handled directly.
   if(activeGameChats.get(String(chat))){
