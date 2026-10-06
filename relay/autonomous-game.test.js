@@ -43,6 +43,8 @@ test("progression awards XP and levels", () => {
   const s = game.newState("test-player-4", "Tester");
   const p = game.addProgress(s, 500000);
   assert.ok(p.gainedXp > 0);
+  assert.ok(s.player.xp > 0);
+  for (let i = 0; i < 5; i++) game.addProgress(s, 500000);
   assert.ok(s.player.level >= 2);
 });
 
