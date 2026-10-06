@@ -1,7 +1,7 @@
 name: CarFlipCopilot checks
 on:
   push:
-    branches: ["bot-stability-2026-10-04"]
+    branches: ["bot-stability-2026-10-04", "autonomous-game-v1"]
   pull_request:
     branches: ["main"]
 jobs:
