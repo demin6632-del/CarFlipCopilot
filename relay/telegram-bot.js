@@ -963,7 +963,7 @@ async function probe(chat){
 }
 async function callback(q){
   const chat=q.message?.chat?.id,data=String(q.data||"");
-  if(data.startsWith("ag:")) return autonomousGame.handleCallback(chat,data,q.from?.first_name||"Перекуп",(c,t,e)=>send(c,t,e),()=>tg("answerCallbackQuery",{callback_query_id:q.id}));
+  if(data.startsWith("ag:")) return autonomousGame.handleCallback(chat,data,q.from?.first_name||"Перекуп",(c,t,e)=>send(c,t,e),()=>tg("answerCallbackQuery",{callback_query_id:q.id}),q.id);
   try{await tg("answerCallbackQuery",{callback_query_id:q.id});}catch{}
   if(data==="game")return renderGame(chat,{messageId:q.message?.message_id});
   if(data==="game_refresh")return renderGame(chat,{messageId:q.message?.message_id});
