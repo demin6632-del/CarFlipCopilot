@@ -335,6 +335,25 @@ test("expired vehicle purchase cannot spend money", () => {
   assert.equal(s.garage.length, 0);
 });
 
+test("plate buy and sell flows change balance and inventory exactly once", () => {
+  const s = game.newState("plate-trade-flow", "Tester");
+  const plate = s.plateMarket[0];
+  const beforeBuy = s.player.balance;
+  const buy = game.buyPlate(s, plate.id);
+  assert.equal(buy.ok, true);
+  assert.equal(s.player.balance, beforeBuy - plate.buyPrice);
+  assert.equal(s.plateWarehouse.length, 1);
+  assert.equal(s.transactions.filter(x => x.kind === "plate_buy").length, 1);
+  const ownedId = buy.plate.id;
+  const beforeSell = s.player.balance;
+  const sell = game.sellPlate(s, ownedId);
+  assert.equal(sell.ok, true);
+  assert.equal(s.player.balance, beforeSell + sell.offer);
+  assert.equal(s.plateWarehouse.length, 0);
+  assert.equal(s.transactions.filter(x => x.kind === "plate_sale").length, 1);
+  assert.equal(sell.profit, sell.offer - plate.buyPrice);
+});
+
 test("vehicle diagnostics reveal and charge without changing purchase price", () => {
   const s = game.newState("diagnostics-player", "Tester");
   const car = s.market[0];
