@@ -67,7 +67,9 @@ function createListing(state) {
   const market = base.base*(0.90+rng(state)*0.17);
   const buy = Math.round((market*(0.80+rng(state)*0.10))/1000)*1000;
   const damage = Math.max(0,Math.round((1-condition)*7));
-  const listingSeq = (Number(state.meta.listingSeq)||0) + 1;\n  state.meta.listingSeq = listingSeq;\n  const id = "car_"+String(state.meta.turn||0)+"_"+listingSeq;
+  const listingSeq = (Number(state.meta.listingSeq)||0) + 1;
+  state.meta.listingSeq = listingSeq;
+  const id = "car_"+String(state.meta.turn||0)+"_"+listingSeq;
   return {
     id, model:base.name, catalogId:base.id, year:base.year, mileage,
     buyPrice:Math.max(50000,buy), marketPrice:Math.round(market),
