@@ -127,3 +127,18 @@ test("plate prices are positive and bounded", () => {
     assert.ok(p.rarity >= 0.7 && p.rarity <= 2.2);
   }
 });
+
+
+test("market events are deterministic and keep demand bounded", () => {
+  const s = game.newState("market-event", "Tester");
+  const seen = new Set();
+  for (let turn = 0; turn < 30; turn++) {
+    s.meta.turn = turn;
+    game.refreshMarket(s);
+    seen.add(s.meta.marketEvent.id);
+    for (const car of s.market) {
+      assert.ok(car.currentDemand >= 0.45 && car.currentDemand <= 0.98);
+    }
+  }
+  assert.ok(seen.size >= 3);
+});
