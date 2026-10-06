@@ -374,7 +374,7 @@ function garageKeyboard(state) {
     [{text:"🚗 Рынок",callback_data:"ag:market"},{text:"⬅️ Меню",callback_data:"ag:home"}]
   ]};
 }
-function inspectText(c) {
+function inspectText(c,state) {
   const margin=c.targetSale-c.buyPrice-c.repairCost;
   return [
     "🔎 ОСМОТР ЛОТА",
@@ -389,7 +389,8 @@ function inspectText(c) {
     "📈 Потенциальная маржа: "+fmt(margin),
     "📊 Спрос сейчас: "+Math.round((c.currentDemand??c.demand)*100)+"%",
     "⚠️ Риск: "+Math.round(c.risk*100)+"%",
-    c.limited ? "🔥 Срочный лот: ограниченное предложение." : "📦 Обычный срок размещения."
+    c.limited ? "🔥 Срочный лот: ограниченное предложение." : "📦 Обычный срок размещения.",
+    c.expiresAtTurn ? "⏳ Осталось ходов: "+Math.max(0,c.expiresAtTurn-(Number(state.meta.turn)||0)) : ""
   ].join("\n");
 }
 function inspectKeyboard(c, state) {
@@ -520,7 +521,7 @@ async function handleCallback(chat,data,firstName,sendFn,answerFn,callbackId) {
     }
     if(action==="inspect"){
       const c=state.market.find(x=>x.id===id);
-      return c?{text:inspectText(c),markup:inspectKeyboard(c,state)}:{text:"⚠️ Лот уже исчез с рынка.",markup:marketKeyboard(state)};
+      return c?{text:inspectText(c,state),markup:inspectKeyboard(c,state)}:{text:"⚠️ Лот уже исчез с рынка.",markup:marketKeyboard(state)};
     }
     if(action==="buy"){
       const c=state.market.find(x=>x.id===id);
