@@ -539,6 +539,26 @@ function purchaseListing(state, id) {
   return {ok:true,car:c};
 }
 
+function acceptPendingSale(state, id) {
+  const c=state.garage.find(x=>x.id===id);
+  if(!c)return {ok:false,reason:"missing"};
+  if(!state.pendingDeal || state.pendingDeal.carId!==id)return {ok:false,reason:"stale"};
+  const buyerName=state.pendingDeal.buyerType||"Покупатель";
+  const offer=Number(state.pendingDeal.amount)||0;
+  const cost=vehicleCost(c);
+  const profit=offer-cost;
+  if(profit<0){state.pendingDeal=null;return {ok:false,reason:"loss",profit};}
+  state.pendingDeal=null;
+  state.player.respect+=profit>100000?2:1;
+  const progress=addProgress(state,profit);
+  state.garage=state.garage.filter(x=>x.id!==id);
+  addTx(state,"sale",offer,"Продажа "+c.model+" (прибыль "+fmt(profit)+")");
+  const balanceBeforeContracts=state.player.balance;
+  updateContracts(state,profit);
+  const contractReward=state.player.balance-balanceBeforeContracts;
+  return {ok:true,car:c,buyerName,offer,profit,progress,contractReward};
+}
+
 async function send(sendFn,chat,text,markup) {
   return sendFn(chat,text,markup?{reply_markup:markup}:undefined);
 }
@@ -661,23 +681,15 @@ async function handleCallback(chat,data,firstName,sendFn,answerFn,callbackId) {
       return {text:"❌ СДЕЛКА ОТМЕНЕНА\n\nМашина осталась в гараже.",markup:carKeyboard(c)};
     }
     if(action==="accept"){
-      if(!state.pendingDeal || state.pendingDeal.carId!==id) return {text:"⚠️ Предложение устарело. Нажми «Продать» заново.",markup:carKeyboard(c)};
-      const buyerName=state.pendingDeal.buyerType||"Покупатель";
-      const offer=Number(state.pendingDeal.amount)||0;
-      const cost=vehicleCost(c);
-      const profit=offer-cost;
-      if(profit<0){state.pendingDeal=null;return {text:"🛑 ПРОДАЖА ЗАБЛОКИРОВАНА\n\nПредложение ниже себестоимости.",markup:carKeyboard(c)};}
-      state.pendingDeal=null;
-      state.player.respect+=profit>100000?2:1;
-      const progress=addProgress(state,profit);
-      state.garage=state.garage.filter(x=>x.id!==id);
-      addTx(state,"sale",offer,"Продажа "+c.model+" (прибыль "+fmt(profit)+")");
-      const balanceBeforeContracts=state.player.balance;
-      updateContracts(state,profit);
-      const contractReward=state.player.balance-balanceBeforeContracts;
-      const levelText=progress.levelUps ? "\n⬆️ Новый уровень: "+state.player.level : "";
-      const contractText=contractReward ? "\n🎁 Награда контракта: "+fmt(contractReward) : "";
-      return {text:"💰 МАШИНА ПРОДАНА\n\n"+c.model+"\n👤 Покупатель: "+buyerName+"\n💵 Получено: "+fmt(offer)+"\n📈 Прибыль: "+fmt(profit)+"\n⭐ XP: +"+progress.gainedXp+levelText+contractText+"\n💰 Баланс: "+fmt(state.player.balance),markup:garageKeyboard(state)};
+      const result=acceptPendingSale(state,id);
+      if(!result.ok){
+        if(result.reason==="missing") return {text:"⚠️ Машина уже не в гараже.",markup:garageKeyboard(state)};
+        if(result.reason==="stale") return {text:"⚠️ Предложение устарело. Нажми «Продать» заново.",markup:carKeyboard(c)};
+        return {text:"🛑 ПРОДАЖА ЗАБЛОКИРОВАНА\n\nПредложение ниже себестоимости.",markup:carKeyboard(c)};
+      }
+      const levelText=result.progress.levelUps ? "\n⬆️ Новый уровень: "+state.player.level : "";
+      const contractText=result.contractReward ? "\n🎁 Награда контракта: "+fmt(result.contractReward) : "";
+      return {text:"💰 МАШИНА ПРОДАНА\n\n"+result.car.model+"\n👤 Покупатель: "+result.buyerName+"\n💵 Получено: "+fmt(result.offer)+"\n📈 Прибыль: "+fmt(result.profit)+"\n⭐ XP: +"+result.progress.gainedXp+levelText+contractText+"\n💰 Баланс: "+fmt(state.player.balance),markup:garageKeyboard(state)};
     }
     if(action==="contracts")return {text:"📋 КОНТРАКТЫ\n\n"+state.contracts.map(c=>(c.completed?"✅ ":"⏳ ")+c.title+"\n   "+c.goal+"\n   Прогресс: "+(typeof c.progress==="number"? (c.id==="profit_300k"?fmt(c.progress):c.progress)+"/"+(c.id==="profit_300k"?fmt(c.target):c.target):"—")+"\n   Награда: "+fmt(c.reward)).join("\n\n"),markup:menu()};
     if(action==="plates"){
@@ -727,4 +739,4 @@ async function handleCallback(chat,data,firstName,sendFn,answerFn,callbackId) {
   return true;
 }
 
-module.exports={init,load,save,open,handleText,handleCallback,CATALOG,BUYER_TYPES,newState,refreshMarket,createListing,addTx,scoreListing,bestDeal,recommendation,addProgress,updateContracts,buyerOffer,buyerOfferDetails,buyerProfile,negotiation,dealRisk,runDiagnostic,vehicleCost,purchaseListing};
+module.exports={init,load,save,open,handleText,handleCallback,CATALOG,BUYER_TYPES,newState,refreshMarket,createListing,addTx,scoreListing,bestDeal,recommendation,addProgress,updateContracts,buyerOffer,buyerOfferDetails,buyerProfile,negotiation,dealRisk,runDiagnostic,vehicleCost,purchaseListing,acceptPendingSale};
