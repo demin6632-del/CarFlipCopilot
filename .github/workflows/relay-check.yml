@@ -22,6 +22,12 @@ jobs:
       - name: Package check
         working-directory: relay
         run: npm install --ignore-scripts
+      - name: Autonomous game tests
+        working-directory: relay
+        run: |
+          node --check autonomous-game.js
+          node --check autonomous-game.test.js
+          node autonomous-game.test.js
       - name: Game dashboard routing guard
         run: |
           node - <<'NODE'
