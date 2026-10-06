@@ -284,7 +284,6 @@ async function withState(chat, firstName, mutate, callbackId) {
       await client.query("ROLLBACK");
       return {state,result:{duplicate:true}};
     }
-    state.meta.turn=(Number(state.meta.turn)||0)+1;
     const result=await mutate(state);
     await client.query("UPDATE autonomous_game_state SET version=$2,state=$3::jsonb,updated_at=now() WHERE chat_id=$1",[String(chat),VERSION,JSON.stringify(state)]);
     await client.query("COMMIT");
@@ -636,6 +635,8 @@ async function handleCallback(chat,data,firstName,sendFn,answerFn,callbackId) {
   const [_,action,id]=String(data).split(":");
   if(action==="home"){await open(chat,firstName,sendFn);return true;}
   const run=await withState(chat,firstName,state=>{
+    const advancesTurn = new Set(["refresh","diagnose","diagnose_deep","buy","repair","prep","sell","negotiate","reject","accept","plate_refresh","platebuy","platesell"]).has(action);
+    if(advancesTurn) state.meta.turn=(Number(state.meta.turn)||0)+1;
     if(callbackId) {
       state.processedCallbacks.push(String(callbackId));
       state.processedCallbacks=state.processedCallbacks.slice(-100);
