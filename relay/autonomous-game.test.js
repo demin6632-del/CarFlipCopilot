@@ -120,6 +120,26 @@ test("accepted profitable deal changes garage, ledger and pending state exactly 
   assert.equal(s.transactions[0].profit, 50000);
 });
 
+test("blocked loss sale keeps vehicle and balance intact", () => {
+  const s = game.newState("blocked-loss-sale", "Tester");
+  const source = s.market[0];
+  const car = {...source, status:"owned", repairSpent:0, extraSpent:0, diagnosticsSpent:0};
+  s.market = s.market.filter(x => x.id !== source.id);
+  s.garage.push(car);
+  const beforeBalance = s.player.balance;
+  const beforeTx = s.transactions.length;
+  const cost = game.vehicleCost(car);
+  s.pendingDeal = {carId:car.id, amount:cost-1, buyerType:"Перекупщик", negotiations:0};
+  const result = game.acceptPendingSale(s, car.id);
+  assert.equal(result.ok, false);
+  assert.equal(result.reason, "loss");
+  assert.equal(s.player.balance, beforeBalance);
+  assert.equal(s.garage.length, 1);
+  assert.equal(s.garage[0].id, car.id);
+  assert.equal(s.transactions.length, beforeTx);
+  assert.equal(s.pendingDeal, null);
+});
+
 test("market demand cycle stays within safe bounds", () => {
   const s = game.newState("test-player-demand", "Tester");
   for (let i = 0; i < 20; i++) {
