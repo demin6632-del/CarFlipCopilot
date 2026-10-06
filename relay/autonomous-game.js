@@ -75,7 +75,11 @@ function createListing(state) {
     targetSale:Math.round(base.sale*(0.93+rng(state)*0.12)),
     demand:base.demand, risk:Math.min(0.8,base.risk+damage*0.025),
     condition:Math.round(condition*100), damage, status:"market",
-    generatedAt:Date.now()
+    generatedAt:Date.now(),
+    expiresAtTurn:(Number(state.meta.turn)||0) + 5 + Math.floor(rng(state)*5),
+    limited: rng(state) > 0.72,
+    competition: 0.20 + rng(state)*0.65
+  };
   };
 }
 function plateCode(state) {
@@ -114,13 +118,19 @@ function refreshMarket(state) {
     {id:"crossover",title:"Неделя кроссоверов",delta:0.08,text:"Кроссоверы уходят быстрее обычного."}
   ];
   state.meta.marketEvent = events[cycle % events.length];
+  state.meta.competitors = 1 + Math.floor(rng(state)*4);
+  state.meta.competitionLevel = Math.round((0.25 + rng(state)*0.70)*100);
+  const turn = Number(state.meta.turn)||0;
+  state.market = state.market.filter(car => !car.expiresAtTurn || car.expiresAtTurn > turn);
   while(state.market.length<5) state.market.push(createListing(state));
   for(const car of state.market) {
     const wave = Math.sin((cycle + car.catalogId.length) * 0.9) * 0.06;
     const eventDelta = state.meta.marketEvent?.delta || 0;
     const modelBonus = state.meta.marketEvent?.id==="crossover" && /Qashqai|X1/.test(car.model) ? 0.06 : 0;
     const sedanBonus = state.meta.marketEvent?.id==="sedan" && /Vesta|Focus|Octavia|Camry|Mazda|Audi/.test(car.model) ? 0.05 : 0;
-    car.currentDemand = Math.max(0.45, Math.min(0.98, car.demand + wave + eventDelta + modelBonus + sedanBonus));
+    const competitionPenalty = (state.meta.competitionLevel||0) > 75 ? 0.025 : 0;
+    car.currentDemand = Math.max(0.45, Math.min(0.98, car.demand + wave + eventDelta + modelBonus + sedanBonus - competitionPenalty));
+    car.marketPressure = Math.max(0.10, Math.min(0.95, car.competition + (state.meta.competitionLevel||50)/200));
   }
   return state.market;
 }
@@ -331,6 +341,7 @@ function mainText(state) {
     "",
     "📈 Рынок: "+(state.meta.marketEvent?.title||"стабильный"),
     state.meta.marketEvent?.text||"",
+    "👥 Конкуренты: "+(state.meta.competitors||1)+" · давление "+(state.meta.competitionLevel||0)+"%",
     "🎯 "+rec.title,
     rec.car ? rec.car.model+" · "+fmt(rec.car.buyPrice)+" → около "+fmt(rec.car.targetSale) : rec.text,
     "",
@@ -345,8 +356,14 @@ function menu() {
   ]};
 }
 function marketKeyboard(state) {
+  const turn=Number(state.meta.turn)||0;
   return {inline_keyboard:[
-    ...state.market.slice(0,5).map((c,i)=>[{text:(i+1)+". "+c.model+" · "+fmt(c.buyPrice),callback_data:"ag:inspect:"+c.id}]),
+    ...state.market.slice(0,5).map((c,i)=>{
+      const left=c.expiresAtTurn ? Math.max(0,c.expiresAtTurn-turn) : 0;
+      const tag=c.limited ? "🔥 " : "";
+      const timer=c.expiresAtTurn ? " · ⏳"+left : "";
+      return [{text:tag+(i+1)+". "+c.model+" · "+fmt(c.buyPrice)+timer,callback_data:"ag:inspect:"+c.id}];
+    }),
     [{text:"🔄 Обновить рынок",callback_data:"ag:refresh"}],
     [{text:"⬅️ Главное меню",callback_data:"ag:home"}]
   ]};
@@ -371,7 +388,8 @@ function inspectText(c) {
     "🎯 Целевая продажа: "+fmt(c.targetSale),
     "📈 Потенциальная маржа: "+fmt(margin),
     "📊 Спрос сейчас: "+Math.round((c.currentDemand??c.demand)*100)+"%",
-    "⚠️ Риск: "+Math.round(c.risk*100)+"%"
+    "⚠️ Риск: "+Math.round(c.risk*100)+"%",
+    c.limited ? "🔥 Срочный лот: ограниченное предложение." : "📦 Обычный срок размещения."
   ].join("\n");
 }
 function inspectKeyboard(c, state) {
@@ -479,9 +497,20 @@ async function handleCallback(chat,data,firstName,sendFn,answerFn,callbackId) {
       state.processedCallbacks=state.processedCallbacks.slice(-100);
     }
     if(action==="refresh"){
-      state.market=[];refreshMarket(state);
+      const before=state.market.length;
+      const taken=[];
+      const pressure=(state.meta.competitionLevel||0)/100;
+      if(pressure>0.72 && state.market.length>3 && rng(state)<pressure*0.45) {
+        const candidate=state.market.find(x=>x.limited) || state.market[0];
+        if(candidate) {
+          state.market=state.market.filter(x=>x.id!==candidate.id);
+          taken.push(candidate.model);
+        }
+      }
+      refreshMarket(state);
       state.meta.day=(state.meta.day||1)+1;
-      return {text:mainText(state),markup:menu()};
+      const note=taken.length ? "\n\n⚡ Конкурент забрал лот: "+taken[0]+"." : "";
+      return {text:mainText(state)+note,markup:marketKeyboard(state)};
     }
     if(action==="market") return {text:"🚗 РЫНОК\n\nВыбирай лот для полного осмотра.",markup:marketKeyboard(state)};
     if(action==="garage") return {text:state.garage.length?("🏠 ГАРАЖ\n\n"+state.garage.map((c,i)=>(i+1)+". "+c.model+" · "+fmt(c.buyPrice+(c.repairSpent||0)+(c.extraSpent||0))).join("\n")):"🏠 ГАРАЖ\n\nПока пусто.",markup:garageKeyboard(state)};
@@ -495,6 +524,11 @@ async function handleCallback(chat,data,firstName,sendFn,answerFn,callbackId) {
     }
     if(action==="buy"){
       const c=state.market.find(x=>x.id===id);
+      if(c && c.expiresAtTurn && c.expiresAtTurn <= (Number(state.meta.turn)||0)) {
+        state.market=state.market.filter(x=>x.id!==id);
+        refreshMarket(state);
+        return {text:"⏳ Лот уже ушёл с рынка. Конкуренты успели раньше.",markup:marketKeyboard(state)};
+      }
       if(!c)return {text:"⚠️ Лот уже продан.",markup:marketKeyboard(state)};
       if(state.garage.length>=state.player.garageCapacity)return {text:"⚠️ Гараж заполнен.",markup:garageKeyboard(state)};
       if(state.player.balance<c.buyPrice)return {text:"❌ Недостаточно денег.",markup:marketKeyboard(state)};
