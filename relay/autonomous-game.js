@@ -126,7 +126,7 @@ function refreshMarket(state) {
   state.meta.competitors = 1 + Math.floor(rng(state)*4);
   state.meta.competitionLevel = Math.round((0.25 + rng(state)*0.70)*100);
   const turn = Number(state.meta.turn)||0;
-  state.market = state.market.filter(car => !car.expiresAtTurn || car.expiresAtTurn > turn);
+  state.market = state.market.filter(car => car.expiresAtTurn == null || car.expiresAtTurn > turn);
   while(state.market.length<5) state.market.push(createListing(state));
   for(const car of state.market) {
     const wave = Math.sin((cycle + car.catalogId.length) * 0.9) * 0.06;
