@@ -49,7 +49,7 @@ async function init() {
 
 function clone(x){ return JSON.parse(JSON.stringify(x)); }
 function money(n){ return Math.round(Number(n)||0); }
-function fmt(n){ return money(n).toLocaleString("ru-RU")+" ₽"; }
+function fmt(n){ return money(n).toLocaleString("ru-RU")+" ₽"; }\nfunction vehicleCost(c){ return money((c?.buyPrice||0)+(c?.repairSpent||0)+(c?.extraSpent||0)+(c?.diagnosticsSpent||0)); }
 
 function seedFor(chat) {
   let h=2166136261;
@@ -446,7 +446,7 @@ function inspectKeyboard(c, state) {
   ]};
 }
 function carText(c) {
-  const cost=c.buyPrice+(c.repairSpent||0)+(c.extraSpent||0);
+  const cost=vehicleCost(c);
   const margin=c.targetSale-cost;
   return [
     "🚘 "+c.model,
@@ -467,7 +467,7 @@ function carKeyboard(c) {
   ]};
 }
 function dealText(state, c, deal) {
-  const cost=c.buyPrice+(c.repairSpent||0)+(c.extraSpent||0);
+  const cost=vehicleCost(c);
   const profit=deal.amount-cost;
   return [
     "🤝 ПРЕДЛОЖЕНИЕ ПОКУПАТЕЛЯ","",
@@ -560,7 +560,7 @@ async function handleCallback(chat,data,firstName,sendFn,answerFn,callbackId) {
       return {text:mainText(state)+note,markup:marketKeyboard(state)};
     }
     if(action==="market") return {text:"🚗 РЫНОК\n\nВыбирай лот для полного осмотра.",markup:marketKeyboard(state)};
-    if(action==="garage") return {text:state.garage.length?("🏠 ГАРАЖ\n\n"+state.garage.map((c,i)=>(i+1)+". "+c.model+" · "+fmt(c.buyPrice+(c.repairSpent||0)+(c.extraSpent||0))).join("\n")):"🏠 ГАРАЖ\n\nПока пусто.",markup:garageKeyboard(state)};
+    if(action==="garage") return {text:state.garage.length?("🏠 ГАРАЖ\n\n"+state.garage.map((c,i)=>(i+1)+". "+c.model+" · "+fmt(vehicleCost(c))).join("\n")):"🏠 ГАРАЖ\n\nПока пусто.",markup:garageKeyboard(state)};
     if(action==="advice"){
       const r=recommendation(state);
       return {text:"🧠 ЧТО ДЕЛАТЬ\n\n🎯 "+r.title+"\n"+r.text+(r.car?"\n\n👉 Лот: "+r.car.model+"\n💵 Вход: "+fmt(r.car.buyPrice)+"\n🔧 Ремонт: "+fmt(r.car.repairCost)+"\n📈 ROI: "+(r.roi?.toFixed(1)||"—")+"%":""),markup:r.car?{inline_keyboard:[[{text:"🔎 Осмотреть лот",callback_data:"ag:inspect:"+r.car.id}],[{text:"⬅️ Меню",callback_data:"ag:home"}]]}:menu()};
@@ -652,7 +652,7 @@ async function handleCallback(chat,data,firstName,sendFn,answerFn,callbackId) {
       if(!state.pendingDeal || state.pendingDeal.carId!==id) return {text:"⚠️ Предложение устарело. Нажми «Продать» заново.",markup:carKeyboard(c)};
       const buyerName=state.pendingDeal.buyerType||"Покупатель";
       const offer=Number(state.pendingDeal.amount)||0;
-      const cost=c.buyPrice+(c.repairSpent||0)+(c.extraSpent||0);
+      const cost=vehicleCost(c);
       const profit=offer-cost;
       if(profit<0){state.pendingDeal=null;return {text:"🛑 ПРОДАЖА ЗАБЛОКИРОВАНА\n\nПредложение ниже себестоимости.",markup:carKeyboard(c)};}
       state.pendingDeal=null;
