@@ -78,7 +78,11 @@ function createListing(state) {
     generatedAt:Date.now(),
     expiresAtTurn:(Number(state.meta.turn)||0) + 5 + Math.floor(rng(state)*5),
     limited: rng(state) > 0.72,
-    competition: 0.20 + rng(state)*0.65
+    competition: 0.20 + rng(state)*0.65,
+    hiddenDefects: Math.max(0, Math.min(2, Math.floor((base.risk + rng(state)*0.30) * 2))),
+    diagnosticLevel: 0,
+    diagnosticsSpent: 0,
+    hiddenDefectSeverity: 0
   };
   };
 }
@@ -374,6 +378,42 @@ function garageKeyboard(state) {
     [{text:"🚗 Рынок",callback_data:"ag:market"},{text:"⬅️ Меню",callback_data:"ag:home"}]
   ]};
 }
+function hiddenDefectLabel(c) {
+  const count = Number(c.hiddenDefects)||0;
+  const revealed = Number(c.diagnosticLevel)||0;
+  if (!count) return "✅ Скрытых дефектов не выявлено.";
+  if (revealed >= 2) return "🔬 Глубокая диагностика: скрытых дефектов не осталось.";
+  if (revealed >= 1) return "🔎 Быстрая диагностика: часть скрытых дефектов проверена.";
+  return "❓ Скрытые дефекты: неизвестно.";
+}
+function diagnosticCost(c, deep) {
+  return deep ? 35000 : 12000;
+}
+function runDiagnostic(state, c, deep) {
+  const cost = diagnosticCost(c, deep);
+  if (state.player.balance < cost) return {ok:false,cost};
+  addTx(state, "diagnostic", -cost, (deep ? "Глубокая диагностика " : "Быстрая диагностика ") + c.model);
+  c.diagnosticsSpent = (c.diagnosticsSpent||0) + cost;
+  if (deep) {
+    c.diagnosticLevel = 2;
+    c.hiddenDefects = 0;
+    c.hiddenDefectSeverity = 0;
+    return {ok:true,cost,found:0,deep:true};
+  }
+  c.diagnosticLevel = Math.max(1, c.diagnosticLevel||0);
+  const found = Number(c.hiddenDefects)||0;
+  if (found > 0) {
+    c.hiddenDefects = Math.max(0, found - 1);
+    c.hiddenDefectSeverity = Math.max(0, (c.hiddenDefectSeverity||0) - 1);
+  }
+  return {ok:true,cost,found:found>0?1:0,deep:false};
+}
+function revealRiskText(c) {
+  if ((c.diagnosticLevel||0) >= 2) return "🔬 Диагностика: полная";
+  if ((c.diagnosticLevel||0) >= 1) return "🔎 Диагностика: базовая";
+  return "🔎 Диагностика: не проводилась";
+}
+
 function inspectText(c,state) {
   const margin=c.targetSale-c.buyPrice-c.repairCost;
   return [
@@ -389,6 +429,8 @@ function inspectText(c,state) {
     "📈 Потенциальная маржа: "+fmt(margin),
     "📊 Спрос сейчас: "+Math.round((c.currentDemand??c.demand)*100)+"%",
     "⚠️ Риск: "+Math.round(c.risk*100)+"%",
+    revealRiskText(c),
+    hiddenDefectLabel(c),
     c.limited ? "🔥 Срочный лот: ограниченное предложение." : "📦 Обычный срок размещения.",
     c.expiresAtTurn ? "⏳ Осталось ходов: "+Math.max(0,c.expiresAtTurn-(Number(state.meta.turn)||0)) : ""
   ].join("\n");
@@ -396,6 +438,8 @@ function inspectText(c,state) {
 function inspectKeyboard(c, state) {
   const free=state.garage.length<state.player.garageCapacity;
   return {inline_keyboard:[
+    [{text:"🔎 Быстрая диагностика · 12 000 ₽",callback_data:"ag:diagnose:"+c.id}],
+    [{text:"🔬 Глубокая диагностика · 35 000 ₽",callback_data:"ag:diagnose_deep:"+c.id}],
     ...(free ? [[{text:"💳 Купить",callback_data:"ag:buy:"+c.id}]] : []),
     [{text:"⬅️ Рынок",callback_data:"ag:market"}]
   ]};
@@ -409,6 +453,7 @@ function carText(c) {
     "💵 Себестоимость: "+fmt(cost),
     "🔧 Ремонт: "+fmt(c.repairSpent||0),
     "✨ Подготовка: "+fmt(c.extraSpent||0),
+    "🔎 Диагностика: "+fmt(c.diagnosticsSpent||0),
     "🎯 Ориентир продажи: "+fmt(c.targetSale),
     "📈 Результат до продажи: "+fmt(margin)
   ].join("\n");
@@ -523,6 +568,17 @@ async function handleCallback(chat,data,firstName,sendFn,answerFn,callbackId) {
       const c=state.market.find(x=>x.id===id);
       return c?{text:inspectText(c,state),markup:inspectKeyboard(c,state)}:{text:"⚠️ Лот уже исчез с рынка.",markup:marketKeyboard(state)};
     }
+    if(action==="diagnose" || action==="diagnose_deep"){
+      const c=state.market.find(x=>x.id===id);
+      if(!c) return {text:"⚠️ Лот уже исчез с рынка.",markup:marketKeyboard(state)};
+      const deep=action==="diagnose_deep";
+      const result=runDiagnostic(state,c,deep);
+      if(!result.ok) return {text:"❌ Не хватает денег на диагностику.\n\nНужно: "+fmt(result.cost),markup:inspectKeyboard(c,state)};
+      const detail = deep
+        ? "Все скрытые дефекты проверены до покупки."
+        : (result.found ? "Обнаружен скрытый дефект. Осторожно: часть риска ещё может остаться." : "На быстрой проверке новый дефект не найден.");
+      return {text:(deep?"🔬 ГЛУБОКАЯ ДИАГНОСТИКА":"🔎 БЫСТРАЯ ДИАГНОСТИКА")+"\n\n"+detail+"\n💵 Расход: "+fmt(result.cost)+"\n\n"+inspectText(c,state),markup:inspectKeyboard(c,state)};
+    }
     if(action==="buy"){
       const c=state.market.find(x=>x.id===id);
       if(c && c.expiresAtTurn && c.expiresAtTurn <= (Number(state.meta.turn)||0)) {
@@ -534,6 +590,15 @@ async function handleCallback(chat,data,firstName,sendFn,answerFn,callbackId) {
       if(state.garage.length>=state.player.garageCapacity)return {text:"⚠️ Гараж заполнен.",markup:garageKeyboard(state)};
       if(state.player.balance<c.buyPrice)return {text:"❌ Недостаточно денег.",markup:marketKeyboard(state)};
       c.status="owned";c.repairSpent=0;c.extraSpent=0;
+      const hiddenPenalty = Math.min(3, Number(c.hiddenDefects)||0);
+      if (hiddenPenalty > 0) {
+        c.damage = Math.min(10, (c.damage||0) + hiddenPenalty);
+        c.condition = Math.max(55, (c.condition||0) - hiddenPenalty*4);
+        c.repairCost = Math.round(c.repairCost * (1 + hiddenPenalty*0.12));
+        c.risk = Math.min(0.8, c.risk + hiddenPenalty*0.06);
+      }
+      c.hiddenDefects = 0;
+      c.hiddenDefectSeverity = 0;
       state.garage.push(c);
       state.market=state.market.filter(x=>x.id!==id);
       addTx(state,"buy",-c.buyPrice,"Покупка "+c.model);
@@ -543,9 +608,11 @@ async function handleCallback(chat,data,firstName,sendFn,answerFn,callbackId) {
     if(!c && ["car","repair","prep","sell"].includes(action))return {text:"⚠️ Машина уже не в гараже.",markup:garageKeyboard(state)};
     if(action==="car")return {text:carText(c),markup:carKeyboard(c)};
     if(action==="repair"){
-      const cost=Math.round(c.repairCost);
+      if ((c.damage||0) <= 0 && (c.condition||0) >= 100) return {text:"🛠 Машина уже восстановлена. Дополнительный ремонт не нужен.",markup:carKeyboard(c)};
+      const remaining=Math.max(1, Number(c.damage)||1);
+      const cost=Math.round(Math.min(c.repairCost, Math.max(12000, c.repairCost*(remaining/7))));
       if(state.player.balance<cost)return {text:"❌ Не хватает денег на ремонт.",markup:carKeyboard(c)};
-      c.repairSpent=(c.repairSpent||0)+cost;c.condition=Math.min(100,c.condition+18);c.damage=Math.max(0,c.damage-2);
+      c.repairSpent=(c.repairSpent||0)+cost;c.condition=Math.min(100,c.condition+Math.max(8,Math.min(22,Math.round(remaining*3.5))));c.damage=Math.max(0,c.damage-Math.max(1,Math.ceil(remaining/2)));
       addTx(state,"repair",-cost,"Ремонт "+c.model);
       return {text:"🔧 РЕМОНТ ЗАВЕРШЁН\n\n"+carText(c),markup:carKeyboard(c)};
     }
