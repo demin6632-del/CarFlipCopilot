@@ -333,7 +333,6 @@ function inspectKeyboard(c, state) {
 function carText(c) {
   const cost=c.buyPrice+(c.repairSpent||0)+(c.extraSpent||0);
   const margin=c.targetSale-cost;
-  const conditionBonus=Math.max(0,Math.round((c.condition-78)*0.35));
   return [
     "🚘 "+c.model,
     "",
@@ -341,8 +340,7 @@ function carText(c) {
     "🔧 Ремонт: "+fmt(c.repairSpent||0),
     "✨ Подготовка: "+fmt(c.extraSpent||0),
     "🎯 Ориентир продажи: "+fmt(c.targetSale),
-    "📈 Результат до продажи: "+fmt(margin),
-    "📊 Поправка за состояние: +"+conditionBonus+"% к оценке"
+    "📈 Результат до продажи: "+fmt(margin)
   ].join("\n");
 }
 function carKeyboard(c) {
