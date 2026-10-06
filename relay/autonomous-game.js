@@ -333,6 +333,7 @@ function inspectKeyboard(c, state) {
 function carText(c) {
   const cost=c.buyPrice+(c.repairSpent||0)+(c.extraSpent||0);
   const margin=c.targetSale-cost;
+  const conditionBonus=Math.max(0,Math.round((c.condition-78)*0.35));
   return [
     "🚘 "+c.model,
     "",
@@ -340,7 +341,8 @@ function carText(c) {
     "🔧 Ремонт: "+fmt(c.repairSpent||0),
     "✨ Подготовка: "+fmt(c.extraSpent||0),
     "🎯 Ориентир продажи: "+fmt(c.targetSale),
-    "📈 Результат до продажи: "+fmt(margin)
+    "📈 Результат до продажи: "+fmt(margin),
+    "📊 Поправка за состояние: +"+conditionBonus+"% к оценке"
   ].join("\n");
 }
 function carKeyboard(c) {
@@ -366,7 +368,10 @@ function statsText(state) {
   const income=tx.filter(x=>x.amount>0).reduce((s,x)=>s+x.amount,0);
   const spent=tx.filter(x=>x.amount<0).reduce((s,x)=>s-x.amount,0);
   const deals=tx.filter(x=>x.kind==="sale").length;
-  const profit=tx.filter(x=>x.kind==="sale").reduce((s,x)=>s+x.amount,0)-tx.filter(x=>x.kind==="buy").reduce((s,x)=>s-x.amount,0)-tx.filter(x=>x.kind==="repair"||x.kind==="prep").reduce((s,x)=>s-x.amount,0);
+  const saleRevenue=tx.filter(x=>x.kind==="sale"||x.kind==="plate_sale").reduce((s,x)=>s+x.amount,0);
+  const vehicleSpent=tx.filter(x=>x.kind==="buy"||x.kind==="repair"||x.kind==="prep").reduce((s,x)=>s-x.amount,0);
+  const plateSpent=tx.filter(x=>x.kind==="plate_buy").reduce((s,x)=>s-x.amount,0);
+  const profit=saleRevenue-vehicleSpent-plateSpent;
   return ["📊 СТАТИСТИКА","","💰 Баланс: "+fmt(state.player.balance),"📥 Оборот входящих: "+fmt(income),"📤 Расходы: "+fmt(spent),"🤝 Продаж: "+deals,"📈 Валовой результат сделок: "+fmt(profit),"🔄 Ходов: "+state.meta.turn].join("\n");
 }
 
