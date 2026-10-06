@@ -246,3 +246,48 @@ test("expired listings are removed on market refresh", () => {
   assert.ok(!s.market.some(x => x.id === expired.id));
   assert.equal(s.market.length, 5);
 });
+
+
+test("vehicle diagnostics reveal and charge without changing purchase price", () => {
+  const s = game.newState("diagnostics-player", "Tester");
+  const car = s.market[0];
+  const before = s.player.balance;
+  const hiddenBefore = car.hiddenDefects;
+  const result = game.runDiagnostic(s, car, false);
+  assert.equal(result.ok, true);
+  assert.equal(s.player.balance, before - 12000);
+  assert.equal(car.diagnosticsSpent, 12000);
+  assert.ok(car.hiddenDefects <= hiddenBefore);
+});
+
+test("deep diagnostics remove remaining hidden defects", () => {
+  const s = game.newState("deep-diagnostics-player", "Tester");
+  const car = s.market[0];
+  const result = game.runDiagnostic(s, car, true);
+  assert.equal(result.ok, true);
+  assert.equal(s.player.balance, 3000000 - 35000);
+  assert.equal(car.diagnosticLevel, 2);
+  assert.equal(car.hiddenDefects, 0);
+});
+
+test("hidden defects increase real ownership risk when buying without full diagnosis", () => {
+  const s = game.newState("hidden-defect-buy", "Tester");
+  const car = s.market[0];
+  car.hiddenDefects = 2;
+  car.damage = 1;
+  car.condition = 90;
+  car.repairCost = 100000;
+  const beforeRisk = car.risk;
+  s.garage.push({...car, status:"owned"});
+  const owned = s.garage[0];
+  const hiddenPenalty = Math.min(3, Number(owned.hiddenDefects)||0);
+  owned.damage = Math.min(10, (owned.damage||0) + hiddenPenalty);
+  owned.condition = Math.max(55, (owned.condition||0) - hiddenPenalty*4);
+  owned.repairCost = Math.round(owned.repairCost * (1 + hiddenPenalty*0.12));
+  owned.risk = Math.min(0.8, owned.risk + hiddenPenalty*0.06);
+  assert.ok(owned.damage > 1);
+  assert.ok(owned.condition < 90);
+  assert.ok(owned.repairCost > 100000);
+  assert.ok(owned.risk > beforeRisk);
+});
+
