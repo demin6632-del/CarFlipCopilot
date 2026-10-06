@@ -5,7 +5,7 @@
   "scripts": {
     "start": "node server.js",
     "start:telegram": "node telegram-bot.js",
-    "test": "node self-test.js"
+    "test": "node self-test.js && node autonomous-game.test.js"
   },
   "dependencies": {
     "qrcode": "^1.5.4",
