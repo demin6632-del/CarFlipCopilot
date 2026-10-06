@@ -222,3 +222,27 @@ test("transaction ledger keeps vehicle and plate economics separate", () => {
   assert.equal(s.transactions.filter(x=>x.kind==="sale").length, 1);
   assert.equal(s.transactions.filter(x=>x.kind==="plate_sale").length, 1);
 });
+
+
+test("limited market listings have bounded lifetime and competition data", () => {
+  const s = game.newState("live-market", "Tester");
+  assert.ok(Number.isInteger(s.meta.competitors));
+  assert.ok(s.meta.competitors >= 1 && s.meta.competitors <= 4);
+  assert.ok(s.meta.competitionLevel >= 25 && s.meta.competitionLevel <= 95);
+  for (const car of s.market) {
+    assert.ok(car.expiresAtTurn > s.meta.turn);
+    assert.ok(car.expiresAtTurn - s.meta.turn >= 5 && car.expiresAtTurn - s.meta.turn <= 9);
+    assert.ok(car.competition >= 0.20 && car.competition <= 0.85);
+    assert.ok(car.marketPressure >= 0.10 && car.marketPressure <= 0.95);
+  }
+});
+
+test("expired listings are removed on market refresh", () => {
+  const s = game.newState("market-expiry", "Tester");
+  const expired = s.market[0];
+  expired.expiresAtTurn = 0;
+  s.meta.turn = 1;
+  game.refreshMarket(s);
+  assert.ok(!s.market.some(x => x.id === expired.id));
+  assert.equal(s.market.length, 5);
+});
