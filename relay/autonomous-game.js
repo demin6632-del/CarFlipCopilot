@@ -737,7 +737,7 @@ async function handleCallback(chat,data,firstName,sendFn,answerFn,callbackId) {
       if(!result.ok){
         if(result.reason==="missing") return {text:"⚠️ Машина уже не в гараже.",markup:garageKeyboard(state)};
         if(result.reason==="stale") return {text:"⚠️ Предложение устарело. Нажми «Продать» заново.",markup:carKeyboard(c)};
-        return {text:"🛑 ПРОДАЖА ЗАБЛОКИРОВАНА\n\nПредложение ниже себестоимости.",markup:carKeyboard(c)};
+        return {text:"🛑 ПРОДАЖА ЗАБЛОКИРОВАНА\n\nПредложение ниже себестоимости.\nМашина осталась в гараже.",markup:carKeyboard(c)};
       }
       const levelText=result.progress.levelUps ? "\n⬆️ Новый уровень: "+state.player.level : "";
       const contractText=result.contractReward ? "\n🎁 Награда контракта: "+fmt(result.contractReward) : "";
