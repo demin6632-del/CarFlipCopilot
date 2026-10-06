@@ -539,6 +539,33 @@ function purchaseListing(state, id) {
   return {ok:true,car:c};
 }
 
+
+function repairVehicle(state, id) {
+  const c=state.garage.find(x=>x.id===id);
+  if(!c)return {ok:false,reason:"missing"};
+  if((c.damage||0)<=0 && (c.condition||0)>=100)return {ok:false,reason:"restored"};
+  const remaining=Math.max(1,Number(c.damage)||1);
+  const cost=Math.round(Math.min(c.repairCost,Math.max(12000,c.repairCost*(remaining/7))));
+  if(state.player.balance<cost)return {ok:false,reason:"no_money",cost};
+  c.repairSpent=(c.repairSpent||0)+cost;
+  c.condition=Math.min(100,c.condition+Math.max(8,Math.min(22,Math.round(remaining*3.5))));
+  c.damage=Math.max(0,c.damage-Math.max(1,Math.ceil(remaining/2)));
+  addTx(state,"repair",-cost,"Ремонт "+c.model);
+  return {ok:true,car:c,cost};
+}
+
+function prepareVehicle(state, id) {
+  const c=state.garage.find(x=>x.id===id);
+  if(!c)return {ok:false,reason:"missing"};
+  const cost=Math.round(18000+Math.max(0,c.damage)*2500);
+  if(state.player.balance<cost)return {ok:false,reason:"no_money",cost};
+  c.extraSpent=(c.extraSpent||0)+cost;
+  c.condition=Math.min(100,c.condition+6);
+  c.targetSale=Math.round(c.targetSale*1.035);
+  addTx(state,"prep",-cost,"Подготовка "+c.model);
+  return {ok:true,car:c,cost};
+}
+
 function acceptPendingSale(state, id) {
   const c=state.garage.find(x=>x.id===id);
   if(!c)return {ok:false,reason:"missing"};
@@ -641,20 +668,21 @@ async function handleCallback(chat,data,firstName,sendFn,answerFn,callbackId) {
     if(!c && ["car","repair","prep","sell"].includes(action))return {text:"⚠️ Машина уже не в гараже.",markup:garageKeyboard(state)};
     if(action==="car")return {text:carText(c),markup:carKeyboard(c)};
     if(action==="repair"){
-      if ((c.damage||0) <= 0 && (c.condition||0) >= 100) return {text:"🛠 Машина уже восстановлена. Дополнительный ремонт не нужен.",markup:carKeyboard(c)};
-      const remaining=Math.max(1, Number(c.damage)||1);
-      const cost=Math.round(Math.min(c.repairCost, Math.max(12000, c.repairCost*(remaining/7))));
-      if(state.player.balance<cost)return {text:"❌ Не хватает денег на ремонт.",markup:carKeyboard(c)};
-      c.repairSpent=(c.repairSpent||0)+cost;c.condition=Math.min(100,c.condition+Math.max(8,Math.min(22,Math.round(remaining*3.5))));c.damage=Math.max(0,c.damage-Math.max(1,Math.ceil(remaining/2)));
-      addTx(state,"repair",-cost,"Ремонт "+c.model);
-      return {text:"🔧 РЕМОНТ ЗАВЕРШЁН\n\n"+carText(c),markup:carKeyboard(c)};
+      const result=repairVehicle(state,id);
+      if(!result.ok){
+        if(result.reason==="restored") return {text:"🛠 Машина уже восстановлена. Дополнительный ремонт не нужен.",markup:carKeyboard(c)};
+        if(result.reason==="no_money") return {text:"❌ Не хватает денег на ремонт.",markup:carKeyboard(c)};
+        return {text:"⚠️ Машина уже не в гараже.",markup:garageKeyboard(state)};
+      }
+      return {text:"🔧 РЕМОНТ ЗАВЕРШЁН\n\n"+carText(result.car),markup:carKeyboard(result.car)};
     }
     if(action==="prep"){
-      const cost=Math.round(18000+Math.max(0,c.damage)*2500);
-      if(state.player.balance<cost)return {text:"❌ Не хватает денег на подготовку.",markup:carKeyboard(c)};
-      c.extraSpent=(c.extraSpent||0)+cost;c.condition=Math.min(100,c.condition+6);c.targetSale=Math.round(c.targetSale*1.035);
-      addTx(state,"prep",-cost,"Подготовка "+c.model);
-      return {text:"✨ ПОДГОТОВКА ЗАВЕРШЕНА\n\n"+carText(c),markup:carKeyboard(c)};
+      const result=prepareVehicle(state,id);
+      if(!result.ok){
+        if(result.reason==="no_money") return {text:"❌ Не хватает денег на подготовку.",markup:carKeyboard(c)};
+        return {text:"⚠️ Машина уже не в гараже.",markup:garageKeyboard(state)};
+      }
+      return {text:"✨ ПОДГОТОВКА ЗАВЕРШЕНА\n\n"+carText(result.car),markup:carKeyboard(result.car)};
     }
     if(action==="sell"){
       if(state.pendingDeal) return {text:"🤝 Сначала заверши текущие переговоры.",markup:dealKeyboard(c,state.pendingDeal)};
@@ -739,4 +767,4 @@ async function handleCallback(chat,data,firstName,sendFn,answerFn,callbackId) {
   return true;
 }
 
-module.exports={init,load,save,open,handleText,handleCallback,CATALOG,BUYER_TYPES,newState,refreshMarket,createListing,addTx,scoreListing,bestDeal,recommendation,addProgress,updateContracts,buyerOffer,buyerOfferDetails,buyerProfile,negotiation,dealRisk,runDiagnostic,vehicleCost,purchaseListing,acceptPendingSale};
+module.exports={init,load,save,open,handleText,handleCallback,CATALOG,BUYER_TYPES,newState,refreshMarket,createListing,addTx,scoreListing,bestDeal,recommendation,addProgress,updateContracts,buyerOffer,buyerOfferDetails,buyerProfile,negotiation,dealRisk,runDiagnostic,vehicleCost,purchaseListing,repairVehicle,prepareVehicle,acceptPendingSale};
