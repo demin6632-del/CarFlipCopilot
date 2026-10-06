@@ -153,7 +153,6 @@ function newState(chat, firstName) {
   };
   refreshMarket(state);
   refreshPlates(state);
-  refreshPlates(state);
   return state;
 }
 async function load(chat, firstName) {
