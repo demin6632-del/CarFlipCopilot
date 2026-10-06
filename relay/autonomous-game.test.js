@@ -56,6 +56,34 @@ test("contract reward is represented as a separate ledger credit", () => {
   assert.equal(s.transactions[0].kind, "contract");
 });
 
+test("buyer offer stays positive and follows target economics", () => {
+  const s = game.newState("test-player-offer", "Tester");
+  const car = s.market[0];
+  const offer = game.buyerOffer(s, car);
+  assert.ok(offer > 0);
+  assert.ok(offer < car.targetSale * 1.2);
+});
+
+test("market demand cycle stays within safe bounds", () => {
+  const s = game.newState("test-player-demand", "Tester");
+  for (let i = 0; i < 20; i++) {
+    s.meta.turn = i;
+    game.refreshMarket(s);
+    for (const car of s.market) assert.ok(car.currentDemand >= 0.45 && car.currentDemand <= 0.98);
+  }
+});
+
+test("deal events are bounded", () => {
+  const s = game.newState("test-player-events", "Tester");
+  const car = s.market[0];
+  for (let i = 0; i < 50; i++) {
+    const event = game.dealRisk(s, car);
+    assert.ok(["normal","incident","bonus"].includes(event.type));
+    if (event.penalty !== undefined) assert.ok(event.penalty >= 9000 && event.penalty <= 45000);
+    if (event.bonus !== undefined) assert.ok(event.bonus >= 12000 && event.bonus <= 42000);
+  }
+});
+
 test("recommendation never returns a listing outside the current market", () => {
   const s = game.newState("test-player-6", "Tester");
   const r = game.recommendation(s);
