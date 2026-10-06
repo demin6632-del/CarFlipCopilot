@@ -508,7 +508,7 @@ function statsText(state) {
   const spent=tx.filter(x=>x.amount<0).reduce((s,x)=>s-x.amount,0);
   const deals=tx.filter(x=>x.kind==="sale").length;
   const saleRevenue=tx.filter(x=>x.kind==="sale"||x.kind==="plate_sale").reduce((s,x)=>s+x.amount,0);
-  const vehicleSpent=tx.filter(x=>x.kind==="buy"||x.kind==="repair"||x.kind==="prep").reduce((s,x)=>s-x.amount,0);
+  const vehicleSpent=tx.filter(x=>x.kind==="buy"||x.kind==="repair"||x.kind==="prep"||x.kind==="diagnostic").reduce((s,x)=>s-x.amount,0);
   const plateSpent=tx.filter(x=>x.kind==="plate_buy").reduce((s,x)=>s-x.amount,0);
   const profit=saleRevenue-vehicleSpent-plateSpent;
   return ["📊 СТАТИСТИКА","","💰 Баланс: "+fmt(state.player.balance),"📥 Оборот входящих: "+fmt(income),"📤 Расходы: "+fmt(spent),"🤝 Продаж: "+deals,"📈 Валовой результат сделок: "+fmt(profit),"🔄 Ходов: "+state.meta.turn].join("\n");
