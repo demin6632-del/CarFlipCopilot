@@ -514,6 +514,31 @@ function statsText(state) {
   return ["📊 СТАТИСТИКА","","💰 Баланс: "+fmt(state.player.balance),"📥 Оборот входящих: "+fmt(income),"📤 Расходы: "+fmt(spent),"🤝 Продаж: "+deals,"📈 Валовой результат сделок: "+fmt(profit),"🔄 Ходов: "+state.meta.turn].join("\n");
 }
 
+function purchaseListing(state, id) {
+  const c=state.market.find(x=>x.id===id);
+  if(c && c.expiresAtTurn != null && c.expiresAtTurn <= (Number(state.meta.turn)||0)) {
+    state.market=state.market.filter(x=>x.id!==id);
+    refreshMarket(state);
+    return {ok:false,reason:"expired"};
+  }
+  if(!c)return {ok:false,reason:"missing"};
+  if(state.garage.length>=state.player.garageCapacity)return {ok:false,reason:"garage_full"};
+  if(state.player.balance<c.buyPrice)return {ok:false,reason:"no_money"};
+  c.status="owned"; c.repairSpent=0; c.extraSpent=0;
+  const hiddenPenalty=Math.min(3,Number(c.hiddenDefects)||0);
+  if(hiddenPenalty>0){
+    c.damage=Math.min(10,(c.damage||0)+hiddenPenalty);
+    c.condition=Math.max(55,(c.condition||0)-hiddenPenalty*4);
+    c.repairCost=Math.round(c.repairCost*(1+hiddenPenalty*0.12));
+    c.risk=Math.min(0.8,c.risk+hiddenPenalty*0.06);
+  }
+  c.hiddenDefects=0; c.hiddenDefectSeverity=0;
+  state.garage.push(c);
+  state.market=state.market.filter(x=>x.id!==id);
+  addTx(state,"buy",-c.buyPrice,"Покупка "+c.model);
+  return {ok:true,car:c};
+}
+
 async function send(sendFn,chat,text,markup) {
   return sendFn(chat,text,markup?{reply_markup:markup}:undefined);
 }
@@ -582,28 +607,14 @@ async function handleCallback(chat,data,firstName,sendFn,answerFn,callbackId) {
       return {text:(deep?"🔬 ГЛУБОКАЯ ДИАГНОСТИКА":"🔎 БЫСТРАЯ ДИАГНОСТИКА")+"\n\n"+detail+"\n💵 Расход: "+fmt(result.cost)+"\n\n"+inspectText(c,state),markup:inspectKeyboard(c,state)};
     }
     if(action==="buy"){
-      const c=state.market.find(x=>x.id===id);
-      if(c && c.expiresAtTurn && c.expiresAtTurn <= (Number(state.meta.turn)||0)) {
-        state.market=state.market.filter(x=>x.id!==id);
-        refreshMarket(state);
-        return {text:"⏳ Лот уже ушёл с рынка. Конкуренты успели раньше.",markup:marketKeyboard(state)};
+      const result=purchaseListing(state,id);
+      if(!result.ok){
+        if(result.reason==="expired") return {text:"⏳ Лот уже ушёл с рынка. Конкуренты успели раньше.",markup:marketKeyboard(state)};
+        if(result.reason==="missing") return {text:"⚠️ Лот уже продан.",markup:marketKeyboard(state)};
+        if(result.reason==="garage_full") return {text:"⚠️ Гараж заполнен.",markup:garageKeyboard(state)};
+        return {text:"❌ Недостаточно денег.",markup:marketKeyboard(state)};
       }
-      if(!c)return {text:"⚠️ Лот уже продан.",markup:marketKeyboard(state)};
-      if(state.garage.length>=state.player.garageCapacity)return {text:"⚠️ Гараж заполнен.",markup:garageKeyboard(state)};
-      if(state.player.balance<c.buyPrice)return {text:"❌ Недостаточно денег.",markup:marketKeyboard(state)};
-      c.status="owned";c.repairSpent=0;c.extraSpent=0;
-      const hiddenPenalty = Math.min(3, Number(c.hiddenDefects)||0);
-      if (hiddenPenalty > 0) {
-        c.damage = Math.min(10, (c.damage||0) + hiddenPenalty);
-        c.condition = Math.max(55, (c.condition||0) - hiddenPenalty*4);
-        c.repairCost = Math.round(c.repairCost * (1 + hiddenPenalty*0.12));
-        c.risk = Math.min(0.8, c.risk + hiddenPenalty*0.06);
-      }
-      c.hiddenDefects = 0;
-      c.hiddenDefectSeverity = 0;
-      state.garage.push(c);
-      state.market=state.market.filter(x=>x.id!==id);
-      addTx(state,"buy",-c.buyPrice,"Покупка "+c.model);
+      const c=result.car;
       return {text:"✅ ПОКУПКА ОФОРМЛЕНА\n\n"+c.model+"\n💵 Потрачено: "+fmt(c.buyPrice)+"\n💰 Остаток: "+fmt(state.player.balance),markup:carKeyboard(c)};
     }
     const c=state.garage.find(x=>x.id===id);
@@ -716,4 +727,4 @@ async function handleCallback(chat,data,firstName,sendFn,answerFn,callbackId) {
   return true;
 }
 
-module.exports={init,load,save,open,handleText,handleCallback,CATALOG,BUYER_TYPES,newState,refreshMarket,createListing,addTx,scoreListing,bestDeal,recommendation,addProgress,updateContracts,buyerOffer,buyerOfferDetails,buyerProfile,negotiation,dealRisk,runDiagnostic,vehicleCost};
+module.exports={init,load,save,open,handleText,handleCallback,CATALOG,BUYER_TYPES,newState,refreshMarket,createListing,addTx,scoreListing,bestDeal,recommendation,addProgress,updateContracts,buyerOffer,buyerOfferDetails,buyerProfile,negotiation,dealRisk,runDiagnostic,vehicleCost,purchaseListing};
