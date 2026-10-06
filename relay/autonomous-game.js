@@ -265,7 +265,7 @@ async function save(chat,state) {
     [String(chat),VERSION,JSON.stringify(state)]
   );
 }
-async function withState(chat, firstName, mutate) {
+async function withState(chat, firstName, mutate, callbackId) {
   const p=db(); if(!p) throw new Error("DATABASE_URL не настроен");
   const pool=await p;
   const client=await pool.connect();
@@ -280,6 +280,10 @@ async function withState(chat, firstName, mutate) {
     }
     state.processedCallbacks=Array.isArray(state.processedCallbacks)?state.processedCallbacks:[];
     state.meta=state.meta||{seed:seedFor(chat),turn:0,createdAt:Date.now(),day:1,plateCycle:0};
+    if(callbackId && state.processedCallbacks.includes(String(callbackId))) {
+      await client.query("ROLLBACK");
+      return {state,result:{duplicate:true}};
+    }
     state.meta.turn=(Number(state.meta.turn)||0)+1;
     const result=await mutate(state);
     await client.query("UPDATE autonomous_game_state SET version=$2,state=$3::jsonb,updated_at=now() WHERE chat_id=$1",[String(chat),VERSION,JSON.stringify(state)]);
@@ -632,9 +636,6 @@ async function handleCallback(chat,data,firstName,sendFn,answerFn,callbackId) {
   const [_,action,id]=String(data).split(":");
   if(action==="home"){await open(chat,firstName,sendFn);return true;}
   const run=await withState(chat,firstName,state=>{
-    if(callbackId && state.processedCallbacks.includes(String(callbackId))) {
-      return {text:"↩️ Это действие уже было обработано.\n\nСостояние игры сохранено.",markup:menu()};
-    }
     if(callbackId) {
       state.processedCallbacks.push(String(callbackId));
       state.processedCallbacks=state.processedCallbacks.slice(-100);
@@ -778,7 +779,11 @@ async function handleCallback(chat,data,firstName,sendFn,answerFn,callbackId) {
     }
     if(action==="stats")return {text:statsText(state),markup:menu()};
     return {text:mainText(state),markup:menu()};
-  });
+  }, callbackId);
+  if(run.result?.duplicate) {
+    await screen(sendFn,chat,run.state,"↩️ Это действие уже было обработано.\n\nСостояние игры не изменилось.",menu());
+    return true;
+  }
   await screen(sendFn,chat,run.state,run.result.text,run.result.markup);
   return true;
 }
