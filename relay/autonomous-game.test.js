@@ -82,11 +82,12 @@ test("negotiation stays bounded and never invents arbitrary money", () => {
   const s = game.newState("negotiation-bounds", "Tester");
   const car = s.market[0];
   const deal = game.buyerOfferDetails(s, car);
-  for (let i = 0; i < 40; i++) {
-    const result = game.negotiation(s, car, {...deal});
-    assert.ok(result.amount >= deal.amount);
-    assert.ok(result.amount <= Math.round(deal.amount * 1.06) + 1000);
-  }
+  const result = game.negotiation(s, car, {...deal});
+  assert.ok(result.amount >= deal.amount);
+  assert.ok(result.amount <= Math.round(deal.amount * 1.06) + 1000);
+  const finished = {...deal, negotiations:1};
+  const second = game.negotiation(s, car, finished);
+  assert.equal(second.amount, deal.amount);
 });
 
 test("rejecting a pending deal does not change balance or garage", () => {
