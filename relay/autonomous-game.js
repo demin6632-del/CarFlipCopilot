@@ -78,6 +78,31 @@ function createListing(state) {
     generatedAt:Date.now()
   };
 }
+function plateCode(state) {
+  const letters = "АВЕКМНОРСТУХ";
+  const nums = String(100 + Math.floor(rng(state)*900));
+  const region = String(1 + Math.floor(rng(state)*199)).padStart(2,"0");
+  return letters[Math.floor(rng(state)*letters.length)] + nums + letters[Math.floor(rng(state)*letters.length)] + letters[Math.floor(rng(state)*letters.length)] + " " + region;
+}
+function createPlateListing(state) {
+  const quality = 55 + Math.floor(rng(state)*46);
+  const rarity = 0.7 + rng(state)*1.5;
+  const base = Math.round((12000 + quality*850 + rarity*18000)/1000)*1000;
+  return {
+    id:"plate_"+Date.now().toString(36)+"_"+Math.floor(rng(state)*1e6).toString(36),
+    plate:plateCode(state),
+    quality, rarity:Math.round(rarity*100)/100,
+    buyPrice:base,
+    status:"auction",
+    generatedAt:Date.now()
+  };
+}
+function refreshPlates(state) {
+  const cycle = Math.floor((Number(state.meta.turn)||0) / 4);
+  state.meta.plateCycle = cycle;
+  while(state.plateMarket.length < 3) state.plateMarket.push(createPlateListing(state));
+  return state.plateMarket;
+}
 function refreshMarket(state) {
   const cycle = Math.floor((Number(state.meta.turn)||0) / 5);
   state.meta.marketCycle = cycle;
@@ -116,18 +141,35 @@ function newState(chat, firstName) {
     market:[],
     transactions:[],
     plates:[],
-    contracts:[{id:"first_turn",title:"Первый оборот",goal:"Получи прибыль с первой перепродажи",reward:120000,completed:false}],
-    meta:{seed:seedFor(chat),turn:0,createdAt:Date.now()},
+    contracts:[
+      {id:"profit_300k",title:"Первая крупная сделка",goal:"Получи 300 000 ₽ совокупной прибыли",target:300000,progress:0,reward:150000,completed:false},
+      {id:"two_sales",title:"Две сделки",goal:"Продай 2 автомобиля с прибылью",target:2,progress:0,reward:180000,completed:false},
+      {id:"respect_10",title:"Имя на рынке",goal:"Набери 10 репутации",target:10,progress:0,reward:220000,completed:false}
+    ],
+    plateMarket:[],
+    plateWarehouse:[],
+    meta:{seed:seedFor(chat),turn:0,createdAt:Date.now(),day:1,plateCycle:0},
     lastAction:null
   };
   refreshMarket(state);
+  refreshPlates(state);
+  refreshPlates(state);
   return state;
 }
 async function load(chat, firstName) {
   const p=db(); if(!p) throw new Error("DATABASE_URL не настроен");
   const pool=await p;
   const r=await pool.query("SELECT state FROM autonomous_game_state WHERE chat_id=$1",[String(chat)]);
-  if(r.rowCount) return r.rows[0].state;
+  if(r.rowCount) {
+    const state=r.rows[0].state;
+    state.plateMarket=state.plateMarket||[];
+    state.plateWarehouse=state.plateWarehouse||[];
+    state.contracts=state.contracts||[];
+    if(!state.meta) state.meta={seed:seedFor(chat),turn:0,createdAt:Date.now(),day:1,plateCycle:0};
+    state.meta.day=state.meta.day||1;
+    refreshPlates(state);
+    return state;
+  }
   const state=newState(chat,firstName);
   await pool.query(
     "INSERT INTO autonomous_game_state(chat_id,version,state) VALUES($1,$2,$3::jsonb) ON CONFLICT(chat_id) DO NOTHING",
@@ -171,7 +213,7 @@ async function withState(chat, firstName, mutate) {
 function addTx(state,kind,amount,description) {
   const delta=money(amount);
   state.player.balance+=delta;
-  state.transactions.unshift({time:Date.now(),kind,amount:delta,balance:state.player.balance,description});
+  state.transactions.unshift({time:Date.now(),kind,amount:delta,balance:state.player.balance,description,profit:kind==="sale" ? Number((String(description).match(/прибыль ([\d\s]+) ₽/)||[])[1]?.replace(/\s/g,"")||0) : 0});
   state.transactions=state.transactions.slice(0,80);
 }
 function scoreListing(car) {
@@ -180,6 +222,25 @@ function scoreListing(car) {
 }
 function bestDeal(state) {
   return [...state.market].sort((a,b)=>scoreListing(b)-scoreListing(a))[0]||null;
+}
+function updateContracts(state, profit) {
+  const profitableSales = state.transactions.filter(x=>x.kind==="sale").length;
+  const totalProfit = state.transactions
+    .filter(x=>x.kind==="sale")
+    .reduce((sum,x)=>sum + Number(x.profit||0),0);
+  for (const c of state.contracts) {
+    if (c.id==="profit_300k") c.progress=Math.max(c.progress||0,totalProfit);
+    if (c.id==="two_sales") c.progress=profitableSales;
+    if (c.id==="respect_10") c.progress=state.player.respect;
+    if (!c.completed && (
+      (c.id==="profit_300k" && c.progress>=c.target) ||
+      (c.id==="two_sales" && c.progress>=c.target) ||
+      (c.id==="respect_10" && c.progress>=c.target)
+    )) {
+      c.completed=true;
+      addTx(state,"contract",c.reward,"Награда: "+c.title);
+    }
+  }
 }
 function recommendation(state) {
   const car=bestDeal(state);
@@ -201,6 +262,7 @@ function mainText(state) {
     "💰 Баланс: "+fmt(p.balance),
     "🚘 Гараж: "+state.garage.length+"/"+p.garageCapacity,
     "⭐ Репутация: "+p.respect,
+    "📅 День: "+(state.meta.day||1),
     "",
     "📈 Рынок обновлён.",
     "🎯 "+rec.title,
@@ -318,6 +380,7 @@ async function handleCallback(chat,data,firstName,sendFn,answerFn) {
   const run=await withState(chat,firstName,state=>{
     if(action==="refresh"){
       state.market=[];refreshMarket(state);
+      state.meta.day=(state.meta.day||1)+1;
       return {text:mainText(state),markup:menu()};
     }
     if(action==="market") return {text:"🚗 РЫНОК\n\nВыбирай лот для полного осмотра.",markup:marketKeyboard(state)};
@@ -360,7 +423,6 @@ async function handleCallback(chat,data,firstName,sendFn,answerFn) {
     }
     if(action==="sell"){
       const cost=c.buyPrice+(c.repairSpent||0)+(c.extraSpent||0);
-      const marketFactor=0.91+rng(state)*0.15;
       let offer=buyerOffer(state,c);
       const event=dealRisk(state,c);
       if(event.type==="incident") offer=Math.max(0,offer-event.penalty);
@@ -371,18 +433,54 @@ async function handleCallback(chat,data,firstName,sendFn,answerFn) {
       const progress=addProgress(state,profit);
       state.garage=state.garage.filter(x=>x.id!==id);
       addTx(state,"sale",offer,"Продажа "+c.model+" (прибыль "+fmt(profit)+")");
-      let contractReward=0;
-      if(!state.contracts[0].completed && profit>0){
-        state.contracts[0].completed=true;
-        contractReward=state.contracts[0].reward;
-        addTx(state,"contract",contractReward,"Награда: "+state.contracts[0].title);
-      }
+      const balanceBeforeContracts=state.player.balance;
+      updateContracts(state,profit);
+      const contractReward=state.player.balance-balanceBeforeContracts;
       const levelText=progress.levelUps ? "\n⬆️ Новый уровень: "+state.player.level : "";
       const contractText=contractReward ? "\n🎁 Награда контракта: "+fmt(contractReward) : "";
       return {text:"💰 МАШИНА ПРОДАНА\n\n"+c.model+"\n💵 Получено: "+fmt(offer)+"\n📈 Прибыль: "+fmt(profit)+"\n⭐ XP: +"+progress.gainedXp+levelText+contractText+"\n💰 Баланс: "+fmt(state.player.balance),markup:garageKeyboard(state)};
     }
-    if(action==="contracts")return {text:"📋 КОНТРАКТЫ\n\n"+state.contracts.map(c=>(c.completed?"✅ ":"⏳ ")+c.title+"\n   "+c.goal+"\n   Награда: "+fmt(c.reward)).join("\n\n"),markup:menu()};
-    if(action==="plates")return {text:"🔢 НОМЕРА\n\nВ V1 склад номеров создаётся отдельной веткой экономики. Пока номер не влияет на баланс автоматически.",markup:menu()};
+    if(action==="contracts")return {text:"📋 КОНТРАКТЫ\n\n"+state.contracts.map(c=>(c.completed?"✅ ":"⏳ ")+c.title+"\n   "+c.goal+"\n   Прогресс: "+(typeof c.progress==="number"? (c.id==="profit_300k"?fmt(c.progress):c.progress)+"/"+(c.id==="profit_300k"?fmt(c.target):c.target):"—")+"\n   Награда: "+fmt(c.reward)).join("\n\n"),markup:menu()};
+    if(action==="plates"){
+      refreshPlates(state);
+      return {
+        text:"🔢 НОМЕРА\n\n"+(state.plateWarehouse.length ? "📦 Склад:\n"+state.plateWarehouse.map((p,i)=>(i+1)+". "+p.plate+" · "+fmt(p.cost)).join("\n") : "📦 Склад пуст.")+
+          "\n\n🏷 Торги:\n"+state.plateMarket.map((p,i)=>(i+1)+". "+p.plate+" · "+fmt(p.buyPrice)+" · редкость "+p.quality+"%").join("\n"),
+        markup:{inline_keyboard:[
+          ...state.plateMarket.map((p,i)=>[{text:"🏷 Купить "+p.plate+" · "+fmt(p.buyPrice),callback_data:"ag:platebuy:"+p.id}]),
+          ...state.plateWarehouse.map(p=>[{text:"💰 Продать "+p.plate,callback_data:"ag:platesell:"+p.id}]),
+          [{text:"🔄 Обновить торги",callback_data:"ag:plate_refresh"}],
+          [{text:"⬅️ Меню",callback_data:"ag:home"}]
+        ]}
+      };
+    }
+    if(action==="plate_refresh"){
+      state.plateMarket=[]; refreshPlates(state);
+      return {text:"🏷 Новая волна торгов номерами.",markup:{inline_keyboard:[
+        [{text:"🔢 Открыть номера",callback_data:"ag:plates"}],
+        [{text:"⬅️ Меню",callback_data:"ag:home"}]
+      ]}};
+    }
+    if(action==="platebuy"){
+      refreshPlates(state);
+      const p=state.plateMarket.find(x=>x.id===id);
+      if(!p)return {text:"⚠️ Лот номера уже недоступен.",markup:{inline_keyboard:[[{text:"🔢 Номера",callback_data:"ag:plates"}]]}};
+      if(state.player.balance<p.buyPrice)return {text:"❌ Не хватает денег.",markup:{inline_keyboard:[[{text:"🔢 Номера",callback_data:"ag:plates"}]]}};
+      addTx(state,"plate_buy",-p.buyPrice,"Покупка номера "+p.plate);
+      state.plateWarehouse.push({id:p.id,plate:p.plate,quality:p.quality,rarity:p.rarity,cost:p.buyPrice});
+      state.plateMarket=state.plateMarket.filter(x=>x.id!==id);
+      return {text:"✅ НОМЕР ПРИОБРЕТЁН\n\n"+p.plate+"\n💵 Цена: "+fmt(p.buyPrice),markup:{inline_keyboard:[[{text:"🔢 Номера",callback_data:"ag:plates"}],[{text:"⬅️ Меню",callback_data:"ag:home"}]]}};
+    }
+    if(action==="platesell"){
+      const p=state.plateWarehouse.find(x=>x.id===id);
+      if(!p)return {text:"⚠️ Номер уже продан.",markup:{inline_keyboard:[[{text:"🔢 Номера",callback_data:"ag:plates"}]]}};
+      const demand=0.85+(Math.sin((state.meta.day||1)+p.quality)*0.12);
+      const offer=Math.round((p.cost*(1.02+demand*0.32))/1000)*1000;
+      const profit=offer-p.cost;
+      addTx(state,"plate_sale",offer,"Продажа номера "+p.plate);
+      state.plateWarehouse=state.plateWarehouse.filter(x=>x.id!==id);
+      return {text:"💰 НОМЕР ПРОДАН\n\n"+p.plate+"\n💵 Получено: "+fmt(offer)+"\n📈 Прибыль: "+fmt(profit),markup:{inline_keyboard:[[{text:"🔢 Номера",callback_data:"ag:plates"}],[{text:"⬅️ Меню",callback_data:"ag:home"}]]}};
+    }
     if(action==="stats")return {text:statsText(state),markup:menu()};
     return {text:mainText(state),markup:menu()};
   });
