@@ -106,10 +106,21 @@ function refreshPlates(state) {
 function refreshMarket(state) {
   const cycle = Math.floor((Number(state.meta.turn)||0) / 5);
   state.meta.marketCycle = cycle;
+  const events = [
+    {id:"steady",title:"Спокойный рынок",delta:0,text:"Цены без резких изменений."},
+    {id:"family",title:"Семейный спрос",delta:0.06,text:"Спрос на практичные автомобили вырос."},
+    {id:"repair",title:"Дефицит сервиса",delta:-0.04,text:"Подготовка машин стала менее выгодной."},
+    {id:"sedan",title:"Спрос на седаны",delta:0.08,text:"Покупатели активнее ищут седаны."},
+    {id:"crossover",title:"Неделя кроссоверов",delta:0.08,text:"Кроссоверы уходят быстрее обычного."}
+  ];
+  state.meta.marketEvent = events[cycle % events.length];
   while(state.market.length<5) state.market.push(createListing(state));
   for(const car of state.market) {
     const wave = Math.sin((cycle + car.catalogId.length) * 0.9) * 0.06;
-    car.currentDemand = Math.max(0.45, Math.min(0.98, car.demand + wave));
+    const eventDelta = state.meta.marketEvent?.delta || 0;
+    const modelBonus = state.meta.marketEvent?.id==="crossover" && /Qashqai|X1/.test(car.model) ? 0.06 : 0;
+    const sedanBonus = state.meta.marketEvent?.id==="sedan" && /Vesta|Focus|Octavia|Camry|Mazda|Audi/.test(car.model) ? 0.05 : 0;
+    car.currentDemand = Math.max(0.45, Math.min(0.98, car.demand + wave + eventDelta + modelBonus + sedanBonus));
   }
   return state.market;
 }
@@ -267,7 +278,8 @@ function mainText(state) {
     "⭐ Репутация: "+p.respect,
     "📅 День: "+(state.meta.day||1),
     "",
-    "📈 Рынок обновлён.",
+    "📈 Рынок: "+(state.meta.marketEvent?.title||"стабильный"),
+    state.meta.marketEvent?.text||"",
     "🎯 "+rec.title,
     rec.car ? rec.car.model+" · "+fmt(rec.car.buyPrice)+" → около "+fmt(rec.car.targetSale) : rec.text,
     "",
