@@ -397,3 +397,46 @@ test("hidden defects increase real ownership risk when buying without full diagn
   assert.ok(owned.risk > beforeRisk);
 });
 
+test("full autonomous trading loop keeps economy consistent", () => {
+  const s = game.newState("full-loop", "Tester");
+  const listing = s.market[0];
+  const startBalance = s.player.balance;
+
+  const diagnostic = game.runDiagnostic(s, listing, true);
+  assert.equal(diagnostic.ok, true);
+  assert.equal(s.player.balance, startBalance - 35000);
+
+  const purchase = game.purchaseListing(s, listing.id);
+  assert.equal(purchase.ok, true);
+  const car = purchase.car;
+  assert.equal(s.garage.length, 1);
+
+  const repair = game.repairVehicle(s, car.id);
+  if (repair.ok) assert.ok(repair.cost > 0);
+
+  const prep = game.prepareVehicle(s, car.id);
+  assert.equal(prep.ok, true);
+
+  const cost = game.vehicleCost(car);
+  car.targetSale = cost + 350000;
+  const offer = cost + 350000;
+  s.pendingDeal = {
+    carId: car.id,
+    amount: offer,
+    buyerType: "Частник",
+    negotiations: 0
+  };
+
+  const sale = game.acceptPendingSale(s, car.id);
+  assert.equal(sale.ok, true);
+  assert.equal(sale.profit, 350000);
+  assert.equal(s.garage.length, 0);
+  assert.equal(s.pendingDeal, null);
+  assert.equal(s.transactions.filter(x => x.kind === "diagnostic").length, 1);
+  assert.equal(s.transactions.filter(x => x.kind === "buy").length, 1);
+  assert.equal(s.transactions.filter(x => x.kind === "sale").length, 1);
+  assert.ok(s.player.xp > 0);
+  assert.ok(s.player.respect > 0);
+  assert.ok(s.contracts.find(x => x.id === "profit_300k").completed);
+  assert.ok(s.player.balance > startBalance);
+});
