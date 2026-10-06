@@ -84,7 +84,6 @@ function createListing(state) {
     diagnosticsSpent: 0,
     hiddenDefectSeverity: 0
   };
-  };
 }
 function plateCode(state) {
   const letters = "АВЕКМНОРСТУХ";
