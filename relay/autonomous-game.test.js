@@ -254,6 +254,34 @@ test("vehicle cost basis includes diagnostics and prevents false profit", () => 
   assert.equal(game.vehicleCost(car), car.buyPrice + 40000 + 18000 + 35000);
 });
 
+test("vehicle purchase spends once and materializes hidden defects", () => {
+  const s = game.newState("purchase-flow", "Tester");
+  const car = s.market[0];
+  car.hiddenDefects = 2;
+  const before = s.player.balance;
+  const result = game.purchaseListing(s, car.id);
+  assert.equal(result.ok, true);
+  assert.equal(s.player.balance, before - car.buyPrice);
+  assert.equal(s.garage.length, 1);
+  assert.equal(s.market.some(x => x.id === car.id), false);
+  assert.equal(s.transactions.filter(x => x.kind === "buy").length, 1);
+  assert.equal(result.car.hiddenDefects, 0);
+  assert.ok(result.car.damage >= 2);
+  assert.ok(result.car.condition <= 90);
+});
+
+test("expired vehicle purchase cannot spend money", () => {
+  const s = game.newState("expired-purchase", "Tester");
+  const car = s.market[0];
+  car.expiresAtTurn = s.meta.turn;
+  const before = s.player.balance;
+  const result = game.purchaseListing(s, car.id);
+  assert.equal(result.ok, false);
+  assert.equal(result.reason, "expired");
+  assert.equal(s.player.balance, before);
+  assert.equal(s.garage.length, 0);
+});
+
 test("vehicle diagnostics reveal and charge without changing purchase price", () => {
   const s = game.newState("diagnostics-player", "Tester");
   const car = s.market[0];
