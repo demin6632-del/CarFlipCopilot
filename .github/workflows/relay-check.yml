@@ -47,6 +47,8 @@ jobs:
           if (!game.includes('function buyPlate(state, id)')) throw new Error('plate buy helper missing');
           if (!game.includes('function sellPlate(state, id)')) throw new Error('plate sell helper missing');
           if (!game.includes('function withState')) throw new Error('transactional state guard missing');
+          if (!game.includes('async function withState(chat, firstName, mutate, callbackId)')) throw new Error('callback idempotency guard missing');
+          if (!game.includes('if(callbackId && state.processedCallbacks.includes(String(callbackId)))')) throw new Error('duplicate callback check is not transactional');
           if (!game.includes('SELECT state FROM autonomous_game_state WHERE chat_id=$1 FOR UPDATE')) throw new Error('row lock missing');
           console.log('Autonomous game routing and transactional flow guard: OK');
           NODE
