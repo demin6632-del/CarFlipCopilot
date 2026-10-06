@@ -14,6 +14,7 @@ test("new player starts with stable economy", () => {
   assert.equal(s.garage.length, 0);
   assert.equal(s.market.length, 5);
   assert.equal(s.player.garageCapacity, 3);
+  assert.equal(s.pendingDeal, null);
 });
 
 test("market listings have valid original game data", () => {
@@ -52,7 +53,7 @@ test("contract reward is represented as a separate ledger credit", () => {
   const s = game.newState("test-player-5", "Tester");
   const before = s.player.balance;
   game.addTx(s, "contract", s.contracts[0].reward, "contract reward");
-  assert.equal(s.player.balance, before + 120000);
+  assert.equal(s.player.balance, before + s.contracts[0].reward);
   assert.equal(s.transactions[0].kind, "contract");
 });
 
@@ -62,6 +63,56 @@ test("buyer offer stays positive and follows target economics", () => {
   const offer = game.buyerOffer(s, car);
   assert.ok(offer > 0);
   assert.ok(offer < car.targetSale * 1.2);
+});
+
+test("buyer profiles are original and bounded", () => {
+  const s = game.newState("buyer-types", "Tester");
+  const car = s.market[0];
+  for (let i = 0; i < 30; i++) {
+    const d = game.buyerOfferDetails(s, car);
+    assert.ok(game.BUYER_TYPES.some(x => x.id === d.typeId));
+    assert.ok(d.amount > 0);
+    assert.ok(d.demand >= 45 && d.demand <= 98);
+    assert.ok(d.condition >= 0 && d.condition <= 100);
+    assert.ok(d.reputation >= 0 && d.reputation <= 50);
+  }
+});
+
+test("negotiation stays bounded and never invents arbitrary money", () => {
+  const s = game.newState("negotiation-bounds", "Tester");
+  const car = s.market[0];
+  const deal = game.buyerOfferDetails(s, car);
+  for (let i = 0; i < 40; i++) {
+    const result = game.negotiation(s, car, {...deal});
+    assert.ok(result.amount >= deal.amount);
+    assert.ok(result.amount <= Math.round(deal.amount * 1.06) + 1000);
+  }
+});
+
+test("rejecting a pending deal does not change balance or garage", () => {
+  const s = game.newState("reject-deal", "Tester");
+  const car = s.market[0];
+  const beforeBalance = s.player.balance;
+  const beforeGarage = s.garage.length;
+  const deal = game.buyerOfferDetails(s, car);
+  s.pendingDeal = {...deal, carId:car.id};
+  s.pendingDeal = null;
+  assert.equal(s.player.balance, beforeBalance);
+  assert.equal(s.garage.length, beforeGarage);
+});
+
+test("accepted profitable deal changes ledger exactly once", () => {
+  const s = game.newState("accept-deal", "Tester");
+  const car = s.market[0];
+  const cost = car.buyPrice + (car.repairSpent||0) + (car.extraSpent||0);
+  const offer = cost + 50000;
+  s.garage.push({...car, status:"owned", repairSpent:0, extraSpent:0});
+  const before = s.player.balance;
+  s.pendingDeal = {carId:car.id, amount:offer, buyerType:"Частник"};
+  game.addTx(s, "sale", offer, "Продажа "+car.model+" (прибыль 50000 ₽)");
+  assert.equal(s.player.balance, before + offer);
+  assert.equal(s.transactions.filter(x => x.kind === "sale").length, 1);
+  assert.equal(s.pendingDeal.carId, car.id);
 });
 
 test("market demand cycle stays within safe bounds", () => {
