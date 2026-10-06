@@ -487,4 +487,4 @@ async function handleCallback(chat,data,firstName,sendFn,answerFn) {
   return true;
 }
 
-module.exports={init,load,save,open,handleText,handleCallback,CATALOG,newState,refreshMarket,createListing,addTx,scoreListing,bestDeal,recommendation,addProgress,buyerOffer,dealRisk};
+module.exports={init,load,save,open,handleText,handleCallback,CATALOG,newState,refreshMarket,createListing,addTx,scoreListing,bestDeal,recommendation,addProgress,updateContracts,buyerOffer,dealRisk};
