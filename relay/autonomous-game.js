@@ -298,7 +298,6 @@ async function handleCallback(chat,data,firstName,sendFn,answerFn) {
       if(!c)return {text:"⚠️ Лот уже продан.",markup:marketKeyboard(state)};
       if(state.garage.length>=state.player.garageCapacity)return {text:"⚠️ Гараж заполнен.",markup:garageKeyboard(state)};
       if(state.player.balance<c.buyPrice)return {text:"❌ Недостаточно денег.",markup:marketKeyboard(state)};
-      state.player.balance-=c.buyPrice;
       c.status="owned";c.repairSpent=0;c.extraSpent=0;
       state.garage.push(c);
       state.market=state.market.filter(x=>x.id!==id);
@@ -311,14 +310,14 @@ async function handleCallback(chat,data,firstName,sendFn,answerFn) {
     if(action==="repair"){
       const cost=Math.round(c.repairCost);
       if(state.player.balance<cost)return {text:"❌ Не хватает денег на ремонт.",markup:carKeyboard(c)};
-      state.player.balance-=cost;c.repairSpent=(c.repairSpent||0)+cost;c.condition=Math.min(100,c.condition+18);c.damage=Math.max(0,c.damage-2);
+      c.repairSpent=(c.repairSpent||0)+cost;c.condition=Math.min(100,c.condition+18);c.damage=Math.max(0,c.damage-2);
       addTx(state,"repair",-cost,"Ремонт "+c.model);
       return {text:"🔧 РЕМОНТ ЗАВЕРШЁН\n\n"+carText(c),markup:carKeyboard(c)};
     }
     if(action==="prep"){
       const cost=Math.round(18000+Math.max(0,c.damage)*2500);
       if(state.player.balance<cost)return {text:"❌ Не хватает денег на подготовку.",markup:carKeyboard(c)};
-      state.player.balance-=cost;c.extraSpent=(c.extraSpent||0)+cost;c.condition=Math.min(100,c.condition+6);c.targetSale=Math.round(c.targetSale*1.035);
+      c.extraSpent=(c.extraSpent||0)+cost;c.condition=Math.min(100,c.condition+6);c.targetSale=Math.round(c.targetSale*1.035);
       addTx(state,"prep",-cost,"Подготовка "+c.model);
       return {text:"✨ ПОДГОТОВКА ЗАВЕРШЕНА\n\n"+carText(c),markup:carKeyboard(c)};
     }
@@ -328,7 +327,6 @@ async function handleCallback(chat,data,firstName,sendFn,answerFn) {
       const offer=Math.round((c.targetSale*marketFactor)/1000)*1000;
       const profit=offer-cost;
       if(profit<0)return {text:"🛑 ПРОДАЖА ОТМЕНЕНА\n\nПокупатель предлагает "+fmt(offer)+" при себестоимости "+fmt(cost)+" .\nПотеря: "+fmt(-profit)+"\n\nРешение игры: не фиксировать убыток.",markup:carKeyboard(c)};
-      state.player.balance+=offer;
       state.player.respect+=profit>100000?2:1;
       state.garage=state.garage.filter(x=>x.id!==id);
       addTx(state,"sale",offer,"Продажа "+c.model+" (прибыль "+fmt(profit)+")");
