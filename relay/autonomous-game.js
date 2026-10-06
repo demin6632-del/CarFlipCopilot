@@ -149,7 +149,8 @@ function newState(chat, firstName) {
     plateMarket:[],
     plateWarehouse:[],
     meta:{seed:seedFor(chat),turn:0,createdAt:Date.now(),day:1,plateCycle:0},
-    lastAction:null
+    lastAction:null,
+    processedCallbacks:[]
   };
   refreshMarket(state);
   refreshPlates(state);
@@ -166,6 +167,7 @@ async function load(chat, firstName) {
     state.contracts=state.contracts||[];
     if(!state.meta) state.meta={seed:seedFor(chat),turn:0,createdAt:Date.now(),day:1,plateCycle:0};
     state.meta.day=state.meta.day||1;
+    state.processedCallbacks=Array.isArray(state.processedCallbacks)?state.processedCallbacks:[];
     refreshPlates(state);
     return state;
   }
@@ -371,12 +373,19 @@ async function handleText(chat,text,firstName,sendFn) {
   return true;
 }
 
-async function handleCallback(chat,data,firstName,sendFn,answerFn) {
+async function handleCallback(chat,data,firstName,sendFn,answerFn,callbackId) {
   if(!String(data).startsWith("ag:")) return false;
   try { await answerFn?.(); } catch {}
   const [_,action,id]=String(data).split(":");
   if(action==="home"){await open(chat,firstName,sendFn);return true;}
   const run=await withState(chat,firstName,state=>{
+    if(callbackId && state.processedCallbacks.includes(String(callbackId))) {
+      return {text:"↩️ Это действие уже было обработано.\n\nСостояние игры сохранено.",markup:menu()};
+    }
+    if(callbackId) {
+      state.processedCallbacks.push(String(callbackId));
+      state.processedCallbacks=state.processedCallbacks.slice(-100);
+    }
     if(action==="refresh"){
       state.market=[];refreshMarket(state);
       state.meta.day=(state.meta.day||1)+1;
