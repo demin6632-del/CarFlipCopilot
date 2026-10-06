@@ -200,6 +200,8 @@ async function withState(chat, firstName, mutate) {
       state=newState(chat,firstName);
       await client.query("INSERT INTO autonomous_game_state(chat_id,version,state) VALUES($1,$2,$3::jsonb)",[String(chat),VERSION,JSON.stringify(state)]);
     }
+    state.processedCallbacks=Array.isArray(state.processedCallbacks)?state.processedCallbacks:[];
+    state.meta=state.meta||{seed:seedFor(chat),turn:0,createdAt:Date.now(),day:1,plateCycle:0};
     state.meta.turn=(Number(state.meta.turn)||0)+1;
     const result=await mutate(state);
     await client.query("UPDATE autonomous_game_state SET version=$2,state=$3::jsonb,updated_at=now() WHERE chat_id=$1",[String(chat),VERSION,JSON.stringify(state)]);
