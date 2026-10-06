@@ -258,6 +258,55 @@ test("vehicle cost basis includes diagnostics and prevents false profit", () => 
   assert.equal(game.vehicleCost(car), car.buyPrice + 40000 + 18000 + 35000);
 });
 
+test("repair flow spends once and changes the real vehicle", () => {
+  const s = game.newState("repair-flow", "Tester");
+  const source = s.market[0];
+  const car = {...source, status:"owned", damage:6, condition:82, repairSpent:0, extraSpent:0, diagnosticsSpent:0};
+  s.garage.push(car);
+  const before = s.player.balance;
+  const beforeTx = s.transactions.length;
+  const result = game.repairVehicle(s, car.id);
+  assert.equal(result.ok, true);
+  assert.ok(result.cost > 0);
+  assert.equal(s.player.balance, before - result.cost);
+  assert.equal(s.transactions.length, beforeTx + 1);
+  assert.equal(s.transactions[0].kind, "repair");
+  assert.ok(car.damage < 6);
+  assert.ok(car.condition > 82);
+  assert.equal(car.repairSpent, result.cost);
+});
+
+test("repair flow blocks a fully restored vehicle without spending", () => {
+  const s = game.newState("repair-restored", "Tester");
+  const car = {...s.market[0], status:"owned", damage:0, condition:100, repairSpent:25000};
+  s.garage.push(car);
+  const before = s.player.balance;
+  const txBefore = s.transactions.length;
+  const result = game.repairVehicle(s, car.id);
+  assert.equal(result.ok, false);
+  assert.equal(result.reason, "restored");
+  assert.equal(s.player.balance, before);
+  assert.equal(s.transactions.length, txBefore);
+});
+
+test("preparation flow spends once and raises sale target", () => {
+  const s = game.newState("prep-flow", "Tester");
+  const source = s.market[0];
+  const car = {...source, status:"owned", damage:3, condition:85, extraSpent:0, repairSpent:0, diagnosticsSpent:0};
+  s.garage.push(car);
+  const before = s.player.balance;
+  const targetBefore = car.targetSale;
+  const txBefore = s.transactions.length;
+  const result = game.prepareVehicle(s, car.id);
+  assert.equal(result.ok, true);
+  assert.equal(s.player.balance, before - result.cost);
+  assert.equal(s.transactions.length, txBefore + 1);
+  assert.equal(s.transactions[0].kind, "prep");
+  assert.equal(car.extraSpent, result.cost);
+  assert.ok(car.condition > 85);
+  assert.ok(car.targetSale > targetBefore);
+});
+
 test("vehicle purchase spends once and materializes hidden defects", () => {
   const s = game.newState("purchase-flow", "Tester");
   const car = s.market[0];
