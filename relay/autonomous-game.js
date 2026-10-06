@@ -247,6 +247,17 @@ function carKeyboard(c) {
     [{text:"⬅️ Гараж",callback_data:"ag:garage"}]
   ]};
 }
+function addProgress(state, profit) {
+  const gainedXp = Math.max(10, Math.min(250, Math.round(30 + Math.max(0, profit) / 15000)));
+  state.player.xp += gainedXp;
+  let levelUps = 0;
+  while (state.player.xp >= state.player.level * 250) {
+    state.player.xp -= state.player.level * 250;
+    state.player.level += 1;
+    levelUps += 1;
+  }
+  return { gainedXp, levelUps };
+}
 function statsText(state) {
   const tx=state.transactions;
   const income=tx.filter(x=>x.amount>0).reduce((s,x)=>s+x.amount,0);
@@ -328,10 +339,18 @@ async function handleCallback(chat,data,firstName,sendFn,answerFn) {
       const profit=offer-cost;
       if(profit<0)return {text:"🛑 ПРОДАЖА ОТМЕНЕНА\n\nПокупатель предлагает "+fmt(offer)+" при себестоимости "+fmt(cost)+" .\nПотеря: "+fmt(-profit)+"\n\nРешение игры: не фиксировать убыток.",markup:carKeyboard(c)};
       state.player.respect+=profit>100000?2:1;
+      const progress=addProgress(state,profit);
       state.garage=state.garage.filter(x=>x.id!==id);
       addTx(state,"sale",offer,"Продажа "+c.model+" (прибыль "+fmt(profit)+")");
-      if(!state.contracts[0].completed && profit>0)state.contracts[0].completed=true;
-      return {text:"💰 МАШИНА ПРОДАНА\n\n"+c.model+"\n💵 Получено: "+fmt(offer)+"\n📈 Прибыль: "+fmt(profit)+"\n💰 Баланс: "+fmt(state.player.balance),markup:garageKeyboard(state)};
+      let contractReward=0;
+      if(!state.contracts[0].completed && profit>0){
+        state.contracts[0].completed=true;
+        contractReward=state.contracts[0].reward;
+        addTx(state,"contract",contractReward,"Награда: "+state.contracts[0].title);
+      }
+      const levelText=progress.levelUps ? "\n⬆️ Новый уровень: "+state.player.level : "";
+      const contractText=contractReward ? "\n🎁 Награда контракта: "+fmt(contractReward) : "";
+      return {text:"💰 МАШИНА ПРОДАНА\n\n"+c.model+"\n💵 Получено: "+fmt(offer)+"\n📈 Прибыль: "+fmt(profit)+"\n⭐ XP: +"+progress.gainedXp+levelText+contractText+"\n💰 Баланс: "+fmt(state.player.balance),markup:garageKeyboard(state)};
     }
     if(action==="contracts")return {text:"📋 КОНТРАКТЫ\n\n"+state.contracts.map(c=>(c.completed?"✅ ":"⏳ ")+c.title+"\n   "+c.goal+"\n   Награда: "+fmt(c.reward)).join("\n\n"),markup:menu()};
     if(action==="plates")return {text:"🔢 НОМЕРА\n\nВ V1 склад номеров создаётся отдельной веткой экономики. Пока номер не влияет на баланс автоматически.",markup:menu()};
@@ -342,4 +361,4 @@ async function handleCallback(chat,data,firstName,sendFn,answerFn) {
   return true;
 }
 
-module.exports={init,load,save,open,handleText,handleCallback,CATALOG};
+module.exports={init,load,save,open,handleText,handleCallback,CATALOG,newState,refreshMarket,createListing,addTx,scoreListing,bestDeal,recommendation,addProgress};
