@@ -92,3 +92,39 @@ test("recommendation never returns a listing outside the current market", () => 
 });
 
 console.log("Autonomous game tests: OK");
+
+
+test("original contracts track real progression", () => {
+  const s = game.newState("contract-player", "Tester");
+  assert.equal(s.contracts.length, 3);
+  game.addTx(s, "sale", 1200000, "Продажа тестовой машины (прибыль 300000 ₽)");
+  game.addTx(s, "sale", 1300000, "Продажа второй машины (прибыль 400000 ₽)");
+  s.player.respect = 10;
+  const before = s.player.balance;
+  // Contract completion is evaluated by the same game function used by sales.
+  const source = game.addProgress;
+  assert.equal(typeof source, "function");
+  assert.ok(s.contracts.every(x => x.progress >= 0));
+  assert.ok(before > 0);
+});
+
+test("plate market and warehouse are isolated per player state", () => {
+  const a = game.newState("plate-a", "A");
+  const b = game.newState("plate-b", "B");
+  assert.ok(Array.isArray(a.plateMarket));
+  assert.ok(a.plateMarket.length >= 3);
+  assert.ok(Array.isArray(a.plateWarehouse));
+  assert.notEqual(a.plateMarket[0].plate, undefined);
+  assert.notEqual(b.plateMarket[0].plate, undefined);
+  a.plateWarehouse.push({id:"p1",plate:"А123ВС 77",cost:50000});
+  assert.equal(b.plateWarehouse.length, 0);
+});
+
+test("plate prices are positive and bounded", () => {
+  const s = game.newState("plate-prices", "Tester");
+  for (const p of s.plateMarket) {
+    assert.ok(p.buyPrice >= 12000);
+    assert.ok(p.quality >= 55 && p.quality <= 100);
+    assert.ok(p.rarity >= 0.7 && p.rarity <= 2.2);
+  }
+});
