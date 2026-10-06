@@ -49,7 +49,8 @@ async function init() {
 
 function clone(x){ return JSON.parse(JSON.stringify(x)); }
 function money(n){ return Math.round(Number(n)||0); }
-function fmt(n){ return money(n).toLocaleString("ru-RU")+" ₽"; }\nfunction vehicleCost(c){ return money((c?.buyPrice||0)+(c?.repairSpent||0)+(c?.extraSpent||0)+(c?.diagnosticsSpent||0)); }
+function fmt(n){ return money(n).toLocaleString("ru-RU")+" ₽"; }
+function vehicleCost(c){ return money((c?.buyPrice||0)+(c?.repairSpent||0)+(c?.extraSpent||0)+(c?.diagnosticsSpent||0)); }
 
 function seedFor(chat) {
   let h=2166136261;
