@@ -100,12 +100,11 @@ test("original contracts track real progression", () => {
   game.addTx(s, "sale", 1200000, "Продажа тестовой машины (прибыль 300000 ₽)");
   game.addTx(s, "sale", 1300000, "Продажа второй машины (прибыль 400000 ₽)");
   s.player.respect = 10;
-  const before = s.player.balance;
-  // Contract completion is evaluated by the same game function used by sales.
-  const source = game.addProgress;
-  assert.equal(typeof source, "function");
-  assert.ok(s.contracts.every(x => x.progress >= 0));
-  assert.ok(before > 0);
+  game.updateContracts(s, 400000);
+  assert.ok(s.contracts.find(x => x.id==="profit_300k").completed);
+  assert.ok(s.contracts.find(x => x.id==="two_sales").completed);
+  assert.ok(s.contracts.find(x => x.id==="respect_10").completed);
+  assert.ok(s.transactions.filter(x => x.kind==="contract").length >= 3);
 });
 
 test("plate market and warehouse are isolated per player state", () => {
