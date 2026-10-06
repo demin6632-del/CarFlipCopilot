@@ -540,6 +540,29 @@ function purchaseListing(state, id) {
 }
 
 
+
+function buyPlate(state, id) {
+  refreshPlates(state);
+  const p=state.plateMarket.find(x=>x.id===id);
+  if(!p)return {ok:false,reason:"missing"};
+  if(state.player.balance<p.buyPrice)return {ok:false,reason:"no_money",cost:p.buyPrice};
+  addTx(state,"plate_buy",-p.buyPrice,"Покупка номера "+p.plate);
+  state.plateWarehouse.push({id:p.id,plate:p.plate,quality:p.quality,rarity:p.rarity,cost:p.buyPrice});
+  state.plateMarket=state.plateMarket.filter(x=>x.id!==id);
+  return {ok:true,plate:p};
+}
+
+function sellPlate(state, id) {
+  const p=state.plateWarehouse.find(x=>x.id===id);
+  if(!p)return {ok:false,reason:"missing"};
+  const demand=0.85+(Math.sin((state.meta.day||1)+p.quality)*0.12);
+  const offer=Math.round((p.cost*(1.02+demand*0.32))/1000)*1000;
+  const profit=offer-p.cost;
+  addTx(state,"plate_sale",offer,"Продажа номера "+p.plate);
+  state.plateWarehouse=state.plateWarehouse.filter(x=>x.id!==id);
+  return {ok:true,plate:p,offer,profit};
+}
+
 function repairVehicle(state, id) {
   const c=state.garage.find(x=>x.id===id);
   if(!c)return {ok:false,reason:"missing"};
@@ -741,24 +764,17 @@ async function handleCallback(chat,data,firstName,sendFn,answerFn,callbackId) {
       ]}};
     }
     if(action==="platebuy"){
-      refreshPlates(state);
-      const p=state.plateMarket.find(x=>x.id===id);
-      if(!p)return {text:"⚠️ Лот номера уже недоступен.",markup:{inline_keyboard:[[{text:"🔢 Номера",callback_data:"ag:plates"}]]}};
-      if(state.player.balance<p.buyPrice)return {text:"❌ Не хватает денег.",markup:{inline_keyboard:[[{text:"🔢 Номера",callback_data:"ag:plates"}]]}};
-      addTx(state,"plate_buy",-p.buyPrice,"Покупка номера "+p.plate);
-      state.plateWarehouse.push({id:p.id,plate:p.plate,quality:p.quality,rarity:p.rarity,cost:p.buyPrice});
-      state.plateMarket=state.plateMarket.filter(x=>x.id!==id);
-      return {text:"✅ НОМЕР ПРИОБРЕТЁН\n\n"+p.plate+"\n💵 Цена: "+fmt(p.buyPrice),markup:{inline_keyboard:[[{text:"🔢 Номера",callback_data:"ag:plates"}],[{text:"⬅️ Меню",callback_data:"ag:home"}]]}};
+      const result=buyPlate(state,id);
+      if(!result.ok){
+        if(result.reason==="missing") return {text:"⚠️ Лот номера уже недоступен.",markup:{inline_keyboard:[[{text:"🔢 Номера",callback_data:"ag:plates"}]]}};
+        return {text:"❌ Не хватает денег.",markup:{inline_keyboard:[[{text:"🔢 Номера",callback_data:"ag:plates"}]]}};
+      }
+      return {text:"✅ НОМЕР ПРИОБРЕТЁН\n\n"+result.plate.plate+"\n💵 Цена: "+fmt(result.plate.buyPrice),markup:{inline_keyboard:[[{text:"🔢 Номера",callback_data:"ag:plates"}],[{text:"⬅️ Меню",callback_data:"ag:home"}]]}};
     }
     if(action==="platesell"){
-      const p=state.plateWarehouse.find(x=>x.id===id);
-      if(!p)return {text:"⚠️ Номер уже продан.",markup:{inline_keyboard:[[{text:"🔢 Номера",callback_data:"ag:plates"}]]}};
-      const demand=0.85+(Math.sin((state.meta.day||1)+p.quality)*0.12);
-      const offer=Math.round((p.cost*(1.02+demand*0.32))/1000)*1000;
-      const profit=offer-p.cost;
-      addTx(state,"plate_sale",offer,"Продажа номера "+p.plate);
-      state.plateWarehouse=state.plateWarehouse.filter(x=>x.id!==id);
-      return {text:"💰 НОМЕР ПРОДАН\n\n"+p.plate+"\n💵 Получено: "+fmt(offer)+"\n📈 Прибыль: "+fmt(profit),markup:{inline_keyboard:[[{text:"🔢 Номера",callback_data:"ag:plates"}],[{text:"⬅️ Меню",callback_data:"ag:home"}]]}};
+      const result=sellPlate(state,id);
+      if(!result.ok)return {text:"⚠️ Номер уже продан.",markup:{inline_keyboard:[[{text:"🔢 Номера",callback_data:"ag:plates"}]]}};
+      return {text:"💰 НОМЕР ПРОДАН\n\n"+result.plate.plate+"\n💵 Получено: "+fmt(result.offer)+"\n📈 Прибыль: "+fmt(result.profit),markup:{inline_keyboard:[[{text:"🔢 Номера",callback_data:"ag:plates"}],[{text:"⬅️ Меню",callback_data:"ag:home"}]]}};
     }
     if(action==="stats")return {text:statsText(state),markup:menu()};
     return {text:mainText(state),markup:menu()};
@@ -767,4 +783,4 @@ async function handleCallback(chat,data,firstName,sendFn,answerFn,callbackId) {
   return true;
 }
 
-module.exports={init,load,save,open,handleText,handleCallback,CATALOG,BUYER_TYPES,newState,refreshMarket,createListing,addTx,scoreListing,bestDeal,recommendation,addProgress,updateContracts,buyerOffer,buyerOfferDetails,buyerProfile,negotiation,dealRisk,runDiagnostic,vehicleCost,purchaseListing,repairVehicle,prepareVehicle,acceptPendingSale};
+module.exports={init,load,save,open,handleText,handleCallback,CATALOG,BUYER_TYPES,newState,refreshMarket,createListing,addTx,scoreListing,bestDeal,recommendation,addProgress,updateContracts,buyerOffer,buyerOfferDetails,buyerProfile,negotiation,dealRisk,runDiagnostic,vehicleCost,purchaseListing,repairVehicle,prepareVehicle,buyPlate,sellPlate,acceptPendingSale};
