@@ -389,7 +389,7 @@ async function handle(m){
   // arrived automatically, activeGameChats may already be set; in that case
   // pressing «🎮 Играть» must still open/refresh the game screen, not be sent
   // to the game bot as an unknown game button.
-  if(text==="🎮 Играть"){ return gameDebug(chat); }
+  if(text==="🎮 Играть"){ return autonomousGame.handleText(chat,"🎮 Автономная игра",m.from?.first_name||"Перекуп",(c,t,e)=>send(c,t,e)); }
   if(text==="💰 Экономика"){
     const e=await economySummary(chat,200);
     const live=userBridge.status();
