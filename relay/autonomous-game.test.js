@@ -248,7 +248,7 @@ test("expired listings are removed on market refresh", () => {
 });
 
 
-test("vehicle diagnostics reveal and charge without changing purchase price", () => {
+test("vehicle cost basis includes diagnostics and prevents false profit", () => {\n  const s = game.newState("cost-basis-player", "Tester");\n  const car = {...s.market[0], repairSpent:40000, extraSpent:18000, diagnosticsSpent:35000};\n  assert.equal(game.vehicleCost(car), car.buyPrice + 40000 + 18000 + 35000);\n});\n\ntest("vehicle diagnostics reveal and charge without changing purchase price", () => {
   const s = game.newState("diagnostics-player", "Tester");
   const car = s.market[0];
   const before = s.player.balance;
