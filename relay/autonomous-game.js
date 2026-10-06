@@ -79,8 +79,34 @@ function createListing(state) {
   };
 }
 function refreshMarket(state) {
+  const cycle = Math.floor((Number(state.meta.turn)||0) / 5);
+  state.meta.marketCycle = cycle;
   while(state.market.length<5) state.market.push(createListing(state));
+  for(const car of state.market) {
+    const wave = Math.sin((cycle + car.catalogId.length) * 0.9) * 0.06;
+    car.currentDemand = Math.max(0.45, Math.min(0.98, car.demand + wave));
+  }
   return state.market;
+}
+function buyerOffer(state, car) {
+  const demand = car.currentDemand ?? car.demand;
+  const demandFactor = 0.90 + demand * 0.13;
+  const conditionFactor = 0.96 + (car.condition / 100) * 0.07;
+  const negotiation = 0.98 + rng(state) * 0.05;
+  return Math.round((car.targetSale * demandFactor * conditionFactor * negotiation) / 1000) * 1000;
+}
+function dealRisk(state, car) {
+  const risk = Math.max(0, Math.min(0.8, car.risk - car.condition / 1000));
+  const roll = rng(state);
+  if (roll < risk * 0.18) {
+    const penalty = Math.round((9000 + rng(state) * 36000) / 1000) * 1000;
+    return {type:"incident", penalty, text:"Покупатель заметил дополнительный дефект."};
+  }
+  if (roll > 0.94 && (car.currentDemand ?? car.demand) > 0.82) {
+    const bonus = Math.round((12000 + rng(state) * 30000) / 1000) * 1000;
+    return {type:"bonus", bonus, text:"Спрос на эту модель вырос, покупатель поднял предложение."};
+  }
+  return {type:"normal"};
 }
 function newState(chat, firstName) {
   const state = {
@@ -216,7 +242,7 @@ function inspectText(c) {
     "🔧 Оценка ремонта: "+fmt(c.repairCost),
     "🎯 Целевая продажа: "+fmt(c.targetSale),
     "📈 Потенциальная маржа: "+fmt(margin),
-    "📊 Спрос: "+Math.round(c.demand*100)+"%",
+    "📊 Спрос сейчас: "+Math.round((c.currentDemand??c.demand)*100)+"%",
     "⚠️ Риск: "+Math.round(c.risk*100)+"%"
   ].join("\n");
 }
@@ -335,7 +361,10 @@ async function handleCallback(chat,data,firstName,sendFn,answerFn) {
     if(action==="sell"){
       const cost=c.buyPrice+(c.repairSpent||0)+(c.extraSpent||0);
       const marketFactor=0.91+rng(state)*0.15;
-      const offer=Math.round((c.targetSale*marketFactor)/1000)*1000;
+      let offer=buyerOffer(state,c);
+      const event=dealRisk(state,c);
+      if(event.type==="incident") offer=Math.max(0,offer-event.penalty);
+      if(event.type==="bonus") offer+=event.bonus;
       const profit=offer-cost;
       if(profit<0)return {text:"🛑 ПРОДАЖА ОТМЕНЕНА\n\nПокупатель предлагает "+fmt(offer)+" при себестоимости "+fmt(cost)+" .\nПотеря: "+fmt(-profit)+"\n\nРешение игры: не фиксировать убыток.",markup:carKeyboard(c)};
       state.player.respect+=profit>100000?2:1;
@@ -361,4 +390,4 @@ async function handleCallback(chat,data,firstName,sendFn,answerFn) {
   return true;
 }
 
-module.exports={init,load,save,open,handleText,handleCallback,CATALOG,newState,refreshMarket,createListing,addTx,scoreListing,bestDeal,recommendation,addProgress};
+module.exports={init,load,save,open,handleText,handleCallback,CATALOG,newState,refreshMarket,createListing,addTx,scoreListing,bestDeal,recommendation,addProgress,buyerOffer,dealRisk};
