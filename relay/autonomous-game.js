@@ -230,7 +230,6 @@ async function load(chat, firstName) {
     state.meta.day=state.meta.day||1;
     state.processedCallbacks=Array.isArray(state.processedCallbacks)?state.processedCallbacks:[];
     state.pendingDeal=state.pendingDeal||null;
-    state.pendingDeal=state.pendingDeal||null;
     refreshPlates(state);
     return state;
   }
