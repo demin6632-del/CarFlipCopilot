@@ -23,4 +23,5 @@ jobs:
       - run: node --check button-strategy.js
       - run: node --check game-memory.js
       - run: node --check game-economy.js
+      - run: node --check autonomous-game.js
       - run: npm test
