@@ -142,3 +142,31 @@ test("market events are deterministic and keep demand bounded", () => {
   }
   assert.ok(seen.size >= 3);
 });
+
+
+test("vehicle repair cannot spend indefinitely after full restoration", () => {
+  const s = game.newState("repair-test", "Tester");
+  const car = s.market[0];
+  car.damage = 1;
+  car.condition = 99;
+  const before = car.repairSpent || 0;
+  car.repairSpent = before + 10000;
+  car.damage = 0;
+  car.condition = 100;
+  assert.equal(car.damage, 0);
+  assert.equal(car.condition, 100);
+  assert.ok(car.repairSpent > before);
+});
+
+test("transaction ledger keeps vehicle and plate economics separate", () => {
+  const s = game.newState("ledger-test", "Tester");
+  game.addTx(s, "buy", -500000, "Покупка автомобиля");
+  game.addTx(s, "repair", -50000, "Ремонт автомобиля");
+  game.addTx(s, "prep", -20000, "Подготовка автомобиля");
+  game.addTx(s, "sale", 700000, "Продажа автомобиля (прибыль 130000 ₽)");
+  game.addTx(s, "plate_buy", -30000, "Покупка номера А123ВС 77");
+  game.addTx(s, "plate_sale", 45000, "Продажа номера А123ВС 77");
+  assert.equal(s.player.balance, 3145000);
+  assert.equal(s.transactions.filter(x=>x.kind==="sale").length, 1);
+  assert.equal(s.transactions.filter(x=>x.kind==="plate_sale").length, 1);
+});
