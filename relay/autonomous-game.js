@@ -124,12 +124,58 @@ function refreshMarket(state) {
   }
   return state.market;
 }
+const BUYER_TYPES = [
+  {id:"reseller",title:"Перекупщик",base:0.93,condition:0.03,demand:0.03,patience:0.72},
+  {id:"private",title:"Частник",base:0.98,condition:0.09,demand:0.02,patience:0.58},
+  {id:"family",title:"Семья",base:0.97,condition:0.05,demand:0.08,patience:0.64},
+  {id:"enthusiast",title:"Энтузиаст",base:1.00,condition:0.12,demand:0.04,patience:0.46}
+];
+
+function buyerProfile(state, car) {
+  const idx = Math.floor(rng(state) * BUYER_TYPES.length);
+  const type = BUYER_TYPES[idx];
+  const reputation = Math.max(0, Math.min(50, Number(state.player.respect)||0));
+  const demand = Math.max(0.45, Math.min(0.98, car.currentDemand ?? car.demand));
+  const condition = Math.max(0, Math.min(100, Number(car.condition)||0));
+  const demandFactor = 0.94 + demand * type.demand;
+  const conditionFactor = 0.94 + (condition / 100) * type.condition;
+  const reputationFactor = 1 + reputation * 0.0015;
+  const noise = 0.985 + rng(state) * 0.03;
+  const amount = Math.max(1000, Math.round((car.targetSale * type.base * demandFactor * conditionFactor * reputationFactor * noise) / 1000) * 1000);
+  return {
+    typeId:type.id,
+    buyerType:type.title,
+    patience:type.patience,
+    amount,
+    demand:Math.round(demand*100),
+    condition,
+    reputation,
+    reason: type.id==="reseller" ? "Считает будущую перепродажу и жёстко торгуется."
+      : type.id==="private" ? "Сильнее всего смотрит на состояние и отсутствие вложений."
+      : type.id==="family" ? "Ищет практичную машину и реагирует на текущий спрос."
+      : "Готов платить за хорошее состояние, но придирчив к дефектам."
+  };
+}
+
+function buyerOfferDetails(state, car) {
+  return buyerProfile(state, car);
+}
+
 function buyerOffer(state, car) {
-  const demand = car.currentDemand ?? car.demand;
-  const demandFactor = 0.90 + demand * 0.13;
-  const conditionFactor = 0.96 + (car.condition / 100) * 0.07;
-  const negotiation = 0.98 + rng(state) * 0.05;
-  return Math.round((car.targetSale * demandFactor * conditionFactor * negotiation) / 1000) * 1000;
+  return buyerOfferDetails(state, car).amount;
+}
+
+function negotiation(state, car, deal) {
+  const profile = BUYER_TYPES.find(x=>x.id===deal.typeId) || BUYER_TYPES[0];
+  const condition = Math.max(0, Math.min(100, Number(car.condition)||0));
+  const demand = Math.max(0.45, Math.min(0.98, car.currentDemand ?? car.demand));
+  const leverage = 0.015 + (condition/100)*0.025 + demand*0.012 + Math.min(50, Number(state.player.respect)||0)*0.0004;
+  const raise = Math.round((deal.amount * Math.min(0.06, leverage)) / 1000) * 1000;
+  const leaveChance = Math.max(0.04, Math.min(0.34, 0.30 - profile.patience + (1-condition/100)*0.12));
+  if (rng(state) < leaveChance) {
+    return {accepted:false,left:true,amount:deal.amount,text:"Покупатель не согласился продолжать торг."};
+  }
+  return {accepted:true,left:false,amount:deal.amount+raise,text:"Покупатель немного поднял цену после торга."};
 }
 function dealRisk(state, car) {
   const risk = Math.max(0, Math.min(0.8, car.risk - car.condition / 1000));
@@ -161,6 +207,7 @@ function newState(chat, firstName) {
     plateWarehouse:[],
     meta:{seed:seedFor(chat),turn:0,createdAt:Date.now(),day:1,plateCycle:0},
     lastAction:null,
+    pendingDeal:null,
     processedCallbacks:[]
   };
   refreshMarket(state);
@@ -179,6 +226,8 @@ async function load(chat, firstName) {
     if(!state.meta) state.meta={seed:seedFor(chat),turn:0,createdAt:Date.now(),day:1,plateCycle:0};
     state.meta.day=state.meta.day||1;
     state.processedCallbacks=Array.isArray(state.processedCallbacks)?state.processedCallbacks:[];
+    state.pendingDeal=state.pendingDeal||null;
+    state.pendingDeal=state.pendingDeal||null;
     refreshPlates(state);
     return state;
   }
@@ -350,6 +399,30 @@ function carKeyboard(c) {
     [{text:"⬅️ Гараж",callback_data:"ag:garage"}]
   ]};
 }
+function dealText(state, c, deal) {
+  const cost=c.buyPrice+(c.repairSpent||0)+(c.extraSpent||0);
+  const profit=deal.amount-cost;
+  return [
+    "🤝 ПРЕДЛОЖЕНИЕ ПОКУПАТЕЛЯ","",
+    "👤 Покупатель: "+deal.buyerType,
+    "💬 "+deal.reason,
+    "💵 Предложение: "+fmt(deal.amount),
+    "💼 Себестоимость: "+fmt(cost),
+    "📈 Результат: "+fmt(profit),
+    "📊 Спрос: "+deal.demand+"%",
+    "⭐ Репутация учтена: "+deal.reputation,
+    "",
+    profit>=0 ? "Предложение не фиксирует убыток." : "Предложение ниже себестоимости — продажа заблокирована."
+  ].join("\n");
+}
+function dealKeyboard(c, deal) {
+  return {inline_keyboard:[
+    [{text:"✅ Принять · "+fmt(deal.amount),callback_data:"ag:accept:"+c.id}],
+    [{text:"💬 Торговаться",callback_data:"ag:negotiate:"+c.id}],
+    [{text:"❌ Отказаться",callback_data:"ag:reject:"+c.id}],
+    [{text:"⬅️ Машина",callback_data:"ag:car:"+c.id}]
+  ]};
+}
 function addProgress(state, profit) {
   const gainedXp = Math.max(10, Math.min(250, Math.round(30 + Math.max(0, profit) / 15000)));
   state.player.xp += gainedXp;
@@ -447,13 +520,34 @@ async function handleCallback(chat,data,firstName,sendFn,answerFn,callbackId) {
       return {text:"✨ ПОДГОТОВКА ЗАВЕРШЕНА\n\n"+carText(c),markup:carKeyboard(c)};
     }
     if(action==="sell"){
-      const cost=c.buyPrice+(c.repairSpent||0)+(c.extraSpent||0);
-      let offer=buyerOffer(state,c);
+      if(state.pendingDeal) return {text:"🤝 Сначала заверши текущие переговоры.",markup:dealKeyboard(c,state.pendingDeal)};
+      const deal=buyerOfferDetails(state,c);
       const event=dealRisk(state,c);
-      if(event.type==="incident") offer=Math.max(0,offer-event.penalty);
-      if(event.type==="bonus") offer+=event.bonus;
+      if(event.type==="incident") deal.amount=Math.max(1000,deal.amount-event.penalty);
+      if(event.type==="bonus") deal.amount+=event.bonus;
+      deal.carId=c.id;
+      deal.event=event.type;
+      state.pendingDeal=deal;
+      return {text:dealText(state,c,deal),markup:dealKeyboard(c,deal)};
+    }
+    if(action==="negotiate"){
+      if(!state.pendingDeal || state.pendingDeal.carId!==id) return {text:"⚠️ Предложение устарело. Запроси новое.",markup:carKeyboard(c)};
+      const result=negotiation(state,c,state.pendingDeal);
+      if(result.left){state.pendingDeal=null;return {text:"❌ ПОКУПАТЕЛЬ УШЁЛ\n\n"+result.text,markup:carKeyboard(c)};}
+      state.pendingDeal.amount=result.amount;
+      return {text:"💬 ТОРГ\n\n"+result.text+"\n\n"+dealText(state,c,state.pendingDeal),markup:dealKeyboard(c,state.pendingDeal)};
+    }
+    if(action==="reject"){
+      if(state.pendingDeal?.carId===id) state.pendingDeal=null;
+      return {text:"❌ СДЕЛКА ОТМЕНЕНА\n\nМашина осталась в гараже.",markup:carKeyboard(c)};
+    }
+    if(action==="accept"){
+      if(!state.pendingDeal || state.pendingDeal.carId!==id) return {text:"⚠️ Предложение устарело. Нажми «Продать» заново.",markup:carKeyboard(c)};
+      const offer=Number(state.pendingDeal.amount)||0;
+      const cost=c.buyPrice+(c.repairSpent||0)+(c.extraSpent||0);
       const profit=offer-cost;
-      if(profit<0)return {text:"🛑 ПРОДАЖА ОТМЕНЕНА\n\nПокупатель предлагает "+fmt(offer)+" при себестоимости "+fmt(cost)+" .\nПотеря: "+fmt(-profit)+"\n\nРешение игры: не фиксировать убыток.",markup:carKeyboard(c)};
+      if(profit<0){state.pendingDeal=null;return {text:"🛑 ПРОДАЖА ЗАБЛОКИРОВАНА\n\nПредложение ниже себестоимости.",markup:carKeyboard(c)};}
+      state.pendingDeal=null;
       state.player.respect+=profit>100000?2:1;
       const progress=addProgress(state,profit);
       state.garage=state.garage.filter(x=>x.id!==id);
@@ -463,7 +557,7 @@ async function handleCallback(chat,data,firstName,sendFn,answerFn,callbackId) {
       const contractReward=state.player.balance-balanceBeforeContracts;
       const levelText=progress.levelUps ? "\n⬆️ Новый уровень: "+state.player.level : "";
       const contractText=contractReward ? "\n🎁 Награда контракта: "+fmt(contractReward) : "";
-      return {text:"💰 МАШИНА ПРОДАНА\n\n"+c.model+"\n💵 Получено: "+fmt(offer)+"\n📈 Прибыль: "+fmt(profit)+"\n⭐ XP: +"+progress.gainedXp+levelText+contractText+"\n💰 Баланс: "+fmt(state.player.balance),markup:garageKeyboard(state)};
+      return {text:"💰 МАШИНА ПРОДАНА\n\n"+c.model+"\n👤 Покупатель: "+(state.pendingDeal?.buyerType||"Покупатель")+"\n💵 Получено: "+fmt(offer)+"\n📈 Прибыль: "+fmt(profit)+"\n⭐ XP: +"+progress.gainedXp+levelText+contractText+"\n💰 Баланс: "+fmt(state.player.balance),markup:garageKeyboard(state)};
     }
     if(action==="contracts")return {text:"📋 КОНТРАКТЫ\n\n"+state.contracts.map(c=>(c.completed?"✅ ":"⏳ ")+c.title+"\n   "+c.goal+"\n   Прогресс: "+(typeof c.progress==="number"? (c.id==="profit_300k"?fmt(c.progress):c.progress)+"/"+(c.id==="profit_300k"?fmt(c.target):c.target):"—")+"\n   Награда: "+fmt(c.reward)).join("\n\n"),markup:menu()};
     if(action==="plates"){
@@ -513,4 +607,4 @@ async function handleCallback(chat,data,firstName,sendFn,answerFn,callbackId) {
   return true;
 }
 
-module.exports={init,load,save,open,handleText,handleCallback,CATALOG,newState,refreshMarket,createListing,addTx,scoreListing,bestDeal,recommendation,addProgress,updateContracts,buyerOffer,dealRisk};
+module.exports={init,load,save,open,handleText,handleCallback,CATALOG,BUYER_TYPES,newState,refreshMarket,createListing,addTx,scoreListing,bestDeal,recommendation,addProgress,updateContracts,buyerOffer,buyerOfferDetails,buyerProfile,negotiation,dealRisk};
