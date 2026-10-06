@@ -167,6 +167,9 @@ function buyerOffer(state, car) {
 
 function negotiation(state, car, deal) {
   const profile = BUYER_TYPES.find(x=>x.id===deal.typeId) || BUYER_TYPES[0];
+  if ((Number(deal.negotiations)||0) >= 1) {
+    return {accepted:false,left:false,amount:deal.amount,text:"Покупатель уже сделал финальное предложение."};
+  }
   const condition = Math.max(0, Math.min(100, Number(car.condition)||0));
   const demand = Math.max(0.45, Math.min(0.98, car.currentDemand ?? car.demand));
   const leverage = 0.015 + (condition/100)*0.025 + demand*0.012 + Math.min(50, Number(state.player.respect)||0)*0.0004;
@@ -527,6 +530,7 @@ async function handleCallback(chat,data,firstName,sendFn,answerFn,callbackId) {
       if(event.type==="bonus") deal.amount+=event.bonus;
       deal.carId=c.id;
       deal.event=event.type;
+      deal.negotiations=0;
       state.pendingDeal=deal;
       return {text:dealText(state,c,deal),markup:dealKeyboard(c,deal)};
     }
@@ -534,6 +538,7 @@ async function handleCallback(chat,data,firstName,sendFn,answerFn,callbackId) {
       if(!state.pendingDeal || state.pendingDeal.carId!==id) return {text:"⚠️ Предложение устарело. Запроси новое.",markup:carKeyboard(c)};
       const result=negotiation(state,c,state.pendingDeal);
       if(result.left){state.pendingDeal=null;return {text:"❌ ПОКУПАТЕЛЬ УШЁЛ\n\n"+result.text,markup:carKeyboard(c)};}
+      state.pendingDeal.negotiations=(Number(state.pendingDeal.negotiations)||0)+1;
       state.pendingDeal.amount=result.amount;
       return {text:"💬 ТОРГ\n\n"+result.text+"\n\n"+dealText(state,c,state.pendingDeal),markup:dealKeyboard(c,state.pendingDeal)};
     }
@@ -543,6 +548,7 @@ async function handleCallback(chat,data,firstName,sendFn,answerFn,callbackId) {
     }
     if(action==="accept"){
       if(!state.pendingDeal || state.pendingDeal.carId!==id) return {text:"⚠️ Предложение устарело. Нажми «Продать» заново.",markup:carKeyboard(c)};
+      const buyerName=state.pendingDeal.buyerType||"Покупатель";
       const offer=Number(state.pendingDeal.amount)||0;
       const cost=c.buyPrice+(c.repairSpent||0)+(c.extraSpent||0);
       const profit=offer-cost;
@@ -557,7 +563,7 @@ async function handleCallback(chat,data,firstName,sendFn,answerFn,callbackId) {
       const contractReward=state.player.balance-balanceBeforeContracts;
       const levelText=progress.levelUps ? "\n⬆️ Новый уровень: "+state.player.level : "";
       const contractText=contractReward ? "\n🎁 Награда контракта: "+fmt(contractReward) : "";
-      return {text:"💰 МАШИНА ПРОДАНА\n\n"+c.model+"\n👤 Покупатель: "+(state.pendingDeal?.buyerType||"Покупатель")+"\n💵 Получено: "+fmt(offer)+"\n📈 Прибыль: "+fmt(profit)+"\n⭐ XP: +"+progress.gainedXp+levelText+contractText+"\n💰 Баланс: "+fmt(state.player.balance),markup:garageKeyboard(state)};
+      return {text:"💰 МАШИНА ПРОДАНА\n\n"+c.model+"\n👤 Покупатель: "+buyerName+"\n💵 Получено: "+fmt(offer)+"\n📈 Прибыль: "+fmt(profit)+"\n⭐ XP: +"+progress.gainedXp+levelText+contractText+"\n💰 Баланс: "+fmt(state.player.balance),markup:garageKeyboard(state)};
     }
     if(action==="contracts")return {text:"📋 КОНТРАКТЫ\n\n"+state.contracts.map(c=>(c.completed?"✅ ":"⏳ ")+c.title+"\n   "+c.goal+"\n   Прогресс: "+(typeof c.progress==="number"? (c.id==="profit_300k"?fmt(c.progress):c.progress)+"/"+(c.id==="profit_300k"?fmt(c.target):c.target):"—")+"\n   Награда: "+fmt(c.reward)).join("\n\n"),markup:menu()};
     if(action==="plates"){
