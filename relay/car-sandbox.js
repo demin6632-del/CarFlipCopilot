@@ -259,21 +259,40 @@ function listParts(car,systemId){
 }
 
 function compatibility(source,target){
-  if(!source||!target) return {ok:false,score:0,reason:"missing_part"};
+  if(!source||!target) return {ok:false,score:0,reason:"missing_part",details:"Не найдена исходная или целевая деталь."};
   const sameAssembly=source.assembly===target.assembly;
   const sameSystem=source.system===target.system;
-  const score=(sameAssembly?0.65:0)+(sameSystem?0.25:0)+(source.name===target.name?0.10:0);
-  return {ok:score>=0.9,score,reason:score>=0.9?"compatible":"incompatible"};
+  const sameName=source.name===target.name;
+  const score=(sameAssembly?0.65:0)+(sameSystem?0.25:0)+(sameName?0.10:0);
+  let details;
+  if(score>=0.9) details="Совпадают система, узел и назначение детали.";
+  else if(!sameSystem) details="Деталь относится к другой системе автомобиля.";
+  else if(!sameAssembly) details="Деталь относится к другому узлу.";
+  else details="Тип детали не совпадает.";
+  return {ok:score>=0.9,score,reason:score>=0.9?"compatible":"incompatible",details};
 }
 function removeToWarehouse(car,partId){
   const part=getPart(car,partId);
   if(!part) return {ok:false,reason:"part_missing"};
   if(part.installed) return {ok:false,reason:"remove_first"};
   if(!Array.isArray(car.sandbox.warehouse)) car.sandbox.warehouse=[];
-  if(!car.sandbox.warehouse.some(p=>p.id===part.id)) car.sandbox.warehouse.push(clone(part));
+  if(car.sandbox.warehouse.some(p=>p.id===part.id)) return {ok:false,reason:"already_in_warehouse"};
+  const item=clone(part);
+  item.warehouseStatus="stored";
+  item.provenance={
+    sourceCarId:String(car.id),
+    sourceVin:String(car.sandbox.vin),
+    originalPartId:String(part.id),
+    sourceSerial:String(part.serial),
+    extractedCondition:Number(part.condition)||0,
+    extractedAt:Date.now()
+  };
+  item.history=Array.isArray(item.history)?item.history:[];
+  item.history.unshift({time:Date.now(),action:"warehouse_extract",text:"Снята с автомобиля и помещена на склад."});
+  car.sandbox.warehouse.push(item);
   car.sandbox.parts=car.sandbox.parts.filter(p=>p.id!==part.id);
-  record(car,"warehouse_add",part,"Деталь помещена на склад.");
-  return {ok:true,part};
+  record(car,"warehouse_add",part,"Деталь помещена на склад. Происхождение и серийный номер сохранены.");
+  return {ok:true,part:item,provenance:item.provenance};
 }
 function donorExtract(donor,partId){
   if(!donor?.sandbox) buildCar(donor);
@@ -294,10 +313,55 @@ function installWarehousePart(car,partId){
   if(!target) return {ok:false,reason:"no_matching_slot"};
   const c=compatibility(source,target);
   if(!c.ok) return {ok:false,reason:"incompatible",compatibility:c};
+  const provenance=clone(source.provenance||{});
   Object.assign(target,{condition:source.condition,wear:source.wear,marketValue:source.marketValue,hiddenDamage:source.hiddenDamage,serial:source.serial,modifications:(source.modifications||[]).slice(),installed:true});
+  target.provenance=provenance;
+  target.history=Array.isArray(target.history)?target.history:[];
+  target.history.unshift({time:Date.now(),action:"donor_install",text:"Установлена складская/донорская деталь. Источник VIN: "+(provenance.sourceVin||"не указан")+", серийный номер: "+target.serial});
+  source.warehouseStatus="installed";
   car.sandbox.warehouse=car.sandbox.warehouse.filter(p=>p.id!==partId);
-  record(car,"donor_install",target,"Донорская деталь установлена. Серийный номер: "+target.serial);
-  return {ok:true,part:target,source};
+  record(car,"donor_install",target,"Донорская деталь установлена. Происхождение сохранено.");
+  return {ok:true,part:target,source,provenance};
+}
+
+function transferWarehousePart(sourceCar,targetCar,partId){
+  if(!sourceCar?.sandbox) buildCar(sourceCar);
+  if(!targetCar?.sandbox) buildCar(targetCar);
+  const item=sourceCar.sandbox.warehouse?.find(p=>p.id===partId);
+  if(!item) return {ok:false,reason:"warehouse_missing"};
+  if(String(sourceCar.id)===String(targetCar.id)) return {ok:false,reason:"same_car"};
+  if(!Array.isArray(targetCar.sandbox.warehouse)) targetCar.sandbox.warehouse=[];
+  const targetSlot=targetCar.sandbox.parts.find(p=>p.name===item.name&&!p.installed);
+  if(!targetSlot) return {ok:false,reason:"no_matching_slot"};
+  const check=compatibility(item,targetSlot);
+  if(!check.ok) return {ok:false,reason:"incompatible",compatibility:check};
+  const moved=clone(item);
+  moved.warehouseStatus="stored";
+  moved.provenance=Object.assign({},moved.provenance||{},{
+    transferredToCarId:String(targetCar.id),
+    transferredAt:Date.now()
+  });
+  moved.history=Array.isArray(moved.history)?moved.history:[];
+  moved.history.unshift({time:Date.now(),action:"warehouse_transfer",text:"Перемещена со склада донора на склад целевого автомобиля."});
+  targetCar.sandbox.warehouse.push(moved);
+  sourceCar.sandbox.warehouse=sourceCar.sandbox.warehouse.filter(p=>p.id!==partId);
+  record(sourceCar,"warehouse_transfer_out",item,"Деталь передана со склада автомобиля-донора.");
+  record(targetCar,"warehouse_transfer_in",moved,"Деталь принята на склад с сохранением происхождения.");
+  return {ok:true,part:moved,compatibility:check};
+}
+
+function sellWarehousePart(car,partId){
+  if(!car?.sandbox) buildCar(car);
+  const item=car.sandbox.warehouse?.find(p=>p.id===partId);
+  if(!item) return {ok:false,reason:"warehouse_missing"};
+  const revenue=money((item.marketValue||item.purchaseValue||0)*(0.70+(Number(item.condition)||0)/500));
+  car.sandbox.warehouse=car.sandbox.warehouse.filter(p=>p.id!==partId);
+  record(car,"warehouse_sell",item,"Складская деталь продана за "+revenue+" ₽.");
+  return {ok:true,revenue,part:item};
+}
+
+function warehouseItem(car,partId){
+  return car?.sandbox?.warehouse?.find(p=>p.id===partId)||null;
 }
 function donorCompatibility(car,donor){
   if(!car?.sandbox||!donor?.sandbox) return {compatible:[],incompatible:[]};
@@ -603,3 +667,6 @@ module.exports.dependencyStatus=dependencyStatus;
 module.exports.dependencyGraph=dependencyGraph;
 module.exports.canRemovePart=canRemovePart;
 module.exports.canInstallPart=canInstallPart;
+module.exports.transferWarehousePart=transferWarehousePart;
+module.exports.sellWarehousePart=sellWarehousePart;
+module.exports.warehouseItem=warehouseItem;
