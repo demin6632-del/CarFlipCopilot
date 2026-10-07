@@ -85,3 +85,54 @@ test("compatible donor part can be installed into matching empty slot",()=>{
   assert.equal(r.ok,true);
   assert.equal(target.installed,true);
 });
+
+test("hierarchy creates assemblies and individual fasteners",()=>{
+  const car={id:"car_h1",mileage:100000};
+  sandbox.buildCar(car);
+  assert.equal(car.sandbox.hierarchyVersion,1);
+  const part=car.sandbox.parts[0];
+  assert.equal(part.level,3);
+  assert.equal(part.node.level,2);
+  assert.ok(Array.isArray(part.fasteners));
+  assert.ok(part.fasteners.length>=2);
+  assert.ok(part.fasteners.every(f=>f.level===1&&f.installed===true));
+  assert.ok(sandbox.listAssemblies(car,"engine").length>0);
+});
+
+test("fastener unscrew and screw are reversible",()=>{
+  const car={id:"car_h2",mileage:100000};
+  sandbox.buildCar(car);
+  const part=car.sandbox.parts[0], f=part.fasteners[0];
+  const a=sandbox.actionFastener(car,"unscrew",part.id,f.id);
+  assert.equal(a.ok,true);
+  assert.equal(f.installed,false);
+  const b=sandbox.actionFastener(car,"screw",part.id,f.id);
+  assert.equal(b.ok,true);
+  assert.equal(f.installed,true);
+  assert.ok(part.history.some(h=>String(h.action).startsWith("fastener_")));
+});
+
+test("missing fastener prevents part removal and installation",()=>{
+  const car={id:"car_h3",mileage:100000};
+  sandbox.buildCar(car);
+  const part=car.sandbox.parts[0], f=part.fasteners[0];
+  sandbox.actionFastener(car,"unscrew",part.id,f.id);
+  const blockedRemove=sandbox.actionPart(car,"remove",part.id);
+  assert.equal(blockedRemove.ok,false);
+  assert.equal(blockedRemove.reason,"missing_fasteners");
+  sandbox.actionFastener(car,"screw",part.id,f.id);
+  assert.equal(sandbox.actionPart(car,"remove",part.id).ok,true);
+  sandbox.actionFastener(car,"unscrew",part.id,f.id);
+  const blockedInstall=sandbox.actionPart(car,"install",part.id);
+  assert.equal(blockedInstall.ok,false);
+  assert.equal(blockedInstall.reason,"fasteners_not_ready");
+});
+
+test("donor extraction no longer crashes on missing clone helper",()=>{
+  const donor={id:"donor_h4",mileage:100000};
+  sandbox.buildCar(donor);
+  const part=donor.sandbox.parts[0];
+  const r=sandbox.donorExtract(donor,part.id);
+  assert.equal(r.ok,true);
+  assert.ok(donor.sandbox.warehouse.length>0);
+});
