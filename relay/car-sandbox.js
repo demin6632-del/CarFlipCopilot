@@ -258,6 +258,57 @@ function listParts(car,systemId){
   return car.sandbox.parts.filter(p=>!systemId||p.system===systemId);
 }
 
+function compatibility(source,target){
+  if(!source||!target) return {ok:false,score:0,reason:"missing_part"};
+  const sameAssembly=source.assembly===target.assembly;
+  const sameSystem=source.system===target.system;
+  const score=(sameAssembly?0.65:0)+(sameSystem?0.25:0)+(source.name===target.name?0.10:0);
+  return {ok:score>=0.9,score,reason:score>=0.9?"compatible":"incompatible"};
+}
+function removeToWarehouse(car,partId){
+  const part=getPart(car,partId);
+  if(!part) return {ok:false,reason:"part_missing"};
+  if(part.installed) return {ok:false,reason:"remove_first"};
+  if(!Array.isArray(car.sandbox.warehouse)) car.sandbox.warehouse=[];
+  if(!car.sandbox.warehouse.some(p=>p.id===part.id)) car.sandbox.warehouse.push(clone(part));
+  car.sandbox.parts=car.sandbox.parts.filter(p=>p.id!==part.id);
+  record(car,"warehouse_add",part,"Деталь помещена на склад.");
+  return {ok:true,part};
+}
+function donorExtract(donor,partId){
+  if(!donor?.sandbox) buildCar(donor);
+  const part=getPart(donor,partId);
+  if(!part) return {ok:false,reason:"part_missing"};
+  if(part.installed){
+    const removed=actionPart(donor,"remove",part.id);
+    if(!removed.ok) return removed;
+  }
+  return removeToWarehouse(donor,part.id);
+}
+function installWarehousePart(car,partId){
+  if(!car?.sandbox) buildCar(car);
+  if(!Array.isArray(car.sandbox.warehouse)) car.sandbox.warehouse=[];
+  const source=car.sandbox.warehouse.find(p=>p.id===partId);
+  if(!source) return {ok:false,reason:"warehouse_missing"};
+  const target=car.sandbox.parts.find(p=>p.name===source.name&&!p.installed);
+  if(!target) return {ok:false,reason:"no_matching_slot"};
+  const c=compatibility(source,target);
+  if(!c.ok) return {ok:false,reason:"incompatible",compatibility:c};
+  Object.assign(target,{condition:source.condition,wear:source.wear,marketValue:source.marketValue,hiddenDamage:source.hiddenDamage,serial:source.serial,modifications:(source.modifications||[]).slice(),installed:true});
+  car.sandbox.warehouse=car.sandbox.warehouse.filter(p=>p.id!==partId);
+  record(car,"donor_install",target,"Донорская деталь установлена. Серийный номер: "+target.serial);
+  return {ok:true,part:target,source};
+}
+function donorCompatibility(car,donor){
+  if(!car?.sandbox||!donor?.sandbox) return {compatible:[],incompatible:[]};
+  const compatible=[],incompatible=[];
+  for(const source of donor.sandbox.parts.filter(p=>p.installed)){
+    const target=car.sandbox.parts.find(p=>p.name===source.name);
+    if(target){const c=compatibility(source,target);(c.ok?compatible:incompatible).push({source,target,score:c.score});}
+  }
+  return {compatible,incompatible};
+}
+
 function carSandboxSummary(car){
   const parts=car.sandbox.parts;
   const avg=parts.length?Math.round(parts.reduce((a,p)=>a+p.condition,0)/parts.length):0;
@@ -308,5 +359,6 @@ function applyGlobalAction(car,action){
 
 module.exports={
   SYSTEMS,ACTIONS,buildCar,getPart,actionRules,actionPart,
-  listSystems,listParts,carSandboxSummary,applyGlobalAction
+  listSystems,listParts,carSandboxSummary,applyGlobalAction,
+  compatibility,removeToWarehouse,donorExtract,installWarehousePart,donorCompatibility
 };
