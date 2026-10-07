@@ -780,13 +780,15 @@ async function handleText(chat,text,firstName,sendFn) {
       const pending=state.pendingPurchase;
       if(pending?.awaitingOffer && pending.carId){
         const offer=Number(raw);
-        const result=await withState(chat,firstName,s=>{
+        const run=await withState(chat,firstName,s=>{
           if(!s.pendingPurchase?.awaitingOffer || s.pendingPurchase.carId!==pending.carId)return {ok:false,reason:"stale"};
           const r=negotiatePurchase(s,pending.carId,offer);
           if(r.ok)s.pendingPurchase={...s.pendingPurchase,offer,awaitingOffer:false};
           return r;
         });
-        const car=state.market.find(x=>x.id===pending.carId);
+        const result=run.result||{};
+        const liveState=run.state||state;
+        const car=liveState.market.find(x=>x.id===pending.carId);
         if(!car)return true;
         if(result.reason==="invalid_offer" || result.reason==="too_high"){
           await sendFn(chat,"⚠️ Некорректная цена.\n\nНапиши сумму не выше цены продавца: "+fmt(car.buyPrice),{reply_markup:{inline_keyboard:[[{text:"⬅️ Осмотр",callback_data:"ag:inspect:"+car.id}]]}});
