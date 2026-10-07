@@ -65,6 +65,21 @@ test("illegal-risk actions are recorded instead of hidden",()=>{
 });
 
 console.log("Car sandbox tests: OK");
+test("six inspection levels progressively reveal vehicle information",()=>{
+  const car={id:"inspect_car",mileage:90000}; sandbox.buildCar(car);
+  const one=sandbox.inspectCar(car,1);
+  const four=sandbox.inspectCar(car,4);
+  const six=sandbox.inspectCar(car,6);
+  assert.equal(one.level,1);
+  assert.equal(four.level,4);
+  assert.equal(six.level,6);
+  assert.equal(car.sandbox.diagnosticLevel,6);
+  assert.ok(Array.isArray(one.visibleParts));
+  assert.ok(four.hiddenDamage!==null);
+  assert.ok(six.damagedFasteners!==null);
+  assert.ok(car.sandbox.diagnosticsSpent>0);
+});
+
 test("warehouse preserves donor VIN, source part id, serial and extraction condition",()=>{
   const donor={id:"prov_donor",mileage:100000}; sandbox.buildCar(donor);
   const part=donor.sandbox.parts[0];
