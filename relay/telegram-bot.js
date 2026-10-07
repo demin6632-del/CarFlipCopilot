@@ -62,14 +62,18 @@ async function send(chat,text,extra={}){
 }
 async function registerBotCommands(){
   const commands=[
-    {command:"start",description:"Открыть игру"},
-    {command:"game",description:"Симулятор Перекупа"},
-    {command:"perekup",description:"Симулятор Перекупа"}
+    {command:"start",description:"Начать игру AUTOFLIP"},
+    {command:"game",description:"Открыть AUTOFLIP"},
+    {command:"perekup",description:"Открыть игру"},
+    {command:"help",description:"Помощь и правила"}
   ];
   for(let attempt=1;attempt<=5;attempt++){
     try{
+      await tg("setMyName",{name:"AUTOFLIP"});
+      await tg("setMyShortDescription",{short_description:"Премиальный симулятор автомобильного флипа"});
+      await tg("setMyDescription",{description:"AUTOFLIP — автономный симулятор автомобильного бизнеса. Покупай автомобили, торгуйся, ремонтируй, управляй гаражом, работай с номерами и развивай свой капитал. Играть можно сразу, без подключения и без участия администратора."});
       await tg("setMyCommands",{commands,scope:{type:"all_private_chats"}});
-      console.log("Telegram commands registered: autonomous game only");
+      console.log("Telegram profile and commands registered: AUTOFLIP");
       return true;
     }catch(e){
       console.log("COMMANDS REGISTER ERROR attempt="+attempt+":",e.message);
@@ -81,7 +85,7 @@ async function registerBotCommands(){
 async function handleMessage(m){
   const chat=m?.chat?.id;if(chat==null)return;
   const text=String(m.text||"").trim();
-  if(text==="/start"||text==="/game"||text==="/perekup"){
+  if(text==="/start"||text==="/game"||text==="/perekup"||text==="/help"){
     try{await tg("sendMessage",{chat_id:chat,text:" ",reply_markup:{remove_keyboard:true}});}catch{}
     return autonomousGame.handleText(chat,"/perekup",m.from?.first_name||"Перекуп",(c,t,extra)=>send(c,t,extra));
   }
