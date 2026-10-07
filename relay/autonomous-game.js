@@ -835,7 +835,9 @@ async function handleCallback(chat,data,firstName,sendFn,answerFn,callbackId) {
       const c=result.car;
       return {text:"✅ ПОКУПКА ОФОРМЛЕНА\n\n"+c.model+"\n💵 Потрачено: "+fmt(result.price)+"\n💰 Остаток: "+fmt(state.player.balance)+"\n\nТеперь начинается работа с машиной.",markup:carKeyboard(c)};
     }
-    const c=state.garage.find(x=>x.id===id);
+    const rawId=String(id||"");
+    const carId=rawId.split("|")[0];
+    const c=state.garage.find(x=>String(x.id)===String(carId));
     if(!c && ["car","repair","prep","sell"].includes(action))return {text:"⚠️ Машина уже не в гараже.",markup:garageKeyboard(state)};
     if(action==="pmrefresh"){
       if(!c)return {text:"⚠️ Машина уже не в гараже.",markup:garageKeyboard(state)};
