@@ -615,7 +615,7 @@ async function handleCallback(chat,data,firstName,sendFn,answerFn,callbackId) {
   const [_,action,id]=String(data).split(":");
   if(action==="home"){await open(chat,firstName,sendFn);return true;}
   const run=await withState(chat,firstName,state=>{
-    const advancesTurn = new Set(["refresh","diagnose","diagnose_deep","buy","repair","prep","sell","negotiate","reject","accept","plate_refresh","platebuy","platesell"]).has(action);
+    const advancesTurn = new Set(["refresh","diagnose","diagnose_deep","offer","buy","repair","prep","sell","negotiate","reject","accept","plate_refresh","platebuy","platesell"]).has(action);
     if(advancesTurn) state.meta.turn=(Number(state.meta.turn)||0)+1;
     if(callbackId) {
       state.processedCallbacks.push(String(callbackId));
