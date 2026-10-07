@@ -1,4 +1,5 @@
 const { Pool } = require("pg");
+const sandbox = require("./car-sandbox");
 
 const VERSION = 2;
 const START_BALANCE = 3000000;
@@ -433,6 +434,55 @@ function inspectKeyboard(c,state) {
     ...(free?[[{text:"💬 Торговаться",callback_data:"ag:offer:"+c.id}],[{text:"💳 Купить за "+fmt(c.buyPrice),callback_data:"ag:buy:"+c.id}]]:[]),
     [{text:"⬅️ Рынок",callback_data:"ag:market"}]]};
 }
+function sandboxText(c) {
+  sandbox.buildCar(c);
+  const summary=sandbox.carSandboxSummary(c);
+  return [
+    "🧩 ДЕТАЛЬНЫЙ АВТОМОБИЛЬНЫЙ САНДБОК","",
+    "⚙️ Систем: "+sandbox.SYSTEMS.length,
+    "🔩 Деталей: "+summary.totalParts+" · установлено "+summary.installedParts,
+    "📊 Среднее состояние деталей: "+summary.averageCondition+"%",
+    "⚠️ Скрытых проблем: "+summary.hiddenDefects,
+    "💰 Оценка деталей: "+fmt(summary.estimatedPartsValue),
+    summary.legalRisk?"⚠️ В истории есть риск вмешательства.":"✅ Критических отметок вмешательства нет."
+  ].join("\n");
+}
+function sandboxSystemsKeyboard(c) {
+  sandbox.buildCar(c);
+  return {inline_keyboard:[
+    ...sandbox.listSystems(c).map(s=>[{text:"⚙️ "+s.title+" · "+s.averageCondition+"%",callback_data:"ag:system:"+c.id+"|"+s.id}]),
+    [{text:"🔧 Полная разборка",callback_data:"ag:global:"+c.id+"|full_disassembly"}],
+    [{text:"⬅️ Машина",callback_data:"ag:car:"+c.id}]
+  ]};
+}
+function sandboxPartsKeyboard(c,systemId) {
+  const parts=sandbox.listParts(c,systemId);
+  return {inline_keyboard:[
+    ...parts.map(p=>[{text:(p.installed?"🔩 ":"📦 ")+p.name+" · "+p.condition+"%",callback_data:"ag:part:"+c.id+"|"+p.id}]),
+    [{text:"⬅️ Системы",callback_data:"ag:parts:"+c.id}]
+  ]};
+}
+function sandboxPartText(p) {
+  return [
+    "🔩 ДЕТАЛЬ","",
+    "Название: "+p.name,
+    "Узел: "+p.assembly,
+    "Состояние: "+p.condition+"%",
+    "Износ: "+p.wear+"%",
+    "Состояние установки: "+(p.installed?"установлена":"снята"),
+    "Серийный номер: "+p.serial,
+    p.hiddenDamage?"⚠️ Есть скрытое повреждение.":"✅ Скрытых повреждений не выявлено.",
+    "💰 Рыночная стоимость: "+fmt(p.marketValue)
+  ].join("\n");
+}
+function sandboxPartKeyboard(c,p) {
+  return {inline_keyboard:[
+    [{text:"🔧 Ремонт",callback_data:"ag:pa:"+c.id+"|"+p.id+"|repair"},{text:p.installed?"🔩 Снять":"🔩 Установить",callback_data:"ag:pa:"+c.id+"|"+p.id+"|"+(p.installed?"remove":"install")}],
+    [{text:"🆕 Новая",callback_data:"ag:pa:"+c.id+"|"+p.id+"|replace_new"},{text:"♻️ Б/у",callback_data:"ag:pa:"+c.id+"|"+p.id+"|replace_used"}],
+    [{text:"💰 Продать отдельно",callback_data:"ag:pa:"+c.id+"|"+p.id+"|sell_part"}],
+    [{text:"⬅️ Детали",callback_data:"ag:parts:"+c.id}]
+  ]};
+}
 function carText(c) {
   const cost=vehicleCost(c);
   const margin=c.targetSale-cost;
@@ -451,6 +501,7 @@ function carKeyboard(c) {
   return {inline_keyboard:[
     [{text:"🔧 Ремонт",callback_data:"ag:repair:"+c.id},{text:"✨ Подготовить",callback_data:"ag:prep:"+c.id}],
     [{text:"💰 Продать",callback_data:"ag:sell:"+c.id}],
+    [{text:"🧩 Детали автомобиля",callback_data:"ag:parts:"+c.id}],
     [{text:"⬅️ Гараж",callback_data:"ag:garage"}]
   ]};
 }
@@ -519,7 +570,7 @@ function purchaseListing(state,id) {
   c.status="owned";c.buyPrice=price;c.repairSpent=0;c.extraSpent=0;
   const hiddenPenalty=Math.min(3,Number(c.hiddenDefects)||0);
   if(hiddenPenalty){c.damage=Math.min(10,(c.damage||0)+hiddenPenalty);c.condition=Math.max(55,(c.condition||0)-hiddenPenalty*4);c.repairCost=Math.round(c.repairCost*(1+hiddenPenalty*.12));c.risk=Math.min(.8,c.risk+hiddenPenalty*.06);}
-  c.hiddenDefects=0;c.hiddenDefectSeverity=0;state.garage.push(c);state.market=state.market.filter(x=>x.id!==id);state.pendingPurchase=null;
+  c.hiddenDefects=0;c.hiddenDefectSeverity=0;sandbox.buildCar(c);state.garage.push(c);state.market=state.market.filter(x=>x.id!==id);state.pendingPurchase=null;
   addTx(state,"buy",-price,"Покупка "+c.model);return {ok:true,car:c,price};
 }
 
@@ -671,6 +722,51 @@ async function handleCallback(chat,data,firstName,sendFn,answerFn,callbackId) {
     }
     const c=state.garage.find(x=>x.id===id);
     if(!c && ["car","repair","prep","sell"].includes(action))return {text:"⚠️ Машина уже не в гараже.",markup:garageKeyboard(state)};
+    if(action==="parts"){
+      if(!c)return {text:"⚠️ Машина уже не в гараже.",markup:garageKeyboard(state)};
+      sandbox.buildCar(c);
+      return {text:sandboxText(c),markup:sandboxSystemsKeyboard(c)};
+    }
+    if(action==="system"){
+      if(!c)return {text:"⚠️ Машина уже не в гараже.",markup:garageKeyboard(state)};
+      const bits=String(id||"").split("|");
+      const systemId=bits[1];
+      sandbox.buildCar(c);
+      const sys=sandbox.SYSTEMS.find(x=>x.id===systemId);
+      if(!sys)return {text:"⚠️ Система не найдена.",markup:sandboxSystemsKeyboard(c)};
+      return {text:"⚙️ "+sys.title+"\n\nВыбери конкретную деталь.",markup:sandboxPartsKeyboard(c,systemId)};
+    }
+    if(action==="part"){
+      if(!c)return {text:"⚠️ Машина уже не в гараже.",markup:garageKeyboard(state)};
+      const bits=String(id||"").split("|");
+      const part=sandbox.getPart(c,bits[1]);
+      if(!part)return {text:"⚠️ Деталь не найдена.",markup:sandboxSystemsKeyboard(c)};
+      return {text:sandboxPartText(part),markup:sandboxPartKeyboard(c,part)};
+    }
+    if(action==="pa"){
+      if(!c)return {text:"⚠️ Машина уже не в гараже.",markup:garageKeyboard(state)};
+      const bits=String(id||"").split("|");
+      const part=sandbox.getPart(c,bits[1]);
+      const op=bits[2];
+      if(!part)return {text:"⚠️ Деталь не найдена.",markup:sandboxSystemsKeyboard(c)};
+      const result=sandbox.actionPart(c,op,part.id);
+      if(!result.ok){
+        const reasons={part_removed:"Деталь уже снята.",remove_first:"Сначала сними деталь с автомобиля.",part_missing:"Деталь не найдена.",unknown_action:"Операция неизвестна."};
+        return {text:"⚠️ "+(reasons[result.reason]||"Операция невозможна."),markup:sandboxPartKeyboard(c,part)};
+      }
+      if(result.cost)addTx(state,"sandbox_"+op,-result.cost,op+" "+part.name);
+      if(result.revenue)addTx(state,"sandbox_"+op,result.revenue,op+" "+part.name);
+      return {text:"✅ ОПЕРАЦИЯ ВЫПОЛНЕНА\n\n"+sandboxPartText(part)+"\n\n⏱ Время: "+result.time+" ч"+(result.warning?"\n⚠️ История зафиксировала вмешательство.":""),markup:sandboxPartKeyboard(c,part)};
+    }
+    if(action==="global"){
+      if(!c)return {text:"⚠️ Машина уже не в гараже.",markup:garageKeyboard(state)};
+      const bits=String(id||"").split("|");
+      const op=bits[1];
+      const result=sandbox.applyGlobalAction(c,op);
+      if(!result.ok)return {text:"⚠️ Операция невозможна.",markup:sandboxSystemsKeyboard(c)};
+      if(result.cost)addTx(state,"sandbox_"+op,-result.cost,"Глобальная операция: "+op);
+      return {text:"🛠 ГЛОБАЛЬНАЯ ОПЕРАЦИЯ\n\nОперация: "+op+"\n⏱ Время: "+result.time+" ч\n💵 Расход: "+fmt(result.cost||0),markup:sandboxSystemsKeyboard(c)};
+    }
     if(action==="car")return {text:carText(c),markup:carKeyboard(c)};
     if(action==="repair"){
       const result=repairVehicle(state,id);
