@@ -339,26 +339,14 @@ function recommendation(state) {
 }
 
 function mainText(state) {
-  const p=state.player;
-  const event=state.meta.marketEvent||{title:"Спокойный рынок",text:"Стабильный спрос."};
+  const p=state.player, event=state.meta.marketEvent||{title:"Спокойный рынок",text:"Стабильный спрос."};
   const deals=state.transactions.filter(x=>x.kind==="sale").length;
-  return [
-    "🚗 СИМУЛЯТОР ПЕРЕКУПА · V2",
-    "",
-    "👤 "+p.name+" · Ур. "+p.level+" · ⭐ "+p.respect,
+  return ["🚗 СИМУЛЯТОР ПЕРЕКУПА · V2","","👤 "+p.name+" · Ур. "+p.level+" · ⭐ "+p.respect,
     "💰 "+fmt(p.balance)+" · 🚘 "+state.garage.length+"/"+p.garageCapacity,
-    "📅 День "+(state.meta.day||1)+" · Продаж: "+deals,
-    "",
-    "📈 "+event.title,
-    event.text,
-    "👥 Конкуренты: "+(state.meta.competitors||1)+" · давление "+(state.meta.competitionLevel||0)+"%",
-    "",
-    "Цель дня: найти недооценённую машину,",
-    "проверить её, сторговаться, вложиться",
-    "только там, где это окупается, и продать.",
-    "",
-    "Решение всегда остаётся за тобой."
-  ].join("\n");
+    "📅 День "+(state.meta.day||1)+" · Продаж: "+deals,"","📈 "+event.title,event.text,
+    "👥 Конкуренты: "+(state.meta.competitors||1)+" · давление "+(state.meta.competitionLevel||0)+"%","",
+    "Цель дня: найти недооценённую машину,","проверить её, сторговаться, вложиться","только там, где это окупается, и продать.","",
+    "Решение всегда остаётся за тобой."].join("\n");
 }
 function menu() {
   return {inline_keyboard:[
@@ -369,17 +357,12 @@ function menu() {
 }
 function marketKeyboard(state) {
   const turn=Number(state.meta.turn)||0;
-  return {inline_keyboard:[
-    ...state.market.slice(0,5).map((car,i)=>{
-      const left=car.expiresAtTurn ? Math.max(0,car.expiresAtTurn-turn) : 0;
-      const tag=car.limited ? "🔥 " : "";
-      const margin=car.targetSale-car.buyPrice-car.repairCost;
-      const signal=margin>150000 ? "💎" : margin>50000 ? "🟢" : margin>0 ? "🟡" : "🔴";
-      return [{text:tag+(i+1)+". "+signal+" "+car.model+" · "+fmt(car.buyPrice)+(car.expiresAtTurn?" · ⏳"+left:""),callback_data:"ag:inspect:"+car.id}];
-    }),
-    [{text:"🔄 Обновить рынок",callback_data:"ag:refresh"}],
-    [{text:"⬅️ Меню",callback_data:"ag:home"}]
-  ]};
+  return {inline_keyboard:[...state.market.slice(0,5).map((car,i)=>{
+    const left=car.expiresAtTurn?Math.max(0,car.expiresAtTurn-turn):0, tag=car.limited?"🔥 ":"";
+    const margin=car.targetSale-car.buyPrice-car.repairCost;
+    const signal=margin>150000?"💎":margin>50000?"🟢":margin>0?"🟡":"🔴";
+    return [{text:tag+(i+1)+". "+signal+" "+car.model+" · "+fmt(car.buyPrice)+(car.expiresAtTurn?" · ⏳"+left:""),callback_data:"ag:inspect:"+car.id}];
+  }),[{text:"🔄 Обновить рынок",callback_data:"ag:refresh"}],[{text:"⬅️ Меню",callback_data:"ag:home"}]]};
 }
 function garageKeyboard(state) {
   return {inline_keyboard:[
@@ -424,56 +407,31 @@ function revealRiskText(c) {
 }
 
 function inspectText(c,state) {
-  const margin=c.targetSale-c.buyPrice-c.repairCost;
-  const marketGap=c.marketPrice-c.buyPrice;
-  const low=Math.max(0,Math.round((margin*0.55)/1000)*1000);
-  const high=Math.max(0,Math.round((margin*1.05)/1000)*1000);
-  return [
-    "🔎 ОСМОТР ЛОТА",
-    "",
-    "🚘 "+c.model+" · "+c.year,
-    "🛣 "+c.mileage.toLocaleString("ru-RU")+" км · состояние "+c.condition+"%",
-    "⚠️ Повреждений: "+c.damage+" · риск "+Math.round(c.risk*100)+"%",
-    "💵 Цена продавца: "+fmt(c.buyPrice),
-    "📊 Рынок: "+fmt(c.marketPrice),
-    "🔧 Оценка ремонта: "+fmt(c.repairCost),
-    "🎯 Ориентир продажи: "+fmt(c.targetSale),
-    "📈 Разница с рынком: "+fmt(marketGap),
-    "💰 Расчётная прибыль: "+fmt(margin),
-    "🎲 Реалистичный диапазон: "+fmt(low)+" — "+fmt(high),
-    "📊 Спрос: "+Math.round((c.currentDemand??c.demand)*100)+"%",
-    revealRiskText(c),
-    hiddenDefectLabel(c),
-    c.limited ? "🔥 Срочный лот — времени мало." : "📦 Обычный лот.",
-    c.expiresAtTurn ? "⏳ До ухода с рынка: "+Math.max(0,c.expiresAtTurn-(Number(state.meta.turn)||0))+" ход." : ""
-  ].join("\n");
+  const margin=c.targetSale-c.buyPrice-c.repairCost, gap=c.marketPrice-c.buyPrice;
+  const low=Math.max(0,Math.round(margin*.55/1000)*1000), high=Math.max(0,Math.round(margin*1.05/1000)*1000);
+  return ["🔎 ОСМОТР ЛОТА","","🚘 "+c.model+" · "+c.year,"🛣 "+c.mileage.toLocaleString("ru-RU")+" км · состояние "+c.condition+"%",
+    "⚠️ Повреждений: "+c.damage+" · риск "+Math.round(c.risk*100)+"%","💵 Цена продавца: "+fmt(c.buyPrice),
+    "📊 Средняя цена рынка: "+fmt(c.marketPrice),"🔧 Оценка ремонта: "+fmt(c.repairCost),
+    "🎯 Ориентир продажи: "+fmt(c.targetSale),"📈 Разница с рынком: "+fmt(gap),
+    "💰 Расчётная прибыль: "+fmt(margin),"🎲 Реалистичный диапазон: "+fmt(low)+" — "+fmt(high),
+    "📊 Спрос: "+Math.round((c.currentDemand??c.demand)*100)+"%",revealRiskText(c),hiddenDefectLabel(c),
+    c.limited?"🔥 Срочный лот — времени мало.":"📦 Обычный лот.",
+    c.expiresAtTurn?"⏳ До ухода с рынка: "+Math.max(0,c.expiresAtTurn-(Number(state.meta.turn)||0))+" ход.":""].join("\n");
 }
 function purchaseOfferText(state,c) {
   const p=state.pendingPurchase;
-  return [
-    "💬 ТОРГ С ПРОДАВЦОМ",
-    "",
-    "🚘 "+c.model,
-    "💵 Цена продавца: "+fmt(c.buyPrice),
+  return ["💬 ТОРГ С ПРОДАВЦОМ","","🚘 "+c.model,"💵 Цена продавца: "+fmt(c.buyPrice),
     "🤝 Твоё предложение: "+fmt(p.offer),
-    p.result==="accepted" ? "✅ Продавец согласился." :
-      p.result==="counter" ? "↔️ Продавец сделал встречное предложение: "+fmt(p.counter) :
-      "⏳ Предложение отправлено.",
-    "",
-    "⚠️ После покупки неизвестные дефекты всё ещё могут увеличить расходы."
-  ].join("\n");
+    p.result==="accepted"?"✅ Продавец согласился.":p.result==="counter"?"↔️ Встречное предложение: "+fmt(p.counter):"❌ Продавец отказался.",
+    "","⚠️ После покупки скрытые расходы всё ещё возможны."].join("\n");
 }
-function inspectKeyboard(c, state) {
+function inspectKeyboard(c,state) {
   const free=state.garage.length<state.player.garageCapacity;
   return {inline_keyboard:[
     [{text:"🔎 Быстрая диагностика · 12 000 ₽",callback_data:"ag:diagnose:"+c.id}],
     [{text:"🔬 Глубокая диагностика · 35 000 ₽",callback_data:"ag:diagnose_deep:"+c.id}],
-    ...(free ? [
-      [{text:"💬 Торговаться",callback_data:"ag:offer:"+c.id}],
-      [{text:"💳 Купить за "+fmt(c.buyPrice),callback_data:"ag:buy:"+c.id}]
-    ] : []),
-    [{text:"⬅️ Рынок",callback_data:"ag:market"}]
-  ]};
+    ...(free?[[{text:"💬 Торговаться",callback_data:"ag:offer:"+c.id}],[{text:"💳 Купить за "+fmt(c.buyPrice),callback_data:"ag:buy:"+c.id}]]:[]),
+    [{text:"⬅️ Рынок",callback_data:"ag:market"}]]};
 }
 function carText(c) {
   const cost=vehicleCost(c);
@@ -544,65 +502,271 @@ function statsText(state) {
 }
 
 function negotiatePurchase(state,id) {
-  const c=state.market.find(x=>x.id===id);
-  if(!c)return {ok:false,reason:"missing"};
-  const offer=Math.max(1000,Math.round((c.buyPrice*(0.94+rng(state)*0.025))/1000)*1000);
-  const pressure=Math.max(0.05,Math.min(0.75,(c.marketPressure||0.5)*0.55));
-  const roll=rng(state);
-  if(roll > pressure) {
-    state.pendingPurchase={carId:id,offer,result:"accepted",finalPrice:offer};
-    return {ok:true,result:"accepted",offer,finalPrice:offer};
-  }
-  const counter=Math.round((c.buyPrice*(0.975+rng(state)*0.025))/1000)*1000;
-  if(roll > pressure*0.55) {
-    state.pendingPurchase={carId:id,offer,result:"counter",counter,finalPrice:counter};
-    return {ok:true,result:"counter",offer,counter,finalPrice:counter};
-  }
-  state.pendingPurchase={carId:id,offer,result:"rejected"};
-  return {ok:true,result:"rejected",offer};
+  const c=state.market.find(x=>x.id===id); if(!c)return {ok:false,reason:"missing"};
+  const offer=Math.max(1000,Math.round(c.buyPrice*(0.94+rng(state)*0.025)/1000)*1000);
+  const pressure=Math.max(.05,Math.min(.75,(c.marketPressure||.5)*.55)), roll=rng(state);
+  if(roll>pressure){state.pendingPurchase={carId:id,offer,result:"accepted",finalPrice:offer};return {ok:true,result:"accepted",offer,finalPrice:offer};}
+  if(roll>pressure*.55){const counter=Math.round(c.buyPrice*(.975+rng(state)*.025)/1000)*1000;state.pendingPurchase={carId:id,offer,result:"counter",counter,finalPrice:counter};return {ok:true,result:"counter",offer,counter,finalPrice:counter};}
+  state.pendingPurchase={carId:id,offer,result:"rejected"};return {ok:true,result:"rejected",offer};
 }
-
-function purchaseListing(state, id) {
+function purchaseListing(state,id) {
   const c=state.market.find(x=>x.id===id);
-  if(c && c.expiresAtTurn != null && c.expiresAtTurn <= (Number(state.meta.turn)||0)) {
-    state.market=state.market.filter(x=>x.id!==id); refreshMarket(state);
-    state.pendingPurchase=null;
-    return {ok:false,reason:"expired"};
-  }
-  if(!c)return {ok:false,reason:"missing"};
-  if(state.garage.length>=state.player.garageCapacity)return {ok:false,reason:"garage_full"};
-  const negotiated=state.pendingPurchase && state.pendingPurchase.carId===id ? state.pendingPurchase : null;
-  if(negotiated?.result==="rejected") return {ok:false,reason:"seller_rejected"};
-  const price=negotiated?.finalPrice || c.buyPrice;
-  if(state.player.balance<price)return {ok:false,reason:"no_money"};
-  c.status="owned"; c.buyPrice=price; c.repairSpent=0; c.extraSpent=0;
+  if(c&&c.expiresAtTurn!=null&&c.expiresAtTurn<=(Number(state.meta.turn)||0)){state.market=state.market.filter(x=>x.id!==id);refreshMarket(state);state.pendingPurchase=null;return {ok:false,reason:"expired"};}
+  if(!c)return {ok:false,reason:"missing"}; if(state.garage.length>=state.player.garageCapacity)return {ok:false,reason:"garage_full"};
+  const n=state.pendingPurchase&&state.pendingPurchase.carId===id?state.pendingPurchase:null;
+  if(n?.result==="rejected")return {ok:false,reason:"seller_rejected"};
+  const price=n?.finalPrice||c.buyPrice; if(state.player.balance<price)return {ok:false,reason:"no_money"};
+  c.status="owned";c.buyPrice=price;c.repairSpent=0;c.extraSpent=0;
   const hiddenPenalty=Math.min(3,Number(c.hiddenDefects)||0);
-  if(hiddenPenalty>0){
-    c.damage=Math.min(10,(c.damage||0)+hiddenPenalty);
-    c.condition=Math.max(55,(c.condition||0)-hiddenPenalty*4);
-    c.repairCost=Math.round(c.repairCost*(1+hiddenPenalty*0.12));
-    c.risk=Math.min(0.8,c.risk+hiddenPenalty*0.06);
-  }
-  c.hiddenDefects=0; c.hiddenDefectSeverity=0;
-  state.garage.push(c);
-  state.market=state.market.filter(x=>x.id!==id);
-  state.pendingPurchase=null;
-  addTx(state,"buy",-price,"Покупка "+c.model);
-  return {ok:true,car:c,price,saved:Math.max(0,c.buyPrice-price)};
+  if(hiddenPenalty){c.damage=Math.min(10,(c.damage||0)+hiddenPenalty);c.condition=Math.max(55,(c.condition||0)-hiddenPenalty*4);c.repairCost=Math.round(c.repairCost*(1+hiddenPenalty*.12));c.risk=Math.min(.8,c.risk+hiddenPenalty*.06);}
+  c.hiddenDefects=0;c.hiddenDefectSeverity=0;state.garage.push(c);state.market=state.market.filter(x=>x.id!==id);state.pendingPurchase=null;
+  addTx(state,"buy",-price,"Покупка "+c.model);return {ok:true,car:c,price};
 }
-    if(action==="refresh"){
-      const removed=[];
-      const pressure=(state.meta.competitionLevel||0)/100;
-      const rotateCount=2;
-      const sorted=[...state.market].sort((a,b)=>(a.currentDemand??a.demand)-(b.currentDemand??b.demand));
-      for(const car of sorted.slice(0,rotateCount)){
-        state.market=state.market.filter(x=>x.id!==car.id);
-        removed.push(car.model);
-      }
-      refreshMarket(state);
-      state.meta.day=Math.floor((Number(state.meta.turn)||0)/6)+1;
-      const event=removed.length ? "\n\n🔄 Ушли: "+removed.join(", ")+"." : "";
-      const pressureText=pressure>0.75 ? "\n⚠️ Высокое давление конкурентов: лучшие лоты долго не лежат." : "";
-      return {text:mainText(state)+event+pressureText,markup:marketKeyboard(state)};
-    }
 
+
+function buyPlate(state, id) {
+  refreshPlates(state);
+  const p=state.plateMarket.find(x=>x.id===id);
+  if(!p)return {ok:false,reason:"missing"};
+  if(state.player.balance<p.buyPrice)return {ok:false,reason:"no_money",cost:p.buyPrice};
+  addTx(state,"plate_buy",-p.buyPrice,"Покупка номера "+p.plate);
+  state.plateWarehouse.push({id:p.id,plate:p.plate,quality:p.quality,rarity:p.rarity,cost:p.buyPrice});
+  state.plateMarket=state.plateMarket.filter(x=>x.id!==id);
+  return {ok:true,plate:p};
+}
+
+function sellPlate(state, id) {
+  const p=state.plateWarehouse.find(x=>x.id===id);
+  if(!p)return {ok:false,reason:"missing"};
+  const demand=0.85+(Math.sin((state.meta.day||1)+p.quality)*0.12);
+  const offer=Math.round((p.cost*(1.02+demand*0.32))/1000)*1000;
+  const profit=offer-p.cost;
+  addTx(state,"plate_sale",offer,"Продажа номера "+p.plate);
+  state.plateWarehouse=state.plateWarehouse.filter(x=>x.id!==id);
+  return {ok:true,plate:p,offer,profit};
+}
+
+function repairVehicle(state, id) {
+  const c=state.garage.find(x=>x.id===id);
+  if(!c)return {ok:false,reason:"missing"};
+  if((c.damage||0)<=0 && (c.condition||0)>=100)return {ok:false,reason:"restored"};
+  const remaining=Math.max(1,Number(c.damage)||1);
+  const cost=Math.round(Math.min(c.repairCost,Math.max(12000,c.repairCost*(remaining/7))));
+  if(state.player.balance<cost)return {ok:false,reason:"no_money",cost};
+  c.repairSpent=(c.repairSpent||0)+cost;
+  c.condition=Math.min(100,c.condition+Math.max(8,Math.min(22,Math.round(remaining*3.5))));
+  c.damage=Math.max(0,c.damage-Math.max(1,Math.ceil(remaining/2)));
+  addTx(state,"repair",-cost,"Ремонт "+c.model);
+  return {ok:true,car:c,cost};
+}
+
+function prepareVehicle(state, id) {
+  const c=state.garage.find(x=>x.id===id);
+  if(!c)return {ok:false,reason:"missing"};
+  const cost=Math.round(18000+Math.max(0,c.damage)*2500);
+  if(state.player.balance<cost)return {ok:false,reason:"no_money",cost};
+  c.extraSpent=(c.extraSpent||0)+cost;
+  c.condition=Math.min(100,c.condition+6);
+  c.targetSale=Math.round(c.targetSale*1.035);
+  addTx(state,"prep",-cost,"Подготовка "+c.model);
+  return {ok:true,car:c,cost};
+}
+
+function acceptPendingSale(state, id) {
+  const c=state.garage.find(x=>x.id===id);
+  if(!c)return {ok:false,reason:"missing"};
+  if(!state.pendingDeal || state.pendingDeal.carId!==id)return {ok:false,reason:"stale"};
+  const buyerName=state.pendingDeal.buyerType||"Покупатель";
+  const offer=Number(state.pendingDeal.amount)||0;
+  const cost=vehicleCost(c);
+  const profit=offer-cost;
+  if(profit<0){state.pendingDeal=null;return {ok:false,reason:"loss",profit};}
+  state.pendingDeal=null;
+  state.player.respect+=profit>100000?2:1;
+  const progress=addProgress(state,profit);
+  state.garage=state.garage.filter(x=>x.id!==id);
+  addTx(state,"sale",offer,"Продажа "+c.model+" (прибыль "+fmt(profit)+")");
+  const balanceBeforeContracts=state.player.balance;
+  updateContracts(state,profit);
+  const contractReward=state.player.balance-balanceBeforeContracts;
+  return {ok:true,car:c,buyerName,offer,profit,progress,contractReward};
+}
+
+async function send(sendFn,chat,text,markup) {
+  return sendFn(chat,text,markup?{reply_markup:markup}:undefined);
+}
+async function screen(sendFn,chat,state,text,markup) {
+  return send(sendFn,chat,text,markup||menu());
+}
+
+async function open(chat, firstName, sendFn) {
+  const state=await load(chat,firstName);
+  return screen(sendFn,chat,state,mainText(state),menu());
+}
+async function handleText(chat,text,firstName,sendFn) {
+  if(text!=="/perekup" && text!=="🎮 Автономная игра" && text!=="🚗 Симулятор Перекупа") return false;
+  await open(chat,firstName,sendFn);
+  return true;
+}
+
+async function handleCallback(chat,data,firstName,sendFn,answerFn,callbackId) {
+  if(!String(data).startsWith("ag:")) return false;
+  try { await answerFn?.(); } catch {}
+  const [_,action,id]=String(data).split(":");
+  if(action==="home"){await open(chat,firstName,sendFn);return true;}
+  const run=await withState(chat,firstName,state=>{
+    const advancesTurn = new Set(["refresh","diagnose","diagnose_deep","buy","repair","prep","sell","negotiate","reject","accept","plate_refresh","platebuy","platesell"]).has(action);
+    if(advancesTurn) state.meta.turn=(Number(state.meta.turn)||0)+1;
+    if(callbackId) {
+      state.processedCallbacks.push(String(callbackId));
+      state.processedCallbacks=state.processedCallbacks.slice(-100);
+    }
+    if(action==="refresh"){
+      const removed=[], sorted=[...state.market].sort((x,y)=>(x.currentDemand??x.demand)-(y.currentDemand??y.demand));
+      for(const car of sorted.slice(0,2)){state.market=state.market.filter(x=>x.id!==car.id);removed.push(car.model);}
+      refreshMarket(state);state.meta.day=Math.floor((Number(state.meta.turn)||0)/6)+1;
+      const note=removed.length?"\n\n🔄 С рынка ушли: "+removed.join(", ")+".":"";
+      const pressure=(state.meta.competitionLevel||0)>75?"\n⚠️ Конкуренты давят: хорошие лоты долго не лежат.":"";
+      return {text:mainText(state)+note+pressure,markup:marketKeyboard(state)};
+    }
+    if(action==="market") return {text:"🚗 РЫНОК\n\nВыбирай лот для полного осмотра.",markup:marketKeyboard(state)};
+    if(action==="garage") return {text:state.garage.length?("🏠 ГАРАЖ\n\n"+state.garage.map((c,i)=>(i+1)+". "+c.model+" · "+fmt(vehicleCost(c))).join("\n")):"🏠 ГАРАЖ\n\nПока пусто.",markup:garageKeyboard(state)};
+    if(action==="day"){
+      const event=state.meta.marketEvent||{title:"Спокойный рынок",text:"Стабильный спрос."};
+      return {text:"📅 СЕГОДНЯ\n\nДень "+(state.meta.day||1)+"\n📈 "+event.title+"\n"+event.text+"\n\n👥 Конкурентов: "+(state.meta.competitors||1)+"\n⚠️ Давление: "+(state.meta.competitionLevel||0)+"%\n\nРынок меняется. Хороший лот может исчезнуть после обновления.",markup:menu()};
+    }
+    if(action==="inspect"){
+      const c=state.market.find(x=>x.id===id); if(!c)return {text:"⚠️ Лот уже исчез с рынка.",markup:marketKeyboard(state)};
+      state.pendingPurchase=null; return {text:inspectText(c,state),markup:inspectKeyboard(c,state)};
+    }
+    if(action==="offer"){
+      const c=state.market.find(x=>x.id===id); if(!c)return {text:"⚠️ Лот уже исчез с рынка.",markup:marketKeyboard(state)};
+      const result=negotiatePurchase(state,id);
+      if(result.result==="rejected")return {text:"❌ ПРОДАВЕЦ ОТКАЗАЛСЯ\n\nТвоё предложение: "+fmt(result.offer)+"\nЦена остаётся "+fmt(c.buyPrice)+".",markup:inspectKeyboard(c,state)};
+      if(result.result==="counter")return {text:purchaseOfferText(state,c),markup:{inline_keyboard:[[{text:"🤝 Принять "+fmt(result.counter),callback_data:"ag:buy:"+id}],[{text:"⬅️ Осмотр",callback_data:"ag:inspect:"+id}]]}};
+      return {text:purchaseOfferText(state,c),markup:{inline_keyboard:[[{text:"💳 Купить за "+fmt(result.finalPrice),callback_data:"ag:buy:"+id}],[{text:"⬅️ Осмотр",callback_data:"ag:inspect:"+id}]]}};
+    }
+    if(action==="diagnose" || action==="diagnose_deep"){
+      const c=state.market.find(x=>x.id===id);
+      if(!c) return {text:"⚠️ Лот уже исчез с рынка.",markup:marketKeyboard(state)};
+      const deep=action==="diagnose_deep";
+      const result=runDiagnostic(state,c,deep);
+      if(!result.ok) return {text:"❌ Не хватает денег на диагностику.\n\nНужно: "+fmt(result.cost),markup:inspectKeyboard(c,state)};
+      const detail = deep
+        ? "Все скрытые дефекты проверены до покупки."
+        : (result.found ? "Обнаружен скрытый дефект. Осторожно: часть риска ещё может остаться." : "На быстрой проверке новый дефект не найден.");
+      return {text:(deep?"🔬 ГЛУБОКАЯ ДИАГНОСТИКА":"🔎 БЫСТРАЯ ДИАГНОСТИКА")+"\n\n"+detail+"\n💵 Расход: "+fmt(result.cost)+"\n\n"+inspectText(c,state),markup:inspectKeyboard(c,state)};
+    }
+    if(action==="buy"){
+      const result=purchaseListing(state,id);
+      if(!result.ok){
+        if(result.reason==="expired") return {text:"⏳ Лот уже ушёл с рынка. Конкуренты успели раньше.",markup:marketKeyboard(state)};
+        if(result.reason==="missing") return {text:"⚠️ Лот уже продан.",markup:marketKeyboard(state)};
+        if(result.reason==="garage_full") return {text:"⚠️ Гараж заполнен.",markup:garageKeyboard(state)};
+        if(result.reason==="seller_rejected") return {text:"❌ Продавец отказался.\n\nВернись к осмотру и реши, брать ли машину по полной цене.",markup:marketKeyboard(state)};
+        return {text:"❌ Недостаточно денег.",markup:marketKeyboard(state)};
+      }
+      const c=result.car;
+      return {text:"✅ ПОКУПКА ОФОРМЛЕНА\n\n"+c.model+"\n💵 Потрачено: "+fmt(result.price)+"\n💰 Остаток: "+fmt(state.player.balance)+"\n\nТеперь начинается работа с машиной.",markup:carKeyboard(c)};
+    }
+    const c=state.garage.find(x=>x.id===id);
+    if(!c && ["car","repair","prep","sell"].includes(action))return {text:"⚠️ Машина уже не в гараже.",markup:garageKeyboard(state)};
+    if(action==="car")return {text:carText(c),markup:carKeyboard(c)};
+    if(action==="repair"){
+      const result=repairVehicle(state,id);
+      if(!result.ok){
+        if(result.reason==="restored") return {text:"🛠 Машина уже восстановлена. Дополнительный ремонт не нужен.",markup:carKeyboard(c)};
+        if(result.reason==="no_money") return {text:"❌ Не хватает денег на ремонт.",markup:carKeyboard(c)};
+        return {text:"⚠️ Машина уже не в гараже.",markup:garageKeyboard(state)};
+      }
+      return {text:"🔧 РЕМОНТ ЗАВЕРШЁН\n\n"+carText(result.car),markup:carKeyboard(result.car)};
+    }
+    if(action==="prep"){
+      const result=prepareVehicle(state,id);
+      if(!result.ok){
+        if(result.reason==="no_money") return {text:"❌ Не хватает денег на подготовку.",markup:carKeyboard(c)};
+        return {text:"⚠️ Машина уже не в гараже.",markup:garageKeyboard(state)};
+      }
+      return {text:"✨ ПОДГОТОВКА ЗАВЕРШЕНА\n\n"+carText(result.car),markup:carKeyboard(result.car)};
+    }
+    if(action==="sell"){
+      if(state.pendingDeal) return {text:"🤝 Сначала заверши текущие переговоры.",markup:dealKeyboard(c,state.pendingDeal)};
+      const deal=buyerOfferDetails(state,c);
+      const event=dealRisk(state,c);
+      if(event.type==="incident") deal.amount=Math.max(1000,deal.amount-event.penalty);
+      if(event.type==="bonus") deal.amount+=event.bonus;
+      deal.carId=c.id;
+      deal.event=event.type;
+      deal.negotiations=0;
+      state.pendingDeal=deal;
+      return {text:dealText(state,c,deal),markup:dealKeyboard(c,deal)};
+    }
+    if(action==="negotiate"){
+      if(!state.pendingDeal || state.pendingDeal.carId!==id) return {text:"⚠️ Предложение устарело. Запроси новое.",markup:carKeyboard(c)};
+      const result=negotiation(state,c,state.pendingDeal);
+      if(result.left){state.pendingDeal=null;return {text:"❌ ПОКУПАТЕЛЬ УШЁЛ\n\n"+result.text,markup:carKeyboard(c)};}
+      state.pendingDeal.negotiations=(Number(state.pendingDeal.negotiations)||0)+1;
+      state.pendingDeal.amount=result.amount;
+      return {text:"💬 ТОРГ\n\n"+result.text+"\n\n"+dealText(state,c,state.pendingDeal),markup:dealKeyboard(c,state.pendingDeal)};
+    }
+    if(action==="reject"){
+      if(state.pendingDeal?.carId===id) state.pendingDeal=null;
+      return {text:"❌ СДЕЛКА ОТМЕНЕНА\n\nМашина осталась в гараже.",markup:carKeyboard(c)};
+    }
+    if(action==="accept"){
+      const result=acceptPendingSale(state,id);
+      if(!result.ok){
+        if(result.reason==="missing") return {text:"⚠️ Машина уже не в гараже.",markup:garageKeyboard(state)};
+        if(result.reason==="stale") return {text:"⚠️ Предложение устарело. Нажми «Продать» заново.",markup:carKeyboard(c)};
+        return {text:"🛑 ПРОДАЖА ЗАБЛОКИРОВАНА\n\nПредложение ниже себестоимости.\nМашина осталась в гараже.",markup:carKeyboard(c)};
+      }
+      const levelText=result.progress.levelUps ? "\n⬆️ Новый уровень: "+state.player.level : "";
+      const contractText=result.contractReward ? "\n🎁 Награда контракта: "+fmt(result.contractReward) : "";
+      return {text:"💰 МАШИНА ПРОДАНА\n\n"+result.car.model+"\n👤 Покупатель: "+result.buyerName+"\n💵 Получено: "+fmt(result.offer)+"\n📈 Прибыль: "+fmt(result.profit)+"\n⭐ XP: +"+result.progress.gainedXp+levelText+contractText+"\n💰 Баланс: "+fmt(state.player.balance),markup:garageKeyboard(state)};
+    }
+    if(action==="contracts")return {text:"📋 КОНТРАКТЫ\n\n"+state.contracts.map(c=>(c.completed?"✅ ":"⏳ ")+c.title+"\n   "+c.goal+"\n   Прогресс: "+(typeof c.progress==="number"? (c.id==="profit_300k"?fmt(c.progress):c.progress)+"/"+(c.id==="profit_300k"?fmt(c.target):c.target):"—")+"\n   Награда: "+fmt(c.reward)).join("\n\n"),markup:menu()};
+    if(action==="plates"){
+      refreshPlates(state);
+      return {
+        text:"🔢 НОМЕРА\n\n"+(state.plateWarehouse.length ? "📦 Склад:\n"+state.plateWarehouse.map((p,i)=>(i+1)+". "+p.plate+" · "+fmt(p.cost)).join("\n") : "📦 Склад пуст.")+
+          "\n\n🏷 Торги:\n"+state.plateMarket.map((p,i)=>(i+1)+". "+p.plate+" · "+fmt(p.buyPrice)+" · редкость "+p.quality+"%").join("\n"),
+        markup:{inline_keyboard:[
+          ...state.plateMarket.map((p,i)=>[{text:"🏷 Купить "+p.plate+" · "+fmt(p.buyPrice),callback_data:"ag:platebuy:"+p.id}]),
+          ...state.plateWarehouse.map(p=>[{text:"💰 Продать "+p.plate,callback_data:"ag:platesell:"+p.id}]),
+          [{text:"🔄 Обновить торги",callback_data:"ag:plate_refresh"}],
+          [{text:"⬅️ Меню",callback_data:"ag:home"}]
+        ]}
+      };
+    }
+    if(action==="plate_refresh"){
+      state.plateMarket=[]; refreshPlates(state);
+      return {text:"🏷 Новая волна торгов номерами.",markup:{inline_keyboard:[
+        [{text:"🔢 Открыть номера",callback_data:"ag:plates"}],
+        [{text:"⬅️ Меню",callback_data:"ag:home"}]
+      ]}};
+    }
+    if(action==="platebuy"){
+      const result=buyPlate(state,id);
+      if(!result.ok){
+        if(result.reason==="missing") return {text:"⚠️ Лот номера уже недоступен.",markup:{inline_keyboard:[[{text:"🔢 Номера",callback_data:"ag:plates"}]]}};
+        return {text:"❌ Не хватает денег.",markup:{inline_keyboard:[[{text:"🔢 Номера",callback_data:"ag:plates"}]]}};
+      }
+      return {text:"✅ НОМЕР ПРИОБРЕТЁН\n\n"+result.plate.plate+"\n💵 Цена: "+fmt(result.plate.buyPrice),markup:{inline_keyboard:[[{text:"🔢 Номера",callback_data:"ag:plates"}],[{text:"⬅️ Меню",callback_data:"ag:home"}]]}};
+    }
+    if(action==="platesell"){
+      const result=sellPlate(state,id);
+      if(!result.ok)return {text:"⚠️ Номер уже продан.",markup:{inline_keyboard:[[{text:"🔢 Номера",callback_data:"ag:plates"}]]}};
+      return {text:"💰 НОМЕР ПРОДАН\n\n"+result.plate.plate+"\n💵 Получено: "+fmt(result.offer)+"\n📈 Прибыль: "+fmt(result.profit),markup:{inline_keyboard:[[{text:"🔢 Номера",callback_data:"ag:plates"}],[{text:"⬅️ Меню",callback_data:"ag:home"}]]}};
+    }
+    if(action==="stats")return {text:statsText(state),markup:menu()};
+    return {text:mainText(state),markup:menu()};
+  }, callbackId);
+  if(run.result?.duplicate) {
+    await screen(sendFn,chat,run.state,"↩️ Это действие уже было обработано.\n\nСостояние игры не изменилось.",menu());
+    return true;
+  }
+  await screen(sendFn,chat,run.state,run.result.text,run.result.markup);
+  return true;
+}
+
+module.exports={init,load,save,open,handleText,handleCallback,CATALOG,BUYER_TYPES,newState,refreshMarket,createListing,addTx,scoreListing,bestDeal,recommendation,addProgress,updateContracts,buyerOffer,buyerOfferDetails,buyerProfile,negotiation,dealRisk,runDiagnostic,vehicleCost,purchaseListing,repairVehicle,prepareVehicle,buyPlate,sellPlate,acceptPendingSale,negotiatePurchase};
