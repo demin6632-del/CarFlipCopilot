@@ -1,13 +1,25 @@
+const http = require("http");
 const https = require("https");
 const { acquireTelegramPollLock, releaseTelegramPollLock } = require("./telegram-poll-lock");
 const autonomousGame = require("./autonomous-game");
 
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || "";
 const API = "https://api.telegram.org/bot" + BOT_TOKEN;
+const HEALTH_PORT = Number(process.env.PORT || 10000);
 const keepAliveAgent = new https.Agent({keepAlive:true,maxSockets:32,maxFreeSockets:8,timeout:60000,freeSocketTimeout:15000});
 let offset=0,polling=false;
 const updateQueues=new Map();
 const BOT_REQUEST_TIMEOUT=10000;
+
+const healthServer = http.createServer((req,res)=>{
+  if(req.url === "/" || req.url === "/health"){
+    res.writeHead(200,{"content-type":"text/plain; charset=utf-8"});
+    return res.end("CarFlipCopilot autonomous game: OK\n");
+  }
+  res.writeHead(404,{"content-type":"text/plain; charset=utf-8"});
+  res.end("Not found\n");
+});
+healthServer.listen(HEALTH_PORT,"0.0.0.0",()=>console.log("Health server listening on port "+HEALTH_PORT));
 
 function withTimeout(promise,ms,label){
   let timer;
@@ -70,7 +82,7 @@ async function handleMessage(m){
   const chat=m?.chat?.id;if(chat==null)return;
   const text=String(m.text||"").trim();
   if(text==="/start"||text==="/game"||text==="/perekup"){
-    try{ await tg("sendMessage",{chat_id:chat,text:" ",reply_markup:{remove_keyboard:true}}); }catch{}
+    try{await tg("sendMessage",{chat_id:chat,text:" ",reply_markup:{remove_keyboard:true}});}catch{}
     return autonomousGame.handleText(chat,"/perekup",m.from?.first_name||"Перекуп",(c,t,extra)=>send(c,t,extra));
   }
   return false;
@@ -131,6 +143,7 @@ async function loop(){
 }
 async function gracefulShutdown(signal){
   console.log("RENDER SHUTDOWN:",signal);polling=false;
+  try{healthServer.close();}catch(e){}
   try{await releaseTelegramPollLock();}catch(e){}
   process.exit(0);
 }
