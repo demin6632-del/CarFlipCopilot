@@ -65,6 +65,57 @@ test("illegal-risk actions are recorded instead of hidden",()=>{
 });
 
 console.log("Car sandbox tests: OK");
+test("warehouse preserves donor VIN, source part id, serial and extraction condition",()=>{
+  const donor={id:"prov_donor",mileage:100000}; sandbox.buildCar(donor);
+  const part=donor.sandbox.parts[0];
+  part.condition=73;
+  const r=sandbox.donorExtract(donor,part.id);
+  assert.equal(r.ok,true);
+  assert.equal(r.provenance.sourceCarId,"prov_donor");
+  assert.equal(r.provenance.sourceVin,donor.sandbox.vin);
+  assert.equal(r.provenance.originalPartId,part.id);
+  assert.equal(r.provenance.sourceSerial,part.serial);
+  assert.equal(r.provenance.extractedCondition,73);
+});
+
+test("warehouse transfer preserves provenance and installs compatible donor part",()=>{
+  const donor={id:"prov_donor_2",mileage:100000}; const car={id:"prov_target_2",mileage:100000};
+  sandbox.buildCar(donor); sandbox.buildCar(car);
+  const source=donor.sandbox.parts[0];
+  const target=car.sandbox.parts[0];
+  target.installed=false;
+  sandbox.donorExtract(donor,source.id);
+  const moved=sandbox.transferWarehousePart(donor,car,source.id);
+  assert.equal(moved.ok,true);
+  assert.equal(car.sandbox.warehouse.length,1);
+  const installed=sandbox.installWarehousePart(car,source.id);
+  assert.equal(installed.ok,true);
+  assert.equal(installed.part.installed,true);
+  assert.equal(installed.part.provenance.sourceVin,donor.sandbox.vin);
+  assert.equal(installed.part.provenance.originalPartId,source.id);
+  assert.equal(installed.part.serial,source.serial);
+});
+
+test("warehouse sale removes item and creates revenue",()=>{
+  const donor={id:"sell_donor",mileage:100000}; sandbox.buildCar(donor);
+  const part=donor.sandbox.parts[0];
+  sandbox.donorExtract(donor,part.id);
+  const before=donor.sandbox.warehouse.length;
+  const r=sandbox.sellWarehousePart(donor,part.id);
+  assert.equal(r.ok,true);
+  assert.ok(r.revenue>0);
+  assert.equal(donor.sandbox.warehouse.length,before-1);
+});
+
+test("incompatible parts are explicitly blocked with a reason",()=>{
+  const a={id:"compat_a",assembly:"block",system:"engine",name:"Блок цилиндров"};
+  const b={id:"compat_b",assembly:"battery",system:"electrical",name:"Аккумулятор"};
+  const r=sandbox.compatibility(a,b);
+  assert.equal(r.ok,false);
+  assert.equal(r.reason,"incompatible");
+  assert.ok(r.details);
+});
+
 
 test("donor extraction moves a removed part to warehouse",()=>{
   const donor={id:"donor_1",mileage:100000}; sandbox.buildCar(donor);
