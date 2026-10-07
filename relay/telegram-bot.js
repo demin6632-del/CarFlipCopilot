@@ -116,9 +116,12 @@ async function setupTelegramDelivery(){
   }catch(e){console.log("Telegram delivery setup error:",e.stack||e.message||e);return false;}
 }
 async function pollBotUpdates(){
-  if(!BOT_TOKEN)return;
+  if(!BOT_TOKEN)return false;
   const lock=await acquireTelegramPollLock();
-  if(!lock){console.log("Telegram delivery passive; another instance owns polling.");return;}
+  if(!lock){
+    console.log("Telegram delivery passive; another instance owns polling. Will retry.");
+    return false;
+  }
   try{
     while(polling){
       try{
@@ -132,14 +135,22 @@ async function pollBotUpdates(){
       }
     }
   }finally{await releaseTelegramPollLock();}
+  return true;
 }
 async function loop(){
-  if(polling)return;
+  if(!BOT_TOKEN||polling)return;
   polling=true;
   const ready=await setupTelegramDelivery();
   if(!ready){polling=false;setTimeout(loop,5000);return;}
   console.log("Telegram delivery active; autonomous game polling started.");
-  pollBotUpdates().then(()=>{if(polling)setTimeout(loop,3000);}).catch(e=>{console.log("TELEGRAM POLLING FATAL:",e?.stack||e?.message||e);polling=false;setTimeout(loop,3000);});
+  try{
+    await pollBotUpdates();
+  }catch(e){
+    console.log("TELEGRAM POLLING FATAL:",e?.stack||e?.message||e);
+  }finally{
+    polling=false;
+    setTimeout(loop,3000);
+  }
 }
 async function gracefulShutdown(signal){
   console.log("RENDER SHUTDOWN:",signal);polling=false;
