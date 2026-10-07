@@ -573,7 +573,7 @@ function carKeyboard(c) {
   return {inline_keyboard:[
     [{text:"🔧 Ремонт",callback_data:"ag:repair:"+c.id},{text:"✨ Подготовить",callback_data:"ag:prep:"+c.id}],
     [{text:"💰 Продать",callback_data:"ag:sell:"+c.id}],
-    [{text:"🧩 Детали автомобиля",callback_data:"ag:parts:"+c.id}],
+    [{text:"🔎 Диагностика",callback_data:"ag:diag:"+c.id+"|1"},{text:"🧩 Детали автомобиля",callback_data:"ag:parts:"+c.id}],
     [{text:"📦 Склад деталей",callback_data:"ag:warehouse:"+c.id}],
     [{text:"⬅️ Гараж",callback_data:"ag:garage"}]
   ]};
@@ -860,6 +860,34 @@ async function handleCallback(chat,data,firstName,sendFn,answerFn,callbackId) {
       const moved=sandbox.transferWarehousePart(donor,c,extracted.part.id);
       if(!moved.ok)return {text:"⚠️ Деталь снята и осталась на складе донора. Передача не выполнена: "+moved.reason,markup:sandboxWarehouseKeyboard(c,state)};
       return {text:"📦 ДЕТАЛЬ ПЕРЕДАНА НА СКЛАД\n\n"+moved.part.name+"\nСостояние: "+moved.part.condition+"%\nVIN донора: "+(moved.part.provenance?.sourceVin||donor.sandbox.vin)+"\nСерийный номер: "+moved.part.serial+"\n\nТеперь её можно установить или продать.",markup:sandboxWarehouseKeyboard(c,state)};
+    }
+    if(action==="diag"){
+      if(!c)return {text:"⚠️ Машина уже не в гараже.",markup:garageKeyboard(state)};
+      const bits=String(id||"").split("|");
+      sandbox.buildCar(c);
+      const level=Math.max(1,Math.min(6,Number(bits[1])||1));
+      const spec=sandbox.INSPECTION_LEVELS[level-1];
+      const result=sandbox.inspectCar(c,level);
+      if(result.cost){
+        if(Number(state.player.balance)<result.cost){
+          return {text:"❌ Недостаточно денег.\n\nНужно: "+fmt(result.cost)+"\nБаланс: "+fmt(state.player.balance),markup:carKeyboard(c)};
+        }
+        state.player.balance-=result.cost;
+        addTx(state,"diagnostic",-result.cost,"Диагностика уровня "+level+": "+spec.title);
+      }
+      const next=level<6?level+1:6;
+      const lines=["🔎 ДИАГНОСТИКА "+level+"/6","",spec.title,"⏱ Время: "+result.time+" ч","💵 Стоимость: "+fmt(result.cost),""];
+      if(level===1) lines.push("Визуально осмотрены кузов и колёса.");
+      if(level===2) lines.push("Проверены основные электронные и силовые системы.");
+      if(level>=3) lines.push("Доступны состояния отдельных деталей и узлов.");
+      if(level>=4) lines.push("⚠️ Скрытых повреждений выявлено: "+result.hiddenDamage);
+      if(level>=5) lines.push("⚖️ Юридический риск: "+(result.legalRisk?"обнаружен":"не обнаружен")+"\n🧾 Деталей с сохранённым происхождением: "+result.provenanceCount);
+      if(level>=6) lines.push("🔩 Повреждённых крепёжных элементов: "+result.damagedFasteners);
+      return {text:lines.join("\n"),markup:{inline_keyboard:[
+        ...(level<6?[[{text:"🔬 Следующий уровень · "+fmt(sandbox.INSPECTION_LEVELS[next-1].cost),callback_data:"ag:diag:"+c.id+"|"+next}]]:[]),
+        [{text:"🧩 Детали",callback_data:"ag:parts:"+c.id}],
+        [{text:"⬅️ Машина",callback_data:"ag:car:"+c.id}]
+      ]}};
     }
     if(action==="parts"){
       if(!c)return {text:"⚠️ Машина уже не в гараже.",markup:garageKeyboard(state)};
