@@ -445,10 +445,58 @@ function sandboxText(c) {
     summary.legalRisk ? "⚠️ Есть отметка о вмешательстве в историю." : "✅ История без критических отметок."
   ].join("\n");
 }
+const CAR_DETAIL_GROUPS=[
+  {id:"engine",title:"Двигатель",icon:"🔧",systems:["engine"]},
+  {id:"transmission",title:"Трансмиссия",icon:"⚙️",systems:["transmission"]},
+  {id:"chassis",title:"Подвеска",icon:"🛞",systems:["chassis"]},
+  {id:"brakes",title:"Тормоза",icon:"🛑",systems:["brakes"]},
+  {id:"electrical",title:"Электрика",icon:"🔋",systems:["electrical"]},
+  {id:"hood",title:"Капот",icon:"🧢",systems:["body"],assemblies:["hood"]},
+  {id:"doors",title:"Двери",icon:"🚪",systems:["body"],assemblies:["door_l","door_r"]},
+  {id:"fenders",title:"Крылья",icon:"🛡️",systems:["body"],assemblies:["fender_l","fender_r"]},
+  {id:"bumper",title:"Бампер",icon:"🚗",systems:["body"],assemblies:["bumper"]},
+  {id:"seats",title:"Сиденья",icon:"🪑",systems:["interior"],assemblies:["driver_seat"]},
+  {id:"dashboard",title:"Панель",icon:"📟",systems:["interior"],assemblies:["dashboard"]},
+  {id:"wheels",title:"Колёса",icon:"🛞",systems:["wheels"]},
+  {id:"options",title:"Опции",icon:"🎛️",systems:["options"]}
+];
+
+function carDetailGroup(groupId){
+  return CAR_DETAIL_GROUPS.find(g=>g.id===groupId)||null;
+}
+
+function sandboxGroupParts(c,group){
+  sandbox.buildCar(c);
+  const parts=c.sandbox.parts.filter(p=>{
+    if(group.assemblies) return group.assemblies.includes(p.assembly);
+    return group.systems.includes(p.system);
+  });
+  return parts;
+}
+
+function sandboxGroupAverage(parts){
+  return parts.length?Math.round(parts.reduce((sum,p)=>sum+p.condition,0)/parts.length):0;
+}
+
+function sandboxGroupKeyboard(c,groupId){
+  const group=carDetailGroup(groupId);
+  if(!group) return sandboxSystemsKeyboard(c);
+  const parts=sandboxGroupParts(c,group);
+  return {inline_keyboard:[
+    ...parts.map(p=>[{text:(p.installed?"🔩 ":"📦 ")+p.name+" · "+p.condition+"%",callback_data:"ag:part:"+c.id+"|"+p.id}]),
+    [{text:"⬅️ Детали автомобиля",callback_data:"ag:parts:"+c.id}]
+  ]};
+}
+
 function sandboxSystemsKeyboard(c) {
   sandbox.buildCar(c);
+  const bySystem=sandbox.listSystems(c);
   return {inline_keyboard:[
-    ...sandbox.listSystems(c).map(s=>[{text:"⚙️ "+s.title+" · "+s.averageCondition+"%",callback_data:"ag:system:"+c.id+"|"+s.id}]),
+    ...CAR_DETAIL_GROUPS.map(group=>{
+      const parts=sandboxGroupParts(c,group);
+      const avg=sandboxGroupAverage(parts);
+      return [{text:group.icon+" "+group.title+" · "+avg+"%",callback_data:"ag:system:"+c.id+"|group_"+group.id}];
+    }),
     [{text:"🛒 Рынок деталей",callback_data:"ag:pmrefresh:"+c.id}],
     [{text:"🔧 Полная разборка",callback_data:"ag:global:"+c.id+"|full_disassembly"}],
     [{text:"⬅️ Машина",callback_data:"ag:car:"+c.id}]
@@ -1028,6 +1076,15 @@ async function handleCallback(chat,data,firstName,sendFn,answerFn,callbackId) {
       const bits=String(id||"").split("|");
       const systemId=bits[1];
       sandbox.buildCar(c);
+      if(String(systemId).startsWith("group_")){
+        const group=carDetailGroup(String(systemId).slice(6));
+        if(!group)return {text:"⚠️ Раздел не найден.",markup:sandboxSystemsKeyboard(c)};
+        const parts=sandboxGroupParts(c,group);
+        return {
+          text:group.icon+" "+group.title+"\n\nДеталей: "+parts.length+"\nСреднее состояние: "+sandboxGroupAverage(parts)+"%",
+          markup:sandboxGroupKeyboard(c,group.id)
+        };
+      }
       const sys=sandbox.SYSTEMS.find(x=>x.id===systemId);
       if(!sys)return {text:"⚠️ Система не найдена.",markup:sandboxSystemsKeyboard(c)};
       return {text:"⚙️ "+sys.title+"\n\nВыбери узел/сборку.",markup:sandboxAssembliesKeyboard(c,systemId)};
