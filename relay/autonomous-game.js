@@ -451,6 +451,7 @@ function sandboxSystemsKeyboard(c) {
   sandbox.buildCar(c);
   return {inline_keyboard:[
     ...sandbox.listSystems(c).map(s=>[{text:"⚙️ "+s.title+" · "+s.averageCondition+"%",callback_data:"ag:system:"+c.id+"|"+s.id}]),
+    [{text:"🛒 Рынок деталей",callback_data:"ag:pmrefresh:"+c.id}],
     [{text:"🔧 Полная разборка",callback_data:"ag:global:"+c.id+"|full_disassembly"}],
     [{text:"⬅️ Машина",callback_data:"ag:car:"+c.id}]
   ]};
