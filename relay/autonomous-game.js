@@ -555,6 +555,48 @@ function sandboxWarehouseInfo(c,p) {
     "Статус: "+(p.warehouseStatus||"stored")
   ].join("\n");
 }
+function sandboxMarketText(c,filters={}) {
+  sandbox.buildCar(c);
+  const offers=sandbox.listPartMarket(c,filters);
+  const summary=sandbox.partMarketSummary(c);
+  if(!offers.length) return "🧩 РЫНОК ДЕТАЛЕЙ\n\nПредложений по выбранному фильтру нет.";
+  return [
+    "🧩 РЫНОК ДЕТАЛЕЙ",
+    "",
+    "Лотов: "+offers.length+" · Всего в рынке: "+summary.total,
+    "",
+    ...offers.slice(0,12).map((o,i)=>
+      (i+1)+". "+o.name+"\n   "+o.sourceTitle+" · "+o.type+" · "+o.condition+"%\n   💵 "+fmt(o.price)+" ₽ · "+o.seller
+    )
+  ].join("\n");
+}
+function sandboxMarketKeyboard(c,filters={}) {
+  const offers=sandbox.listPartMarket(c,filters).slice(0,12);
+  return {inline_keyboard:[
+    ...offers.map(o=>[{text:"🛒 "+o.name+" · "+fmt(o.price)+" ₽",callback_data:"ag:pmbuy:"+c.id+"|"+o.id}]),
+    [{text:"🏪 Магазин",callback_data:"ag:pmsrc:"+c.id+"|store"},{text:"🔧 Разборка",callback_data:"ag:pmsrc:"+c.id+"|dismantler"}],
+    [{text:"👤 Частник",callback_data:"ag:pmsrc:"+c.id+"|private"},{text:"🚗 Донор",callback_data:"ag:pmsrc:"+c.id+"|donor"}],
+    [{text:"🇨🇳 Китай",callback_data:"ag:pmsrc:"+c.id+"|china"},{text:"🔄 Обновить рынок",callback_data:"ag:pmrefresh:"+c.id}],
+    [{text:"📦 Склад",callback_data:"ag:warehouse:"+c.id},{text:"⬅️ Детали",callback_data:"ag:parts:"+c.id}]
+  ]};
+}
+function sandboxMarketOfferText(offer) {
+  return [
+    "🛒 ЛОТ РЫНКА ДЕТАЛЕЙ",
+    "",
+    "Деталь: "+offer.name,
+    "Источник: "+offer.sourceTitle,
+    "Продавец: "+offer.seller,
+    "Тип: "+offer.type,
+    "Состояние: "+offer.condition+"%",
+    "Надёжность: "+Math.round(offer.reliability*100)+"%",
+    "Цена: "+fmt(offer.price)+" ₽",
+    "Серийный номер: "+offer.serial,
+    "",
+    "Совместимость: "+offer.system+" / "+offer.assembly,
+    "Происхождение: "+offer.sourceTitle
+  ].join("\n");
+}
 function carText(c) {
   const cost=vehicleCost(c);
   const margin=c.targetSale-cost;
@@ -574,7 +616,7 @@ function carKeyboard(c) {
     [{text:"🔧 Ремонт",callback_data:"ag:repair:"+c.id},{text:"✨ Подготовить",callback_data:"ag:prep:"+c.id}],
     [{text:"💰 Продать",callback_data:"ag:sell:"+c.id}],
     [{text:"🔎 Диагностика",callback_data:"ag:diag:"+c.id+"|1"},{text:"🧩 Детали автомобиля",callback_data:"ag:parts:"+c.id}],
-    [{text:"📦 Склад деталей",callback_data:"ag:warehouse:"+c.id}],
+    [{text:"📦 Склад деталей",callback_data:"ag:warehouse:"+c.id},{text:"🛒 Рынок деталей",callback_data:"ag:pmrefresh:"+c.id}],
     [{text:"⬅️ Гараж",callback_data:"ag:garage"}]
   ]};
 }
@@ -739,7 +781,7 @@ async function handleCallback(chat,data,firstName,sendFn,answerFn,callbackId) {
   const [_,action,id]=String(data).split(":");
   if(action==="home"){await open(chat,firstName,sendFn);return true;}
   const run=await withState(chat,firstName,state=>{
-    const advancesTurn = new Set(["refresh","diagnose","diagnose_deep","offer","buy","repair","prep","sell","negotiate","reject","accept","plate_refresh","platebuy","platesell"]).has(action);
+    const advancesTurn = new Set(["refresh","diagnose","diagnose_deep","offer","buy","repair","prep","sell","negotiate","reject","accept","plate_refresh","platebuy","platesell","pmrefresh","pmbuy"]).has(action);
     if(advancesTurn) state.meta.turn=(Number(state.meta.turn)||0)+1;
     if(callbackId) {
       state.processedCallbacks.push(String(callbackId));
@@ -795,6 +837,34 @@ async function handleCallback(chat,data,firstName,sendFn,answerFn,callbackId) {
     }
     const c=state.garage.find(x=>x.id===id);
     if(!c && ["car","repair","prep","sell"].includes(action))return {text:"⚠️ Машина уже не в гараже.",markup:garageKeyboard(state)};
+    if(action==="pmrefresh"){
+      if(!c)return {text:"⚠️ Машина уже не в гараже.",markup:garageKeyboard(state)};
+      sandbox.buildCar(c);
+      sandbox.refreshPartMarket(c,Date.now());
+      return {text:sandboxMarketText(c),markup:sandboxMarketKeyboard(c)};
+    }
+    if(action==="pmsrc"){
+      if(!c)return {text:"⚠️ Машина уже не в гараже.",markup:garageKeyboard(state)};
+      const bits=String(id||"").split("|");
+      sandbox.buildCar(c);
+      const source=bits[1];
+      const known=sandbox.PART_SOURCES.some(x=>x.id===source);
+      if(!known)return {text:"⚠️ Источник рынка не найден.",markup:sandboxMarketKeyboard(c)};
+      return {text:sandboxMarketText(c,{source}),markup:sandboxMarketKeyboard(c,{source})};
+    }
+    if(action==="pmbuy"){
+      if(!c)return {text:"⚠️ Машина уже не в гараже.",markup:garageKeyboard(state)};
+      const bits=String(id||"").split("|");
+      sandbox.buildCar(c);
+      const offer=sandbox.getPartMarketOffer(c,bits[1]);
+      if(!offer)return {text:"⚠️ Лот уже продан или исчез с рынка.",markup:sandboxMarketKeyboard(c)};
+      const result=sandbox.buyPartMarketOffer(c,offer.id,state.player.balance);
+      if(!result.ok){
+        return {text:"❌ ПОКУПКА ДЕТАЛИ НЕ ВЫПОЛНЕНА\n\n"+(result.reason==="insufficient_funds"?"Недостаточно денег.\nНужно: "+fmt(result.price)+" ₽\nБаланс: "+fmt(result.available)+" ₽":"Лот недоступен."),markup:sandboxMarketKeyboard(c)};
+      }
+      addTx(state,"part_purchase",-result.cost,"Покупка детали: "+result.part.name+" ("+offer.sourceTitle+")");
+      return {text:"✅ ДЕТАЛЬ КУПЛЕНА\n\n"+result.part.name+"\nИсточник: "+offer.sourceTitle+"\nСостояние: "+result.part.condition+"%\nЦена: "+fmt(result.cost)+" ₽\n\n📦 Деталь находится на складе.",markup:sandboxWarehouseKeyboard(c,state)};
+    }
     if(action==="warehouse"){
       if(!c)return {text:"⚠️ Машина уже не в гараже.",markup:garageKeyboard(state)};
       sandbox.buildCar(c);
