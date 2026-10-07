@@ -313,6 +313,8 @@ function installWarehousePart(car,partId){
   if(!target) return {ok:false,reason:"no_matching_slot"};
   const c=compatibility(source,target);
   if(!c.ok) return {ok:false,reason:"incompatible",compatibility:c};
+  const dependencyCheck=canInstallPart(car,target);
+  if(!dependencyCheck.ok) return dependencyCheck;
   const provenance=clone(source.provenance||{});
   Object.assign(target,{condition:source.condition,wear:source.wear,marketValue:source.marketValue,hiddenDamage:source.hiddenDamage,serial:source.serial,modifications:(source.modifications||[]).slice(),installed:true});
   target.provenance=provenance;
