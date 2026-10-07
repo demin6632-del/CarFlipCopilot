@@ -854,8 +854,7 @@ function buyPartMarketOffer(car,offerId,funds){
       conditionAtPurchase:offer.condition
     }
   };
-  ensureHierarchy({sandbox:{parts:[item]}}); // creates level metadata without changing the car
-  car.sandbox.warehouse.push(item);
+  item.node={id:item.assembly,level:2,title:ASSEMBLY_TITLES[item.assembly]||item.assembly,system:item.system};\n  item.fasteners=Array.from({length:fastenerCountForPart(item)},(_,i)=>createFastener(item,i));\n  item.fastenersRequired=item.fasteners.length;\n  car.sandbox.warehouse.push(item);
   car.sandbox.partMarket.offers=car.sandbox.partMarket.offers.filter(o=>o.id!==offer.id);
   record(car,"market_purchase",item,"Куплена деталь «"+item.name+"» на рынке. Источник: "+offer.sourceTitle+".");
   return {ok:true,cost:offer.price,part:item,offer};
