@@ -511,6 +511,50 @@ function sandboxFastenersKeyboard(c,p) {
     [{text:"⬅️ Деталь",callback_data:"ag:part:"+c.id+"|"+p.id}]
   ]};
 }
+function sandboxWarehouseText(c) {
+  sandbox.buildCar(c);
+  const list=c.sandbox.warehouse||[];
+  if(!list.length) return "📦 СКЛАД ДЕТАЛЕЙ\n\nСклад пуст.\n\nМожно снять деталь с другой машины-донора и передать её сюда.";
+  return "📦 СКЛАД ДЕТАЛЕЙ\n\n"+list.map((p,i)=>{
+    const pr=p.provenance||{};
+    return (i+1)+". "+p.name+" · "+p.condition+"%\n   VIN донора: "+(pr.sourceVin||"—")+"\n   Серийный номер: "+(p.serial||"—")+"\n   Снята: "+(pr.extractedAt?new Date(pr.extractedAt).toLocaleString("ru-RU"):"—");
+  }).join("\n\n");
+}
+function sandboxWarehouseKeyboard(c,state) {
+  sandbox.buildCar(c);
+  const list=c.sandbox.warehouse||[];
+  const donorCars=state.garage.filter(x=>String(x.id)!==String(c.id));
+  return {inline_keyboard:[
+    ...list.map(p=>[
+      {text:"🔍 "+p.name,callback_data:"ag:winfo:"+c.id+"|"+p.id},
+      {text:"🔧 Установить",callback_data:"ag:winstall:"+c.id+"|"+p.id}
+    ]),
+    ...list.map(p=>[{text:"💰 Продать "+p.name,callback_data:"ag:wsell:"+c.id+"|"+p.id}]),
+    ...donorCars.map(d=>[{text:"🚘 Донор: "+d.model,callback_data:"ag:donor:"+c.id+"|"+d.id}]),
+    [{text:"⬅️ Детали",callback_data:"ag:parts:"+c.id}]
+  ]};
+}
+function sandboxDonorKeyboard(target,donor) {
+  sandbox.buildCar(donor);
+  return {inline_keyboard:[
+    ...donor.sandbox.parts.filter(p=>p.installed).map(p=>[{text:"📦 Снять "+p.name+" · "+p.condition+"%",callback_data:"ag:extract:"+target.id+"|"+donor.id+"|"+p.id}]),
+    [{text:"⬅️ Склад",callback_data:"ag:warehouse:"+target.id}]
+  ]};
+}
+function sandboxWarehouseInfo(c,p) {
+  const pr=p.provenance||{};
+  return [
+    "🔍 СКЛАДСКАЯ ДЕТАЛЬ","",
+    "Деталь: "+p.name,
+    "Состояние: "+p.condition+"%",
+    "Серийный номер: "+(p.serial||"—"),
+    "VIN донора: "+(pr.sourceVin||"—"),
+    "ID исходной детали: "+(pr.originalPartId||"—"),
+    "Состояние при снятии: "+(pr.extractedCondition??p.condition)+"%",
+    "Дата снятия: "+(pr.extractedAt?new Date(pr.extractedAt).toLocaleString("ru-RU"):"—"),
+    "Статус: "+(p.warehouseStatus||"stored")
+  ].join("\n");
+}
 function carText(c) {
   const cost=vehicleCost(c);
   const margin=c.targetSale-cost;
@@ -530,6 +574,7 @@ function carKeyboard(c) {
     [{text:"🔧 Ремонт",callback_data:"ag:repair:"+c.id},{text:"✨ Подготовить",callback_data:"ag:prep:"+c.id}],
     [{text:"💰 Продать",callback_data:"ag:sell:"+c.id}],
     [{text:"🧩 Детали автомобиля",callback_data:"ag:parts:"+c.id}],
+    [{text:"📦 Склад деталей",callback_data:"ag:warehouse:"+c.id}],
     [{text:"⬅️ Гараж",callback_data:"ag:garage"}]
   ]};
 }
@@ -750,6 +795,72 @@ async function handleCallback(chat,data,firstName,sendFn,answerFn,callbackId) {
     }
     const c=state.garage.find(x=>x.id===id);
     if(!c && ["car","repair","prep","sell"].includes(action))return {text:"⚠️ Машина уже не в гараже.",markup:garageKeyboard(state)};
+    if(action==="warehouse"){
+      if(!c)return {text:"⚠️ Машина уже не в гараже.",markup:garageKeyboard(state)};
+      sandbox.buildCar(c);
+      return {text:sandboxWarehouseText(c),markup:sandboxWarehouseKeyboard(c,state)};
+    }
+    if(action==="winfo"){
+      if(!c)return {text:"⚠️ Машина уже не в гараже.",markup:garageKeyboard(state)};
+      const bits=String(id||"").split("|");
+      sandbox.buildCar(c);
+      const item=sandbox.warehouseItem(c,bits[1]);
+      if(!item)return {text:"⚠️ Деталь уже отсутствует на складе.",markup:sandboxWarehouseKeyboard(c,state)};
+      return {text:sandboxWarehouseInfo(c,item),markup:sandboxWarehouseKeyboard(c,state)};
+    }
+    if(action==="winstall"){
+      if(!c)return {text:"⚠️ Машина уже не в гараже.",markup:garageKeyboard(state)};
+      const bits=String(id||"").split("|");
+      sandbox.buildCar(c);
+      const item=sandbox.warehouseItem(c,bits[1]);
+      if(!item)return {text:"⚠️ Деталь уже отсутствует на складе.",markup:sandboxWarehouseKeyboard(c,state)};
+      const result=sandbox.installWarehousePart(c,bits[1]);
+      if(!result.ok){
+        const reasons={warehouse_missing:"Деталь уже отсутствует на складе.",no_matching_slot:"В автомобиле нет свободного места для этой детали.",incompatible:"Деталь несовместима с целевым узлом.",dependencies_missing:"Для установки сначала должны быть установлены зависимые узлы.",fasteners_not_ready:"Крепёж целевого узла не готов."};
+        const extra=result.compatibility?.details? "\n\n"+result.compatibility.details:"";
+        return {text:"⚠️ УСТАНОВКА ЗАБЛОКИРОВАНА\n\n"+(reasons[result.reason]||"Операция невозможна.")+extra,markup:sandboxWarehouseKeyboard(c,state)};
+      }
+      return {text:"✅ ДОНорская ДЕТАЛЬ УСТАНОВЛЕНА\n\n"+sandboxPartText(result.part)+"\n\n📜 Происхождение сохранено: VIN донора "+(result.provenance?.sourceVin||"—")+"\nСерийный номер: "+(result.part.serial||"—"),markup:sandboxPartKeyboard(c,result.part)};
+    }
+    if(action==="wsell"){
+      if(!c)return {text:"⚠️ Машина уже не в гараже.",markup:garageKeyboard(state)};
+      const bits=String(id||"").split("|");
+      sandbox.buildCar(c);
+      const result=sandbox.sellWarehousePart(c,bits[1]);
+      if(!result.ok)return {text:"⚠️ Деталь уже отсутствует на складе.",markup:sandboxWarehouseKeyboard(c,state)};
+      if(result.revenue)addTx(state,"sandbox_warehouse_sell",result.revenue,"Продажа складской детали: "+result.part.name);
+      return {text:"💰 ДЕТАЛЬ ПРОДАНА\n\n"+result.part.name+"\nПолучено: "+fmt(result.revenue)+" ₽\n\nПроисхождение детали сохранено в истории автомобиля.",markup:sandboxWarehouseKeyboard(c,state)};
+    }
+    if(action==="donor"){
+      if(!c)return {text:"⚠️ Целевой автомобиль уже не в гараже.",markup:garageKeyboard(state)};
+      const bits=String(id||"").split("|");
+      const donor=state.garage.find(x=>String(x.id)===String(bits[1]));
+      if(!donor)return {text:"⚠️ Автомобиль-донор не найден.",markup:sandboxWarehouseKeyboard(c,state)};
+      sandbox.buildCar(c); sandbox.buildCar(donor);
+      return {text:"🚘 АВТОМОБИЛЬ-ДОНОР\n\n"+donor.model+"\nVIN: "+donor.sandbox.vin+"\n\nВыбери установленную деталь. Она будет снята и передана на склад целевого автомобиля.",markup:sandboxDonorKeyboard(c,donor)};
+    }
+    if(action==="extract"){
+      if(!c)return {text:"⚠️ Целевой автомобиль уже не в гараже.",markup:garageKeyboard(state)};
+      const bits=String(id||"").split("|");
+      const donor=state.garage.find(x=>String(x.id)===String(bits[1]));
+      if(!donor)return {text:"⚠️ Донор не найден.",markup:sandboxWarehouseKeyboard(c,state)};
+      sandbox.buildCar(c); sandbox.buildCar(donor);
+      const source=sandbox.getPart(donor,bits[2]);
+      if(!source)return {text:"⚠️ Деталь донора не найдена.",markup:sandboxDonorKeyboard(c,donor)};
+      const target=c.sandbox.parts.find(p=>p.name===source.name&&!p.installed);
+      if(!target){
+        return {text:"⚠️ На целевом автомобиле нет снятого одноимённого узла для установки.",markup:sandboxDonorKeyboard(c,donor)};
+      }
+      const check=sandbox.compatibility(source,target);
+      if(!check.ok){
+        return {text:"❌ НЕСОВМЕСТИМО\n\n"+check.details+"\nБаллы совместимости: "+Math.round(check.score*100)+"%.",markup:sandboxDonorKeyboard(c,donor)};
+      }
+      const extracted=sandbox.donorExtract(donor,source.id);
+      if(!extracted.ok)return {text:"⚠️ Снять деталь не удалось: "+extracted.reason,markup:sandboxDonorKeyboard(c,donor)};
+      const moved=sandbox.transferWarehousePart(donor,c,extracted.part.id);
+      if(!moved.ok)return {text:"⚠️ Деталь снята и осталась на складе донора. Передача не выполнена: "+moved.reason,markup:sandboxWarehouseKeyboard(c,state)};
+      return {text:"📦 ДЕТАЛЬ ПЕРЕДАНА НА СКЛАД\n\n"+moved.part.name+"\nСостояние: "+moved.part.condition+"%\nVIN донора: "+(moved.part.provenance?.sourceVin||donor.sandbox.vin)+"\nСерийный номер: "+moved.part.serial+"\n\nТеперь её можно установить или продать.",markup:sandboxWarehouseKeyboard(c,state)};
+    }
     if(action==="parts"){
       if(!c)return {text:"⚠️ Машина уже не в гараже.",markup:garageKeyboard(state)};
       sandbox.buildCar(c);
