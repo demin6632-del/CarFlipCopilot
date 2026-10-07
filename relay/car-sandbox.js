@@ -527,3 +527,79 @@ module.exports={
   carSandboxSummary,applyGlobalAction,compatibility,removeToWarehouse,donorExtract:hierarchyDonorExtract,
   installWarehousePart,donorCompatibility
 };
+
+
+/* V3 DEPENDENCY GRAPH */
+
+const PART_DEPENDENCIES={
+  head:["block"],timing:["head"],oil_pump:["block"],starter:["battery"],alternator:["battery"],
+  gearbox:["clutch"],clutch:["gearbox"],driveshaft:["gearbox"],front_subframe:["shock_front_l","shock_front_r","arm_front_l","arm_front_r"],
+  steering:["front_subframe"],disc_front_l:["caliper_l"],disc_front_r:["caliper_r"],
+  ecu:["wiring"],battery:["wiring"],climate:["wiring"],multimedia:["wiring"],
+  door_l:["fender_l"],door_r:["fender_r"],wheel_l:["disc_front_l"],wheel_r:["disc_front_r"]
+};
+
+function dependencyIds(part){
+  return PART_DEPENDENCIES[part?.assembly]||[];
+}
+
+function findDependencyParts(car,part){
+  return dependencyIds(part).map(id=>car.sandbox.parts.find(p=>p.assembly===id)).filter(Boolean);
+}
+
+function dependencyStatus(car,part){
+  const deps=findDependencyParts(car,part);
+  return {
+    total:deps.length,
+    installed:deps.filter(p=>p.installed).length,
+    blockedBy:deps.filter(p=>p.installed).map(p=>({id:p.id,assembly:p.assembly,name:p.name}))
+  };
+}
+
+function canRemovePart(car,part){
+  const dependents=car.sandbox.parts.filter(p=>p.installed&&dependencyIds(p).includes(part.assembly));
+  if(dependents.length) return {
+    ok:false,reason:"dependent_parts_installed",
+    blockedBy:dependents.map(p=>({id:p.id,assembly:p.assembly,name:p.name}))
+  };
+  const fs=fastenerSummary(part);
+  if(fs.missing) return {ok:false,reason:"missing_fasteners",missing:fs.missing};
+  return {ok:true};
+}
+
+function canInstallPart(car,part){
+  const deps=dependencyStatus(car,part);
+  if(deps.blockedBy.length) return {ok:false,reason:"dependencies_missing",dependencies:deps.blockedBy};
+  const fs=fastenerSummary(part);
+  if(!fs.ready) return {ok:false,reason:"fasteners_not_ready",missing:fs.missing,damaged:fs.damaged};
+  return {ok:true};
+}
+
+function hierarchyActionPartV2(car,action,partId){
+  ensureHierarchy(car);
+  const part=getPart(car,partId);
+  if(!part) return {ok:false,reason:"part_missing"};
+  if(action==="remove"){
+    const check=canRemovePart(car,part);
+    if(!check.ok) return check;
+  }
+  if(action==="install"){
+    const check=canInstallPart(car,part);
+    if(!check.ok) return check;
+  }
+  return baseActionPart(car,action,partId);
+}
+
+function dependencyGraph(car){
+  ensureHierarchy(car);
+  return car.sandbox.parts.map(p=>({
+    id:p.id,assembly:p.assembly,name:p.name,
+    dependencies:dependencyIds(p).map(id=>car.sandbox.parts.find(x=>x.assembly===id)).filter(Boolean).map(x=>x.id)
+  }));
+}
+
+module.exports.actionPart=hierarchyActionPartV2;
+module.exports.dependencyStatus=dependencyStatus;
+module.exports.dependencyGraph=dependencyGraph;
+module.exports.canRemovePart=canRemovePart;
+module.exports.canInstallPart=canInstallPart;
