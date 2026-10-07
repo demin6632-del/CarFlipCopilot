@@ -710,3 +710,160 @@ module.exports.canInstallPart=canInstallPart;
 module.exports.transferWarehousePart=transferWarehousePart;
 module.exports.sellWarehousePart=sellWarehousePart;
 module.exports.warehouseItem=warehouseItem;
+module.exports.PART_SOURCES=PART_SOURCES;
+module.exports.refreshPartMarket=refreshPartMarket;
+module.exports.listPartMarket=listPartMarket;
+module.exports.getPartMarketOffer=getPartMarketOffer;
+module.exports.buyPartMarketOffer=buyPartMarketOffer;
+module.exports.partMarketSummary=partMarketSummary;
+
+/* V3 PART MARKET: 5 SOURCES -> OFFER -> WAREHOUSE */
+const PART_SOURCES=[
+  {id:"store",title:"Магазин",type:"new",conditionMin:98,conditionMax:100,priceMin:1.00,priceMax:1.18,reliability:1.00},
+  {id:"dismantler",title:"Разборка",type:"used",conditionMin:45,conditionMax:94,priceMin:0.32,priceMax:0.68,reliability:0.96},
+  {id:"private",title:"Частник",type:"mixed",conditionMin:35,conditionMax:100,priceMin:0.38,priceMax:0.92,reliability:0.92},
+  {id:"donor",title:"Донор",type:"used",conditionMin:30,conditionMax:92,priceMin:0.24,priceMax:0.58,reliability:0.94},
+  {id:"china",title:"Китай",type:"new",conditionMin:92,conditionMax:100,priceMin:0.28,priceMax:0.62,reliability:0.76}
+];
+
+function marketHash(text){
+  let h=0;
+  for(const ch of String(text||"")) h=((h<<5)-h+ch.charCodeAt(0))|0;
+  return Math.abs(h);
+}
+function marketNumber(seed,index,min,max){
+  const n=(marketHash(String(seed)+":"+index)%10000)/10000;
+  return min+(max-min)*n;
+}
+function partMarketOfferFromTemplate(car,row,index,source,seed){
+  const [system,assembly,name,wear,purchaseValue,reliability]=row;
+  const sourceIndex=PART_SOURCES.findIndex(s=>s.id===source.id);
+  const condition=Math.round(marketNumber(seed,index+sourceIndex*101,source.conditionMin,source.conditionMax));
+  const priceFactor=marketNumber(seed,index+sourceIndex*211,source.priceMin,source.priceMax);
+  const type=source.type==="mixed"
+    ? (condition>=96?"new":"used")
+    : source.type;
+  const qualityFactor=type==="new"?1:0.82+condition/500;
+  const price=money(purchaseValue*priceFactor*qualityFactor);
+  const serial="MKT-"+String(marketHash(seed+":"+source.id+":"+index)).padStart(8,"0");
+  return {
+    id:"offer_"+String(marketHash(String(seed)+":"+source.id+":"+row[1])).padStart(10,"0")+"_"+String(index),
+    source:source.id,
+    sourceTitle:source.title,
+    seller:source.id==="store"?"Официальный магазин":source.id==="dismantler"?"Авторазбор":source.id==="private"?"Частное объявление":source.id==="donor"?"Донорская площадка":"Китайский поставщик",
+    partTemplateId:assembly,
+    system,
+    assembly,
+    name,
+    type,
+    condition,
+    price,
+    reliability:Math.round(source.reliability*reliability*100)/100,
+    serial,
+    compatibility:{system,assembly,name},
+    provenance:{
+      marketSource:source.id,
+      seller:source.title,
+      listedAt:Date.now(),
+      offerId:null
+    }
+  };
+}
+
+function ensurePartMarket(car,seed){
+  if(!car?.sandbox) buildCar(car);
+  if(car.sandbox.partMarket && Array.isArray(car.sandbox.partMarket.offers)) return car.sandbox.partMarket;
+  return refreshPartMarket(car,seed);
+}
+
+function refreshPartMarket(car,seed=Date.now()){
+  if(!car?.sandbox) buildCar(car);
+  const actualSeed=String(seed);
+  const offers=[];
+  const wanted=car.sandbox.parts.slice(0,Math.min(12,car.sandbox.parts.length));
+  for(const source of PART_SOURCES){
+    wanted.forEach((rowPart,i)=>{
+      const template=PART_TEMPLATES.find(r=>r[1]===rowPart.assembly)||PART_TEMPLATES[i%PART_TEMPLATES.length];
+      if(!template) return;
+      const offer=partMarketOfferFromTemplate(car,template,i,source,actualSeed);
+      offer.provenance.offerId=offer.id;
+      offers.push(offer);
+    });
+  }
+  car.sandbox.partMarket={version:1,seed:actualSeed,refreshedAt:Date.now(),offers};
+  return car.sandbox.partMarket;
+}
+
+function listPartMarket(car,filters={}){
+  const market=ensurePartMarket(car,filters.seed);
+  return market.offers.filter(o=>{
+    if(filters.source && o.source!==filters.source) return false;
+    if(filters.system && o.system!==filters.system) return false;
+    if(filters.assembly && o.assembly!==filters.assembly) return false;
+    if(filters.name && o.name!==filters.name) return false;
+    if(filters.type && o.type!==filters.type) return false;
+    if(Number.isFinite(Number(filters.maxPrice)) && o.price>Number(filters.maxPrice)) return false;
+    if(Number.isFinite(Number(filters.minCondition)) && o.condition<Number(filters.minCondition)) return false;
+    return true;
+  });
+}
+
+function getPartMarketOffer(car,offerId){
+  return ensurePartMarket(car).offers.find(o=>o.id===offerId)||null;
+}
+
+function buyPartMarketOffer(car,offerId,funds){
+  if(!car?.sandbox) buildCar(car);
+  const offer=getPartMarketOffer(car,offerId);
+  if(!offer) return {ok:false,reason:"offer_missing"};
+  const available=Number(funds);
+  if(!Number.isFinite(available) || available<offer.price){
+    return {ok:false,reason:"insufficient_funds",price:offer.price,available:Number.isFinite(available)?available:0};
+  }
+  if(!Array.isArray(car.sandbox.warehouse)) car.sandbox.warehouse=[];
+  const item={
+    id:"market_"+offer.id,
+    system:offer.system,
+    assembly:offer.assembly,
+    name:offer.name,
+    level:3,
+    condition:offer.condition,
+    wear:100-offer.condition,
+    purchaseValue:offer.price,
+    marketValue:offer.price,
+    repairable:true,
+    reliability:offer.reliability,
+    installed:false,
+    hiddenDamage:offer.type==="used" && offer.condition<65,
+    serial:offer.serial,
+    fasteners:[],
+    history:[{
+      time:Date.now(),
+      action:"market_purchase",
+      text:"Куплена на рынке деталей: "+offer.sourceTitle+" за "+offer.price+" ₽."
+    }],
+    modifications:[],
+    warehouseStatus:"stored",
+    provenance:{
+      marketSource:offer.source,
+      seller:offer.seller,
+      offerId:offer.id,
+      sourceSerial:offer.serial,
+      purchasedAt:Date.now(),
+      purchasePrice:offer.price,
+      conditionAtPurchase:offer.condition
+    }
+  };
+  ensureHierarchy({sandbox:{parts:[item]}}); // creates level metadata without changing the car
+  car.sandbox.warehouse.push(item);
+  car.sandbox.partMarket.offers=car.sandbox.partMarket.offers.filter(o=>o.id!==offer.id);
+  record(car,"market_purchase",item,"Куплена деталь «"+item.name+"» на рынке. Источник: "+offer.sourceTitle+".");
+  return {ok:true,cost:offer.price,part:item,offer};
+}
+
+function partMarketSummary(car){
+  const offers=ensurePartMarket(car).offers;
+  const bySource={};
+  for(const source of PART_SOURCES) bySource[source.id]=offers.filter(o=>o.source===source.id).length;
+  return {total:offers.length,bySource};
+}
