@@ -438,13 +438,11 @@ function sandboxText(c) {
   sandbox.buildCar(c);
   const summary=sandbox.carSandboxSummary(c);
   return [
-    "🧩 ДЕТАЛЬНЫЙ АВТОМОБИЛЬНЫЙ САНДБОК","",
-    "⚙️ Систем: "+sandbox.SYSTEMS.length,
+    "🧩 ДЕТАЛИ АВТОМОБИЛЯ","",
     "🔩 Деталей: "+summary.totalParts+" · установлено "+summary.installedParts,
-    "📊 Среднее состояние деталей: "+summary.averageCondition+"%",
-    "⚠️ Скрытых проблем: "+summary.hiddenDefects,
-    "💰 Оценка деталей: "+fmt(summary.estimatedPartsValue),
-    summary.legalRisk?"⚠️ В истории есть риск вмешательства.":"✅ Критических отметок вмешательства нет."
+    "📊 Среднее состояние: "+summary.averageCondition+"%",
+    summary.hiddenDefects>0 ? "⚠️ Скрытые проблемы: "+summary.hiddenDefects : "✅ Скрытых проблем не выявлено",
+    summary.legalRisk ? "⚠️ Есть отметка о вмешательстве в историю." : "✅ История без критических отметок."
   ].join("\n");
 }
 function sandboxSystemsKeyboard(c) {
@@ -466,14 +464,11 @@ function sandboxPartsKeyboard(c,systemId) {
 function sandboxPartText(p) {
   return [
     "🔩 ДЕТАЛЬ","",
-    "Название: "+p.name,
-    "Узел: "+p.assembly,
+    p.name,
     "Состояние: "+p.condition+"%",
     "Износ: "+p.wear+"%",
-    "Состояние установки: "+(p.installed?"установлена":"снята"),
-    "Серийный номер: "+p.serial,
-    p.hiddenDamage?"⚠️ Есть скрытое повреждение.":"✅ Скрытых повреждений не выявлено.",
-    "💰 Рыночная стоимость: "+fmt(p.marketValue)
+    "Статус: "+(p.installed?"установлена":"снята"),
+    p.hiddenDamage ? "⚠️ Есть скрытое повреждение." : "✅ Скрытых повреждений не выявлено."
   ].join("\n");
 }
 function sandboxPartKeyboard(c,p) {
