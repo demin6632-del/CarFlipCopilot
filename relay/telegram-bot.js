@@ -85,7 +85,7 @@ async function handleMessage(m){
     try{await tg("sendMessage",{chat_id:chat,text:" ",reply_markup:{remove_keyboard:true}});}catch{}
     return autonomousGame.handleText(chat,"/perekup",m.from?.first_name||"Перекуп",(c,t,extra)=>send(c,t,extra));
   }
-  return false;
+  return autonomousGame.handleText(chat,text,m.from?.first_name||"Перекуп",(c,t,extra)=>send(c,t,extra));
 }
 async function handleCallback(q){
   const chat=q?.message?.chat?.id,data=String(q?.data||"");if(chat==null)return;
