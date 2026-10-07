@@ -362,3 +362,168 @@ module.exports={
   listSystems,listParts,carSandboxSummary,applyGlobalAction,
   compatibility,removeToWarehouse,donorExtract,installWarehousePart,donorCompatibility
 };
+
+
+/* V3 HIERARCHY: SYSTEM -> ASSEMBLY -> PART -> FASTENER */
+function clone(value){ return JSON.parse(JSON.stringify(value)); }
+
+const ASSEMBLY_TITLES={
+  block:"Блок двигателя",head:"Головка блока",timing:"ГРМ",oil_pump:"Масляная система",
+  starter:"Стартер",alternator:"Генератор",gearbox:"Корпус КПП",clutch:"Сцепление",driveshaft:"Приводной вал",
+  front_subframe:"Передний подрамник",shock_front_l:"Передняя подвеска — левый амортизатор",
+  shock_front_r:"Передняя подвеска — правый амортизатор",arm_front_l:"Передняя подвеска — левый рычаг",
+  arm_front_r:"Передняя подвеска — правый рычаг",steering:"Рулевое управление",
+  disc_front_l:"Передний тормоз — левый диск",disc_front_r:"Передний тормоз — правый диск",
+  caliper_l:"Передний тормоз — левый суппорт",caliper_r:"Передний тормоз — правый суппорт",
+  battery:"Питание",ecu:"ЭБУ",wiring:"Жгуты проводки",hood:"Капот",fender_l:"Левое крыло",
+  fender_r:"Правое крыло",door_l:"Левая дверь",door_r:"Правая дверь",bumper:"Бампер",
+  driver_seat:"Сиденье водителя",dashboard:"Панель приборов",wheel_l:"Левое колесо",
+  wheel_r:"Правое колесо",climate:"Климат",multimedia:"Мультимедиа"
+};
+
+const FASTENER_TYPES=[
+  ["bolt","Болт",12,450],["nut","Гайка",10,180],["washer","Шайба",8,90],
+  ["clip","Клипса",1,60],["seal","Уплотнитель",2,250],["connector","Разъём",3,350],
+  ["gasket","Прокладка",3,500]
+];
+
+function createFastener(part,index){
+  const [type,title,size,value]=FASTENER_TYPES[index%FASTENER_TYPES.length];
+  const condition=clamp(part.condition+((index%3)-1)*4,15,100);
+  return {
+    id:part.id+"_f_"+String(index+1),level:1,type,title,spec:String(size)+" мм",quantity:1,
+    condition,installed:true,purchaseValue:value,marketValue:money(value*(0.65+condition/300)),
+    history:[],serial:part.serial+"-F"+String(index+1).padStart(2,"0")
+  };
+}
+
+function fastenerCountForPart(part){
+  if(part.assembly==="wiring"||part.assembly==="multimedia") return 3;
+  if(part.assembly==="wheel_l"||part.assembly==="wheel_r") return 5;
+  if(part.assembly==="gearbox"||part.assembly==="block"||part.assembly==="head") return 6;
+  return Math.max(2,Math.min(5,part.fasteners||3));
+}
+
+function ensureHierarchy(car){
+  if(!car?.sandbox?.parts) return car;
+  for(const part of car.sandbox.parts){
+    part.level=3;
+    part.node=part.node||{id:part.assembly,level:2,title:ASSEMBLY_TITLES[part.assembly]||part.assembly,system:part.system};
+    if(!Array.isArray(part.fasteners)){
+      const count=fastenerCountForPart(part);
+      part.fasteners=Array.from({length:count},(_,i)=>createFastener(part,i));
+    }else{
+      part.fasteners=part.fasteners.map((f,i)=>Object.assign({
+        id:part.id+"_f_"+String(i+1),level:1,installed:true,quantity:1,condition:part.condition,history:[]
+      },f));
+    }
+    part.fastenersRequired=part.fasteners.length;
+  }
+  car.sandbox.hierarchyVersion=1;
+  return car;
+}
+
+function getFastener(car,partId,fastenerId){
+  const part=getPart(car,partId);
+  return part?.fasteners?.find(f=>f.id===fastenerId)||null;
+}
+
+function fastenerSummary(part){
+  const list=part.fasteners||[];
+  return {
+    total:list.length,installed:list.filter(f=>f.installed).length,
+    missing:list.filter(f=>!f.installed).length,damaged:list.filter(f=>f.condition<50).length,
+    ready:list.length>0&&list.every(f=>f.installed&&f.condition>=35)
+  };
+}
+
+function actionFastener(car,action,partId,fastenerId){
+  const part=getPart(car,partId),fastener=getFastener(car,partId,fastenerId);
+  if(!part) return {ok:false,reason:"part_missing"};
+  if(!fastener) return {ok:false,reason:"fastener_missing"};
+  const costs={unscrew:{time:1,cost:50},screw:{time:1,cost:70},remove:{time:1,cost:30},
+    install:{time:1,cost:40},replace:{time:1,cost:fastener.purchaseValue},
+    buy:{time:1,cost:fastener.purchaseValue},sell:{time:1,cost:0}};
+  const rule=costs[action];
+  if(!rule) return {ok:false,reason:"unknown_fastener_action"};
+  if(action==="unscrew"||action==="remove"){
+    if(!fastener.installed) return {ok:false,reason:"already_removed"};
+    fastener.installed=false;
+    fastener.history.unshift({time:Date.now(),action,text:"Крепёж снят."});
+    part.history.unshift({time:Date.now(),action:"fastener_"+action,text:"Снят "+fastener.title+" "+fastener.spec+"."});
+    return {ok:true,time:rule.time,cost:rule.cost,fastener};
+  }
+  if(action==="screw"||action==="install"){
+    if(fastener.installed) return {ok:false,reason:"already_installed"};
+    fastener.installed=true;
+    fastener.history.unshift({time:Date.now(),action,text:"Крепёж установлен."});
+    part.history.unshift({time:Date.now(),action:"fastener_"+action,text:"Установлен "+fastener.title+" "+fastener.spec+"."});
+    return {ok:true,time:rule.time,cost:rule.cost,fastener};
+  }
+  if(action==="replace"){
+    fastener.installed=true;fastener.condition=100;
+    fastener.history.unshift({time:Date.now(),action,text:"Крепёж заменён новым."});
+    part.history.unshift({time:Date.now(),action:"fastener_replace",text:"Крепёж заменён новым."});
+    return {ok:true,time:rule.time,cost:rule.cost,fastener};
+  }
+  if(action==="buy"){
+    fastener.installed=false;fastener.condition=100;
+    fastener.history.unshift({time:Date.now(),action,text:"Крепёж приобретён и подготовлен к установке."});
+    return {ok:true,time:rule.time,cost:rule.cost,fastener};
+  }
+  if(action==="sell"){
+    if(fastener.installed) return {ok:false,reason:"remove_first"};
+    const revenue=money(fastener.marketValue);
+    part.history.unshift({time:Date.now(),action:"fastener_sell",text:"Крепёж продан за "+revenue+" ₽."});
+    return {ok:true,time:rule.time,revenue,fastener};
+  }
+}
+
+function listAssemblies(car,systemId){
+  const groups=new Map();
+  for(const p of car.sandbox.parts.filter(p=>!systemId||p.system===systemId)){
+    if(!groups.has(p.assembly)) groups.set(p.assembly,{id:p.assembly,level:2,title:ASSEMBLY_TITLES[p.assembly]||p.assembly,
+      system:p.system,parts:0,averageCondition:0,fasteners:0,missingFasteners:0});
+    const g=groups.get(p.assembly);g.parts++;g.averageCondition+=p.condition;
+    const fs=fastenerSummary(p);g.fasteners+=fs.total;g.missingFasteners+=fs.missing;
+  }
+  return Array.from(groups.values()).map(g=>{
+    g.averageCondition=g.parts?Math.round(g.averageCondition/g.parts):0;return g;
+  });
+}
+
+function listFasteners(car,partId){ return getPart(car,partId)?.fasteners||[]; }
+
+const baseBuildCar=buildCar;
+const baseActionPart=actionPart;
+
+function hierarchyBuildCar(car){ return ensureHierarchy(baseBuildCar(car)); }
+
+function hierarchyActionPart(car,action,partId){
+  ensureHierarchy(car);
+  const part=getPart(car,partId);
+  if(!part) return {ok:false,reason:"part_missing"};
+  if(action==="remove"){
+    const fs=fastenerSummary(part);
+    if(fs.missing>0) return {ok:false,reason:"missing_fasteners",missing:fs.missing};
+  }
+  if(action==="install"){
+    const fs=fastenerSummary(part);
+    if(!fs.ready) return {ok:false,reason:"fasteners_not_ready",missing:fs.missing,damaged:fs.damaged};
+  }
+  return baseActionPart(car,action,partId);
+}
+
+function hierarchyDonorExtract(donor,partId){
+  const car=hierarchyBuildCar(donor);
+  const result=donorExtract(car,partId);
+  ensureHierarchy(car);
+  return result;
+}
+
+module.exports={
+  SYSTEMS,ACTIONS,buildCar:hierarchyBuildCar,getPart,actionRules,actionPart:hierarchyActionPart,
+  listSystems,listParts,listAssemblies,listFasteners,getFastener,fastenerSummary,actionFastener,ensureHierarchy,
+  carSandboxSummary,applyGlobalAction,compatibility,removeToWarehouse,donorExtract:hierarchyDonorExtract,
+  installWarehousePart,donorCompatibility
+};
