@@ -670,8 +670,10 @@ function statsText(state) {
 
 function negotiatePurchase(state,id,requestedOffer) {
   const c=state.market.find(x=>x.id===id); if(!c)return {ok:false,reason:"missing"};
-  const offer=Math.max(1000,Math.round(Number(requestedOffer||0)/1000)*1000);
-  if(!Number.isFinite(offer)||offer<1000)return {ok:false,reason:"invalid_offer"};
+  const raw=String(requestedOffer??"").trim();
+  if(!/^\d+$/.test(raw))return {ok:false,reason:"invalid_offer"};
+  const offer=Number(raw);
+  if(!Number.isSafeInteger(offer)||offer<=0)return {ok:false,reason:"invalid_offer"};
   if(offer>c.buyPrice)return {ok:false,reason:"too_high"};
   const pressure=Math.max(.05,Math.min(.75,(c.marketPressure||.5)*.55)), roll=rng(state);
   if(roll>pressure){state.pendingPurchase={carId:id,offer,result:"accepted",finalPrice:offer};return {ok:true,result:"accepted",offer,finalPrice:offer};}
@@ -775,15 +777,15 @@ async function open(chat, firstName, sendFn) {
 async function handleText(chat,text,firstName,sendFn) {
   const raw=String(text||"").trim();
   if(raw!=="/perekup" && raw!=="🎮 Автономная игра" && raw!=="🚗 Симулятор Перекупа"){
-    if(/^\d{1,10}$/.test(raw)){
+    if(/^\d+$/.test(raw)){
       const state=await load(chat,firstName);
       const pending=state.pendingPurchase;
-      if(pending?.awaitingOffer && pending.carId){
+      if(pending?.carId && (pending.awaitingOffer || pending.result==="counter")){
         const offer=Number(raw);
         const run=await withState(chat,firstName,s=>{
-          if(!s.pendingPurchase?.awaitingOffer || s.pendingPurchase.carId!==pending.carId)return {ok:false,reason:"stale"};
+          if(!s.pendingPurchase?.carId || s.pendingPurchase.carId!==pending.carId)return {ok:false,reason:"stale"};
           const r=negotiatePurchase(s,pending.carId,offer);
-          if(r.ok)s.pendingPurchase={...s.pendingPurchase,offer,awaitingOffer:false};
+          if(r.ok)s.pendingPurchase={...s.pendingPurchase,...r,offer,awaitingOffer:r.result==="counter"};
           return r;
         });
         if(!run || !run.result || run.result.duplicate){
@@ -802,7 +804,7 @@ async function handleText(chat,text,firstName,sendFn) {
           return true;
         }
         if(result.reason==="invalid_offer" || result.reason==="too_high"){
-          await sendFn(chat,"⚠️ Некорректная цена.\n\nНапиши сумму не выше цены продавца: "+fmt(car.buyPrice),{reply_markup:{inline_keyboard:[[{text:"⬅️ Осмотр",callback_data:"ag:inspect:"+car.id}]]}});
+          await sendFn(chat,"⚠️ Некорректная цена.\n\nВведи любое целое число больше 0 и не выше цены продавца: "+fmt(car.buyPrice),{reply_markup:{inline_keyboard:[[{text:"⬅️ Осмотр",callback_data:"ag:inspect:"+car.id}]]}});
           return true;
         }
         if(result.result==="rejected"){
