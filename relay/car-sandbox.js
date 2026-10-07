@@ -710,12 +710,12 @@ module.exports.canInstallPart=canInstallPart;
 module.exports.transferWarehousePart=transferWarehousePart;
 module.exports.sellWarehousePart=sellWarehousePart;
 module.exports.warehouseItem=warehouseItem;
-module.exports.PART_SOURCES=PART_SOURCES;
-module.exports.refreshPartMarket=refreshPartMarket;
-module.exports.listPartMarket=listPartMarket;
-module.exports.getPartMarketOffer=getPartMarketOffer;
-module.exports.buyPartMarketOffer=buyPartMarketOffer;
-module.exports.partMarketSummary=partMarketSummary;
+
+
+
+
+
+
 
 /* V3 PART MARKET: 5 SOURCES -> OFFER -> WAREHOUSE */
 const PART_SOURCES=[
@@ -866,3 +866,9 @@ function partMarketSummary(car){
   for(const source of PART_SOURCES) bySource[source.id]=offers.filter(o=>o.source===source.id).length;
   return {total:offers.length,bySource};
 }
+module.exports.PART_SOURCES=PART_SOURCES;
+module.exports.refreshPartMarket=refreshPartMarket;
+module.exports.listPartMarket=listPartMarket;
+module.exports.getPartMarketOffer=getPartMarketOffer;
+module.exports.buyPartMarketOffer=buyPartMarketOffer;
+module.exports.partMarketSummary=partMarketSummary;
