@@ -57,6 +57,28 @@ test("contract reward is represented as a separate ledger credit", () => {
   assert.equal(s.transactions[0].kind, "contract");
 });
 
+test("seller negotiation accepts any positive integer amount format", () => {
+  const values = ["1", "10", "100", "1000", "10000", "575000", "1 000", "10 000 ₽"];
+  for (const value of values) {
+    const parsed = game.parsePurchaseOfferInput(value);
+    assert.ok(Number.isSafeInteger(parsed), "must parse: " + value);
+    assert.ok(parsed > 0);
+  }
+  assert.equal(game.parsePurchaseOfferInput("0"), null);
+  assert.equal(game.parsePurchaseOfferInput("-1000"), null);
+  assert.equal(game.parsePurchaseOfferInput("10.5"), null);
+  assert.equal(game.parsePurchaseOfferInput("abc"), null);
+});
+
+test("seller negotiation accepts a second numeric offer after a counter", () => {
+  const s = game.newState("seller-counter-input", "Tester");
+  const car = s.market[0];
+  s.pendingPurchase = {carId:car.id, offer:1000, result:"counter", counter:car.buyPrice, finalPrice:car.buyPrice, awaitingOffer:true};
+  const result = game.negotiatePurchase(s, car.id, "10000");
+  assert.notEqual(result.reason, "invalid_offer");
+  assert.equal(result.offer, 10000);
+});
+
 test("buyer offer stays positive and follows target economics", () => {
   const s = game.newState("test-player-offer", "Tester");
   const car = s.market[0];
