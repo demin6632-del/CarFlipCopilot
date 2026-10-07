@@ -341,21 +341,26 @@ function recommendation(state) {
 function mainText(state) {
   const p=state.player;
   const event=state.meta.marketEvent||{title:"Спокойный рынок",text:"Стабильный спрос."};
-  const active=state.garage.length;
-  const cashflow=state.transactions.slice(0,12).filter(x=>x.kind==="sale"||x.kind==="buy").length;
+  const deals=state.transactions.filter(x=>x.kind==="sale").length;
   return [
     "🚗 СИМУЛЯТОР ПЕРЕКУПА · V2",
     "",
     "👤 "+p.name+" · Ур. "+p.level+" · ⭐ "+p.respect,
-    "💰 "+fmt(p.balance)+" · 🚘 "+active+"/"+p.garageCapacity,
-    "📅 День "+(state.meta.day||1)+" · Сделок: "+cashflow,
+    "💰 "+fmt(p.balance)+" · 🚘 "+state.garage.length+"/"+p.garageCapacity,
+    "📅 День "+(state.meta.day||1)+" · Продаж: "+deals,
     "",
     "📈 "+event.title,
     event.text,
     "👥 Конкуренты: "+(state.meta.competitors||1)+" · давление "+(state.meta.competitionLevel||0)+"%",
     "",
-    "Твоя задача: найти недооценённую машину,",
-    "проверитfunction menu() {
+    "Цель дня: найти недооценённую машину,",
+    "проверить её, сторговаться, вложиться",
+    "только там, где это окупается, и продать.",
+    "",
+    "Решение всегда остаётся за тобой."
+  ].join("\n");
+}
+function menu() {
   return {inline_keyboard:[
     [{text:"🚗 Рынок",callback_data:"ag:market"},{text:"🏠 Гараж",callback_data:"ag:garage"}],
     [{text:"📅 Сегодня",callback_data:"ag:day"},{text:"📋 Контракты",callback_data:"ag:contracts"}],
