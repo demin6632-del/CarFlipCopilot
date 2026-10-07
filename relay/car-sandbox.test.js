@@ -65,3 +65,23 @@ test("illegal-risk actions are recorded instead of hidden",()=>{
 });
 
 console.log("Car sandbox tests: OK");
+
+test("donor extraction moves a removed part to warehouse",()=>{
+  const donor={id:"donor_1",mileage:100000}; sandbox.buildCar(donor);
+  const part=donor.sandbox.parts[0];
+  const r=sandbox.donorExtract(donor,part.id);
+  assert.equal(r.ok,true);
+  assert.equal(donor.sandbox.parts.some(p=>p.id===part.id),false);
+  assert.equal(donor.sandbox.warehouse.some(p=>p.id===part.id),true);
+});
+test("compatible donor part can be installed into matching empty slot",()=>{
+  const donor={id:"donor_2",mileage:100000}; const car={id:"car_2",mileage:100000};
+  sandbox.buildCar(donor); sandbox.buildCar(car);
+  const source=donor.sandbox.parts[0];
+  sandbox.donorExtract(donor,source.id);
+  const target=car.sandbox.parts[0]; target.installed=false;
+  car.sandbox.warehouse.push({...source});
+  const r=sandbox.installWarehousePart(car,source.id);
+  assert.equal(r.ok,true);
+  assert.equal(target.installed,true);
+});
