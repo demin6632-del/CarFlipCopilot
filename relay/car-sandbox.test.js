@@ -136,3 +136,35 @@ test("donor extraction no longer crashes on missing clone helper",()=>{
   assert.equal(r.ok,true);
   assert.ok(donor.sandbox.warehouse.length>0);
 });
+
+test("dependency graph blocks removal of a required installed part",()=>{
+  const car={id:"dep_1",mileage:100000};
+  sandbox.buildCar(car);
+  const battery=car.sandbox.parts.find(p=>p.assembly==="battery");
+  const starter=car.sandbox.parts.find(p=>p.assembly==="starter");
+  const r=sandbox.actionPart(car,"remove",battery.id);
+  assert.equal(r.ok,false);
+  assert.equal(r.reason,"dependent_parts_installed");
+  assert.ok(r.blockedBy.some(x=>x.id===starter.id));
+});
+
+test("dependency graph allows removal after dependent part is removed",()=>{
+  const car={id:"dep_2",mileage:100000};
+  sandbox.buildCar(car);
+  const battery=car.sandbox.parts.find(p=>p.assembly==="battery");
+  const starter=car.sandbox.parts.find(p=>p.assembly==="starter");
+  for(const f of starter.fasteners) f.installed=true;
+  const removedStarter=sandbox.actionPart(car,"remove",starter.id);
+  assert.equal(removedStarter.ok,true);
+  const removedBattery=sandbox.actionPart(car,"remove",battery.id);
+  assert.equal(removedBattery.ok,true);
+});
+
+test("dependency graph exposes machine-readable relations",()=>{
+  const car={id:"dep_3",mileage:100000};
+  sandbox.buildCar(car);
+  const graph=sandbox.dependencyGraph(car);
+  const starter=graph.find(x=>x.assembly==="starter");
+  assert.ok(starter);
+  assert.ok(starter.dependencies.length>0);
+});
