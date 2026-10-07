@@ -867,14 +867,11 @@ async function handleCallback(chat,data,firstName,sendFn,answerFn,callbackId) {
       sandbox.buildCar(c);
       const level=Math.max(1,Math.min(6,Number(bits[1])||1));
       const spec=sandbox.INSPECTION_LEVELS[level-1];
-      const result=sandbox.inspectCar(c,level);
-      if(result.cost){
-        if(Number(state.player.balance)<result.cost){
-          return {text:"❌ Недостаточно денег.\n\nНужно: "+fmt(result.cost)+"\nБаланс: "+fmt(state.player.balance),markup:carKeyboard(c)};
-        }
-        state.player.balance-=result.cost;
-        addTx(state,"diagnostic",-result.cost,"Диагностика уровня "+level+": "+spec.title);
+      if(spec.cost && Number(state.player.balance)<spec.cost){
+        return {text:"❌ Недостаточно денег.\n\nНужно: "+fmt(spec.cost)+"\nБаланс: "+fmt(state.player.balance),markup:carKeyboard(c)};
       }
+      const result=sandbox.inspectCar(c,level);
+      if(result.cost) addTx(state,"diagnostic",-result.cost,"Диагностика уровня "+level+": "+spec.title);
       const next=level<6?level+1:6;
       const lines=["🔎 ДИАГНОСТИКА "+level+"/6","",spec.title,"⏱ Время: "+result.time+" ч","💵 Стоимость: "+fmt(result.cost),""];
       if(level===1) lines.push("Визуально осмотрены кузов и колёса.");
