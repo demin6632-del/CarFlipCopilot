@@ -672,7 +672,7 @@ function parsePurchaseOfferInput(value) {
   // Принимаем любую положительную целую сумму: 1, 10, 100, 1000, 10000,
   // а также запись с пробелами/символом рубля, например "10 000 ₽".
   const raw=String(value??"").trim();
-  const normalized=raw.replace(/[\\s₽]/g,"");
+  const normalized=raw.replace(/[\s₽]/g,"");
   if(!/^\d+$/.test(normalized))return null;
   const offer=Number(normalized);
   if(!Number.isSafeInteger(offer)||offer<=0)return null;
