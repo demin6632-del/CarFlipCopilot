@@ -377,6 +377,40 @@ function donorCompatibility(car,donor){
   return {compatible,incompatible};
 }
 
+const INSPECTION_LEVELS=[
+  {level:1,title:"Визуальный осмотр",cost:0,time:0},
+  {level:2,title:"Компьютерная диагностика",cost:5000,time:1},
+  {level:3,title:"Механическая диагностика",cost:12000,time:2},
+  {level:4,title:"Глубокая диагностика",cost:25000,time:4},
+  {level:5,title:"Экспертная диагностика",cost:45000,time:6},
+  {level:6,title:"Полная дефектовка",cost:80000,time:10}
+];
+
+function inspectCar(car,level){
+  if(!car?.sandbox) buildCar(car);
+  ensureHierarchy(car);
+  const n=Math.max(1,Math.min(6,Number(level)||1));
+  const spec=INSPECTION_LEVELS[n-1];
+  const visible=car.sandbox.parts.filter(p=>{
+    if(n>=3) return true;
+    if(n===2) return ["engine","transmission","brakes","electrical"].includes(p.system);
+    return p.system==="body"||p.system==="wheels";
+  });
+  const hidden=n>=4?car.sandbox.parts.filter(p=>p.hiddenDamage):[];
+  const fasteners=n>=6?car.sandbox.parts.reduce((a,p)=>a+(p.fasteners||[]).filter(f=>f.condition<50).length,0):null;
+  car.sandbox.diagnosticLevel=Math.max(Number(car.sandbox.diagnosticLevel)||0,n);
+  car.sandbox.diagnosticsSpent=(Number(car.sandbox.diagnosticsSpent)||0)+spec.cost;
+  record(car,"inspection_"+n,null,"Проведена диагностика: "+spec.title+".");
+  return {
+    ok:true,level:n,title:spec.title,cost:spec.cost,time:spec.time,
+    visibleParts:visible.map(p=>({id:p.id,name:p.name,condition:p.condition,system:p.system,assembly:p.assembly,hiddenDamage:n>=4&&!!p.hiddenDamage})),
+    hiddenDamage:n>=4?hidden.length:null,
+    damagedFasteners:fasteners,
+    legalRisk:n>=5?!!(car.sandbox.flags.vinChanged||car.sandbox.flags.egrDisabled||car.sandbox.flags.ecuTune):null,
+    provenanceCount:n>=5?car.sandbox.parts.filter(p=>p.provenance).length:null
+  };
+}
+
 function carSandboxSummary(car){
   const parts=car.sandbox.parts;
   const avg=parts.length?Math.round(parts.reduce((a,p)=>a+p.condition,0)/parts.length):0;
@@ -426,7 +460,7 @@ function applyGlobalAction(car,action){
 }
 
 module.exports={
-  SYSTEMS,ACTIONS,buildCar,getPart,actionRules,actionPart,
+  SYSTEMS,ACTIONS,INSPECTION_LEVELS,buildCar,getPart,actionRules,actionPart,
   listSystems,listParts,carSandboxSummary,applyGlobalAction,
   compatibility,removeToWarehouse,donorExtract,installWarehousePart,donorCompatibility
 };
@@ -667,6 +701,8 @@ function dependencyGraph(car){
 }
 
 module.exports.actionPart=hierarchyActionPartV2;
+module.exports.INSPECTION_LEVELS=INSPECTION_LEVELS;
+module.exports.inspectCar=inspectCar;
 module.exports.dependencyStatus=dependencyStatus;
 module.exports.dependencyGraph=dependencyGraph;
 module.exports.canRemovePart=canRemovePart;
