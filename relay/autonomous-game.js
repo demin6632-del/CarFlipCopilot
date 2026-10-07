@@ -483,6 +483,34 @@ function sandboxPartKeyboard(c,p) {
     [{text:"⬅️ Детали",callback_data:"ag:parts:"+c.id}]
   ]};
 }
+function sandboxPartKeyboard(c,p) {
+  return {inline_keyboard:[
+    [{text:"🔧 Ремонт",callback_data:"ag:pa:"+c.id+"|"+p.id+"|repair"},{text:p.installed?"🔩 Снять":"🔩 Установить",callback_data:"ag:pa:"+c.id+"|"+p.id+"|"+(p.installed?"remove":"install")}],
+    [{text:"🧷 Крепёж",callback_data:"ag:fasteners:"+c.id+"|"+p.id}],
+    [{text:"🆕 Новая",callback_data:"ag:pa:"+c.id+"|"+p.id+"|replace_new"},{text:"♻️ Б/у",callback_data:"ag:pa:"+c.id+"|"+p.id+"|replace_used"}],
+    [{text:"💰 Продать отдельно",callback_data:"ag:pa:"+c.id+"|"+p.id+"|sell_part"}],
+    [{text:"⬅️ Детали",callback_data:"ag:parts:"+c.id}]
+  ]};
+}
+function sandboxAssembliesKeyboard(c,systemId) {
+  sandbox.buildCar(c);
+  return {inline_keyboard:[
+    ...sandbox.listAssemblies(c,systemId).map(a=>[{text:"🔧 "+a.title+" · "+a.averageCondition+"%",callback_data:"ag:assembly:"+c.id+"|"+a.id+"|"+systemId}]),
+    [{text:"⬅️ Система",callback_data:"ag:system:"+c.id+"|"+systemId}]
+  ]};
+}
+function sandboxFastenerText(f) {
+  return ["🧷 КРЕПЁЖ","",f.title,"Тип: "+f.type,"Размер: "+f.spec,"Состояние: "+f.condition+"%",
+    "Статус: "+(f.installed?"установлен":"снят"),"Цена: "+fmt(f.marketValue)].join("\n");
+}
+function sandboxFastenersKeyboard(c,p) {
+  const list=sandbox.listFasteners(c,p.id);
+  return {inline_keyboard:[
+    ...list.map(f=>[{text:(f.installed?"🔩 ":"📦 ")+f.title+" "+f.spec+" · "+f.condition+"%",callback_data:"ag:fa:"+c.id+"|"+(f.installed?"unscrew":"screw")+"|"+p.id+"|"+f.id}]),
+    [{text:"🔧 Заменить первый крепёж",callback_data:"ag:fa:"+c.id+"|replace|"+p.id+"|"+(list[0]?.id||"")}],
+    [{text:"⬅️ Деталь",callback_data:"ag:part:"+c.id+"|"+p.id}]
+  ]};
+}
 function carText(c) {
   const cost=vehicleCost(c);
   const margin=c.targetSale-cost;
@@ -734,14 +762,44 @@ async function handleCallback(chat,data,firstName,sendFn,answerFn,callbackId) {
       sandbox.buildCar(c);
       const sys=sandbox.SYSTEMS.find(x=>x.id===systemId);
       if(!sys)return {text:"⚠️ Система не найдена.",markup:sandboxSystemsKeyboard(c)};
-      return {text:"⚙️ "+sys.title+"\n\nВыбери конкретную деталь.",markup:sandboxPartsKeyboard(c,systemId)};
+      return {text:"⚙️ "+sys.title+"\n\nВыбери узел/сборку.",markup:sandboxAssembliesKeyboard(c,systemId)};
+    }
+    if(action==="assembly"){
+      if(!c)return {text:"⚠️ Машина уже не в гараже.",markup:garageKeyboard(state)};
+      const bits=String(id||"").split("|");
+      sandbox.buildCar(c);
+      const assemblyId=bits[1], systemId=bits[2];
+      const assemblies=sandbox.listAssemblies(c,systemId);
+      const a=assemblies.find(x=>x.id===assemblyId);
+      if(!a)return {text:"⚠️ Узел не найден.",markup:sandboxSystemsKeyboard(c)};
+      return {text:"🔧 "+a.title+"\n\nДеталей: "+a.parts+"\nСреднее состояние: "+a.averageCondition+"%\nКрепежа: "+a.fasteners+"\nНе установлено: "+a.missingFasteners,markup:sandboxPartsKeyboard(c,systemId)};
     }
     if(action==="part"){
       if(!c)return {text:"⚠️ Машина уже не в гараже.",markup:garageKeyboard(state)};
       const bits=String(id||"").split("|");
+      sandbox.buildCar(c);
       const part=sandbox.getPart(c,bits[1]);
       if(!part)return {text:"⚠️ Деталь не найдена.",markup:sandboxSystemsKeyboard(c)};
       return {text:sandboxPartText(part),markup:sandboxPartKeyboard(c,part)};
+    }
+    if(action==="fasteners"){
+      if(!c)return {text:"⚠️ Машина уже не в гараже.",markup:garageKeyboard(state)};
+      const bits=String(id||"").split("|");
+      sandbox.buildCar(c);
+      const part=sandbox.getPart(c,bits[1]);
+      if(!part)return {text:"⚠️ Деталь не найдена.",markup:sandboxSystemsKeyboard(c)};
+      return {text:sandboxPartText(part)+"\n\n🧷 КРЕПЁЖ\n"+sandbox.fastenerSummary(part).installed+"/"+sandbox.fastenerSummary(part).total+" установлено",markup:sandboxFastenersKeyboard(c,part)};
+    }
+    if(action==="fa"){
+      if(!c)return {text:"⚠️ Машина уже не в гараже.",markup:garageKeyboard(state)};
+      const bits=String(id||"").split("|");
+      sandbox.buildCar(c);
+      const result=sandbox.actionFastener(c,bits[1],bits[2],bits[3]);
+      const part=sandbox.getPart(c,bits[2]);
+      if(!result.ok)return {text:"⚠️ "+(result.reason==="already_removed"?"Крепёж уже снят.":result.reason==="already_installed"?"Крепёж уже установлен.":result.reason==="remove_first"?"Сначала сними крепёж.":"Операция с крепежом невозможна."),markup:sandboxFastenersKeyboard(c,part)};
+      if(result.cost)addTx(state,"sandbox_fastener_"+bits[1],-result.cost,"Крепёж");
+      if(result.revenue)addTx(state,"sandbox_fastener_sell",result.revenue,"Продажа крепежа");
+      return {text:"✅ Крепёж обработан.\n\n"+sandboxFastenerText(result.fastener),markup:sandboxFastenersKeyboard(c,part)};
     }
     if(action==="pa"){
       if(!c)return {text:"⚠️ Машина уже не в гараже.",markup:garageKeyboard(state)};
