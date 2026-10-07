@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "start": "node server.js",
-    "start:telegram": "node telegram-bot.js",
+    "start:telegram": "node -e \"require('fs').writeFileSync('car-sandbox.js',require('fs').readFileSync('car-sandbox.js','utf8').replaceAll('\\\\\\\\n','\\\\n'))\" && node telegram-bot.js",
     "test": "node self-test.js && node autonomous-game.test.js"
   },
   "dependencies": {
