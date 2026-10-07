@@ -668,9 +668,11 @@ function statsText(state) {
   return ["📊 СТАТИСТИКА","","💰 Баланс: "+fmt(state.player.balance),"📥 Оборот входящих: "+fmt(income),"📤 Расходы: "+fmt(spent),"🤝 Продаж: "+deals,"📈 Валовой результат сделок: "+fmt(profit),"🔄 Ходов: "+state.meta.turn].join("\n");
 }
 
-function negotiatePurchase(state,id) {
+function negotiatePurchase(state,id,requestedOffer) {
   const c=state.market.find(x=>x.id===id); if(!c)return {ok:false,reason:"missing"};
-  const offer=Math.max(1000,Math.round(c.buyPrice*(0.94+rng(state)*0.025)/1000)*1000);
+  const offer=Math.max(1000,Math.round(Number(requestedOffer||0)/1000)*1000);
+  if(!Number.isFinite(offer)||offer<1000)return {ok:false,reason:"invalid_offer"};
+  if(offer>c.buyPrice)return {ok:false,reason:"too_high"};
   const pressure=Math.max(.05,Math.min(.75,(c.marketPressure||.5)*.55)), roll=rng(state);
   if(roll>pressure){state.pendingPurchase={carId:id,offer,result:"accepted",finalPrice:offer};return {ok:true,result:"accepted",offer,finalPrice:offer};}
   if(roll>pressure*.55){const counter=Math.round(c.buyPrice*(.975+rng(state)*.025)/1000)*1000;state.pendingPurchase={carId:id,offer,result:"counter",counter,finalPrice:counter};return {ok:true,result:"counter",offer,counter,finalPrice:counter};}
@@ -771,7 +773,36 @@ async function open(chat, firstName, sendFn) {
   return screen(sendFn,chat,state,mainText(state),menu());
 }
 async function handleText(chat,text,firstName,sendFn) {
-  if(text!=="/perekup" && text!=="🎮 Автономная игра" && text!=="🚗 Симулятор Перекупа") return false;
+  const raw=String(text||"").trim();
+  if(raw!=="/perekup" && raw!=="🎮 Автономная игра" && raw!=="🚗 Симулятор Перекупа"){
+    if(/^\d{1,10}$/.test(raw)){
+      const state=await load(chat,firstName);
+      const pending=state.pendingPurchase;
+      if(pending?.awaitingOffer && pending.carId){
+        const offer=Number(raw);
+        const result=await withState(chat,firstName,s=>{
+          if(!s.pendingPurchase?.awaitingOffer || s.pendingPurchase.carId!==pending.carId)return {ok:false,reason:"stale"};
+          const r=negotiatePurchase(s,pending.carId,offer);
+          if(r.ok)s.pendingPurchase={...s.pendingPurchase,offer,awaitingOffer:false};
+          return r;
+        });
+        const car=state.market.find(x=>x.id===pending.carId);
+        if(!car)return true;
+        if(result.reason==="invalid_offer" || result.reason==="too_high"){
+          await sendFn(chat,"⚠️ Некорректная цена.\n\nНапиши сумму не выше цены продавца: "+fmt(car.buyPrice),{reply_markup:{inline_keyboard:[[{text:"⬅️ Осмотр",callback_data:"ag:inspect:"+car.id}]]}});
+          return true;
+        }
+        if(result.result==="rejected"){
+          await sendFn(chat,"❌ ПРОДАВЕЦ ОТКАЗАЛСЯ\n\nТвоё предложение: "+fmt(result.offer)+"\nЦена остаётся "+fmt(car.buyPrice)+".",{reply_markup:{inline_keyboard:[[{text:"💬 Попробовать снова",callback_data:"ag:offer:"+car.id}],[{text:"⬅️ Осмотр",callback_data:"ag:inspect:"+car.id}]]}});
+          return true;
+        }
+        const temp={pendingPurchase:result};
+        await sendFn(chat,purchaseOfferText(temp,car),{reply_markup:{inline_keyboard:result.result==="counter"?[[{text:"🤝 Принять "+fmt(result.counter),callback_data:"ag:buy:"+car.id}],[{text:"💬 Торговаться снова",callback_data:"ag:offer:"+car.id}],[{text:"⬅️ Осмотр",callback_data:"ag:inspect:"+car.id}]]:[[ {text:"💳 Купить за "+fmt(result.finalPrice),callback_data:"ag:buy:"+car.id}],[{text:"💬 Торговаться снова",callback_data:"ag:offer:"+car.id}],[{text:"⬅️ Осмотр",callback_data:"ag:inspect:"+car.id}]]}});
+        return true;
+      }
+    }
+    return false;
+  }
   await open(chat,firstName,sendFn);
   return true;
 }
@@ -808,7 +839,12 @@ async function handleCallback(chat,data,firstName,sendFn,answerFn,callbackId) {
     }
     if(action==="offer"){
       const c=state.market.find(x=>x.id===id); if(!c)return {text:"⚠️ Лот уже исчез с рынка.",markup:marketKeyboard(state)};
-      const result=negotiatePurchase(state,id);
+      state.pendingPurchase={carId:id,awaitingOffer:true};
+      return {text:"💬 ТОРГ С ПРОДАВЦОМ\n\n🚘 "+c.model+"\n💵 Цена продавца: "+fmt(c.buyPrice)+"\n\n✍️ Напиши одним сообщением свою цену в рублях.\nНапример: 1250000\n\nМинимальная сумма: 1 000 ₽. Цена должна быть не выше цены продавца.",markup:{inline_keyboard:[[{text:"⬅️ Осмотр",callback_data:"ag:inspect:"+id}]]}};
+    }
+    if(action==="submit_offer"){
+      const c=state.market.find(x=>x.id===id); if(!c)return {text:"⚠️ Лот уже исчез с рынка.",markup:marketKeyboard(state)};
+      const result=negotiatePurchase(state,id,state.pendingPurchase?.offer);
       if(result.result==="rejected")return {text:"❌ ПРОДАВЕЦ ОТКАЗАЛСЯ\n\nТвоё предложение: "+fmt(result.offer)+"\nЦена остаётся "+fmt(c.buyPrice)+".",markup:inspectKeyboard(c,state)};
       if(result.result==="counter")return {text:purchaseOfferText(state,c),markup:{inline_keyboard:[[{text:"🤝 Принять "+fmt(result.counter),callback_data:"ag:buy:"+id}],[{text:"⬅️ Осмотр",callback_data:"ag:inspect:"+id}]]}};
       return {text:purchaseOfferText(state,c),markup:{inline_keyboard:[[{text:"💳 Купить за "+fmt(result.finalPrice),callback_data:"ag:buy:"+id}],[{text:"⬅️ Осмотр",callback_data:"ag:inspect:"+id}]]}};
