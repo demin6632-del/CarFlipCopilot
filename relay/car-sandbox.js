@@ -299,6 +299,8 @@ function donorExtract(donor,partId){
   const part=getPart(donor,partId);
   if(!part) return {ok:false,reason:"part_missing"};
   if(part.installed){
+    const dependencyCheck=canRemovePart(donor,part);
+    if(!dependencyCheck.ok) return dependencyCheck;
     const removed=actionPart(donor,"remove",part.id);
     if(!removed.ok) return removed;
   }
