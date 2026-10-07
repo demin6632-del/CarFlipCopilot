@@ -786,10 +786,21 @@ async function handleText(chat,text,firstName,sendFn) {
           if(r.ok)s.pendingPurchase={...s.pendingPurchase,offer,awaitingOffer:false};
           return r;
         });
-        const result=run.result||{};
-        const liveState=run.state||state;
-        const car=liveState.market.find(x=>x.id===pending.carId);
-        if(!car)return true;
+        if(!run || !run.result || run.result.duplicate){
+          await sendFn(chat,"⚠️ Торг уже обрабатывается или устарел. Открой «Осмотр» и попробуй ещё раз.",{reply_markup:{inline_keyboard:[[{text:"⬅️ Осмотр",callback_data:"ag:inspect:"+pending.carId}]]}});
+          return true;
+        }
+        const result=run.result;
+        const liveState=run.state;
+        const car=liveState?.market?.find(x=>x.id===pending.carId);
+        if(!car){
+          await sendFn(chat,"⚠️ Лот уже недоступен. Вернись на рынок.",{reply_markup:{inline_keyboard:[[{text:"🛒 Рынок",callback_data:"ag:market"}]]}});
+          return true;
+        }
+        if(!Number.isFinite(Number(result.offer)) || Number(result.offer)!==offer){
+          await sendFn(chat,"⚠️ Цена предложения не была сохранена. Повтори торг ещё раз.",{reply_markup:{inline_keyboard:[[{text:"💬 Торговаться снова",callback_data:"ag:offer:"+car.id}],[{text:"⬅️ Осмотр",callback_data:"ag:inspect:"+car.id}]]}});
+          return true;
+        }
         if(result.reason==="invalid_offer" || result.reason==="too_high"){
           await sendFn(chat,"⚠️ Некорректная цена.\n\nНапиши сумму не выше цены продавца: "+fmt(car.buyPrice),{reply_markup:{inline_keyboard:[[{text:"⬅️ Осмотр",callback_data:"ag:inspect:"+car.id}]]}});
           return true;
