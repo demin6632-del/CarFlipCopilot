@@ -234,3 +234,73 @@ test("dependency graph exposes machine-readable relations",()=>{
   assert.ok(starter);
   assert.ok(starter.dependencies.length>0);
 });
+
+
+test("parts market exposes all five sources",()=>{
+  const car={id:"market_sources",mileage:100000}; sandbox.buildCar(car);
+  sandbox.refreshPartMarket(car,12345);
+  const summary=sandbox.partMarketSummary(car);
+  assert.equal(sandbox.PART_SOURCES.length,5);
+  assert.equal(summary.total,60);
+  for(const source of sandbox.PART_SOURCES) assert.ok(summary.bySource[source.id]>0);
+});
+
+test("parts market offers carry source, condition, price and provenance",()=>{
+  const car={id:"market_offer",mileage:100000}; sandbox.buildCar(car);
+  sandbox.refreshPartMarket(car,777);
+  const offers=sandbox.listPartMarket(car);
+  assert.ok(offers.length>0);
+  const offer=offers[0];
+  assert.ok(offer.source);
+  assert.ok(offer.sourceTitle);
+  assert.ok(offer.condition>=0&&offer.condition<=100);
+  assert.ok(offer.price>0);
+  assert.equal(offer.provenance.offerId,offer.id);
+});
+
+test("buying a part moves it to warehouse and preserves market provenance",()=>{
+  const car={id:"market_buy",mileage:100000}; sandbox.buildCar(car);
+  sandbox.refreshPartMarket(car,888);
+  const offer=sandbox.listPartMarket(car,{source:"dismantler"})[0];
+  const before=car.sandbox.warehouse.length;
+  const result=sandbox.buyPartMarketOffer(car,offer.id,offer.price+1000);
+  assert.equal(result.ok,true);
+  assert.equal(car.sandbox.warehouse.length,before+1);
+  assert.equal(result.part.provenance.marketSource,"dismantler");
+  assert.equal(result.part.provenance.offerId,offer.id);
+  assert.equal(result.part.serial,offer.serial);
+  assert.equal(result.part.condition,offer.condition);
+  assert.equal(result.part.fasteners.length>0,true);
+});
+
+test("parts market refuses purchase without enough money and does not mutate warehouse",()=>{
+  const car={id:"market_money",mileage:100000}; sandbox.buildCar(car);
+  sandbox.refreshPartMarket(car,999);
+  const offer=sandbox.listPartMarket(car)[0];
+  const before=car.sandbox.warehouse.length;
+  const result=sandbox.buyPartMarketOffer(car,offer.id,offer.price-1);
+  assert.equal(result.ok,false);
+  assert.equal(result.reason,"insufficient_funds");
+  assert.equal(car.sandbox.warehouse.length,before);
+  assert.ok(sandbox.getPartMarketOffer(car,offer.id));
+});
+
+test("used and new market offers have source-specific economics",()=>{
+  const car={id:"market_types",mileage:100000}; sandbox.buildCar(car);
+  sandbox.refreshPartMarket(car,13579);
+  const store=sandbox.listPartMarket(car,{source:"store"})[0];
+  const dismantler=sandbox.listPartMarket(car,{source:"dismantler"})[0];
+  const china=sandbox.listPartMarket(car,{source:"china"})[0];
+  assert.equal(store.type,"new");
+  assert.equal(dismantler.type,"used");
+  assert.equal(china.type,"new");
+  assert.ok(store.condition>=98);
+  assert.ok(dismantler.condition<98);
+});
+
+test("market filters by system, type and maximum price",()=>{
+  const car={id:"market_filters",mileage:100000}; sandbox.buildCar(car);
+  sandbox.refreshPartMarket(car,2468);
+  const offers=sandbox.listPartMarket(car,{system:"engine",type:"used",maxPrice:50000});
+  assert.ok(offers.every(o=>o.system==="engine"&&o.type==="used"&&o.price<=50000));
+});
