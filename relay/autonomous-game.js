@@ -668,12 +668,21 @@ function statsText(state) {
   return ["📊 СТАТИСТИКА","","💰 Баланс: "+fmt(state.player.balance),"📥 Оборот входящих: "+fmt(income),"📤 Расходы: "+fmt(spent),"🤝 Продаж: "+deals,"📈 Валовой результат сделок: "+fmt(profit),"🔄 Ходов: "+state.meta.turn].join("\n");
 }
 
+function parsePurchaseOfferInput(value) {
+  // Принимаем любую положительную целую сумму: 1, 10, 100, 1000, 10000,
+  // а также запись с пробелами/символом рубля, например "10 000 ₽".
+  const raw=String(value??"").trim();
+  const normalized=raw.replace(/[\\s₽]/g,"");
+  if(!/^\d+$/.test(normalized))return null;
+  const offer=Number(normalized);
+  if(!Number.isSafeInteger(offer)||offer<=0)return null;
+  return offer;
+}
+
 function negotiatePurchase(state,id,requestedOffer) {
   const c=state.market.find(x=>x.id===id); if(!c)return {ok:false,reason:"missing"};
-  const raw=String(requestedOffer??"").trim();
-  if(!/^\d+$/.test(raw))return {ok:false,reason:"invalid_offer"};
-  const offer=Number(raw);
-  if(!Number.isSafeInteger(offer)||offer<=0)return {ok:false,reason:"invalid_offer"};
+  const offer=parsePurchaseOfferInput(requestedOffer);
+  if(offer===null)return {ok:false,reason:"invalid_offer"};
   if(offer>c.buyPrice)return {ok:false,reason:"too_high"};
   const pressure=Math.max(.05,Math.min(.75,(c.marketPressure||.5)*.55)), roll=rng(state);
   if(roll>pressure){state.pendingPurchase={carId:id,offer,result:"accepted",finalPrice:offer};return {ok:true,result:"accepted",offer,finalPrice:offer};}
@@ -777,11 +786,15 @@ async function open(chat, firstName, sendFn) {
 async function handleText(chat,text,firstName,sendFn) {
   const raw=String(text||"").trim();
   if(raw!=="/perekup" && raw!=="🎮 Автономная игра" && raw!=="🚗 Симулятор Перекупа"){
-    if(/^\d+$/.test(raw)){
+    const parsedOffer=parsePurchaseOfferInput(raw);
+    if(parsedOffer!==null){
       const state=await load(chat,firstName);
       const pending=state.pendingPurchase;
+      // Не теряем режим торга из-за старого/неполного состояния:
+      // если для чата есть активный автомобиль торга, любое новое число
+      // считается новым предложением, пока сделка не завершена/отменена.
       if(pending?.carId && (pending.awaitingOffer || pending.result==="counter")){
-        const offer=Number(raw);
+        const offer=parsedOffer;
         const run=await withState(chat,firstName,s=>{
           if(!s.pendingPurchase?.carId || s.pendingPurchase.carId!==pending.carId)return {ok:false,reason:"stale"};
           const r=negotiatePurchase(s,pending.carId,offer);
@@ -804,7 +817,7 @@ async function handleText(chat,text,firstName,sendFn) {
           return true;
         }
         if(result.reason==="invalid_offer" || result.reason==="too_high"){
-          await sendFn(chat,"⚠️ Некорректная цена.\n\nВведи любое целое число больше 0 и не выше цены продавца: "+fmt(car.buyPrice),{reply_markup:{inline_keyboard:[[{text:"⬅️ Осмотр",callback_data:"ag:inspect:"+car.id}]]}});
+          await sendFn(chat,"⚠️ Некорректная цена.\n\nВведи любую целую сумму больше 0 и не выше цены продавца: "+fmt(car.buyPrice),{reply_markup:{inline_keyboard:[[{text:"⬅️ Осмотр",callback_data:"ag:inspect:"+car.id}]]}});
           return true;
         }
         if(result.result==="rejected"){
@@ -855,7 +868,7 @@ async function handleCallback(chat,data,firstName,sendFn,answerFn,callbackId) {
     if(action==="offer"){
       const c=state.market.find(x=>x.id===id); if(!c)return {text:"⚠️ Лот уже исчез с рынка.",markup:marketKeyboard(state)};
       state.pendingPurchase={carId:id,awaitingOffer:true};
-      return {text:"💬 ТОРГ С ПРОДАВЦОМ\n\n🚘 "+c.model+"\n💵 Цена продавца: "+fmt(c.buyPrice)+"\n\n✍️ Напиши одним сообщением свою цену в рублях.\nНапример: 1250000\n\nМинимальная сумма: 1 000 ₽. Цена должна быть не выше цены продавца.",markup:{inline_keyboard:[[{text:"⬅️ Осмотр",callback_data:"ag:inspect:"+id}]]}};
+      return {text:"💬 ТОРГ С ПРОДАВЦОМ\n\n🚘 "+c.model+"\n💵 Цена продавца: "+fmt(c.buyPrice)+"\n\n✍️ Напиши одним сообщением свою цену в рублях.\nНапример: 1250000 или 1 250 000 ₽\n\nЛюбая целая сумма больше 0. Цена должна быть не выше цены продавца.",markup:{inline_keyboard:[[{text:"⬅️ Осмотр",callback_data:"ag:inspect:"+id}]]}};
     }
     if(action==="submit_offer"){
       const c=state.market.find(x=>x.id===id); if(!c)return {text:"⚠️ Лот уже исчез с рынка.",markup:marketKeyboard(state)};
