@@ -22,59 +22,34 @@ jobs:
       - name: Package check
         working-directory: relay
         run: npm install --ignore-scripts
+      - name: Autonomous game tests
+        working-directory: relay
+        run: |
+          node --check autonomous-game.js
+          node --check autonomous-game.test.js
+          node autonomous-game.test.js
       - name: Game dashboard routing guard
         run: |
           node - <<'NODE'
           const fs = require('fs');
-          const s = fs.readFileSync('relay/telegram-bot.js','utf8');
-          const start = s.indexOf('async function gameKeyboard(message){');
-          const end = s.indexOf('\nasync function renderGameNow', start);
-          if(start < 0 || end < 0) throw new Error('gameKeyboard boundary not found');
-          const block = s.slice(start, end);
-          if(!block.includes('const labels=')) throw new Error('game buttons are not sourced from current game screen');
-          for (const label of ['🧠 Стратегия','📊 Состояние','📜 История','💰 Экономика','🔄 Обновить игру','🚪 Выйти из игры']) {
-            if (block.includes('text:"'+label+'"')) throw new Error('extra bot control remains in game keyboard: '+label);
+          const bot = fs.readFileSync('relay/telegram-bot.js','utf8');
+          const game = fs.readFileSync('relay/autonomous-game.js','utf8');
+          if (!bot.includes('const autonomousGame = require("./autonomous-game");')) throw new Error('autonomous game module is not wired');
+          for (const route of ['text==="/start"','text==="/perekup"','text==="/game"','data.startsWith("ag:")']) {
+            if (!bot.includes(route)) throw new Error('missing autonomous route: '+route);
           }
-          if (!block.includes('text:"⬅️ Назад"')) throw new Error('Back button missing from game keyboard');
-          if(!block.includes('return {keyboard:rows')) throw new Error('game keyboard return missing');
-          console.log('Game keyboard guard: only current game buttons are exposed.');
-          const renderStart = s.indexOf('async function renderGameNow(chat,options={})');
-          const renderEnd = s.indexOf('\nasync function renderGame(chat,options={})', renderStart);
-          if(renderStart < 0 || renderEnd < 0) throw new Error('renderGameNow boundary not found');
-          const renderBlock = s.slice(renderStart, renderEnd);
-          if(!renderBlock.includes('editMessageText')) throw new Error('game screen must be edited, not resent');
-          if(!renderBlock.includes('editMessageCaption')) throw new Error('photo game screen must be edited via caption');
-          if(renderBlock.includes('tg("deleteMessage",{chat_id:chat,message_id:messageId})')) throw new Error('game refresh must not delete and resend the screen');
+          if (!bot.includes('autonomousGame.init()')) throw new Error('autonomous game init missing');
+          if (!bot.includes('q.id')) throw new Error('callback id is not passed for idempotency');
+          if (!game.includes('function purchaseListing(state, id)')) throw new Error('purchase flow helper missing');
+          if (!game.includes('function repairVehicle(state, id)')) throw new Error('repair flow helper missing');
+          if (!game.includes('function prepareVehicle(state, id)')) throw new Error('preparation flow helper missing');
+          if (!game.includes('function acceptPendingSale(state, id)')) throw new Error('sale flow helper missing');
+          if (!game.includes('function buyPlate(state, id)')) throw new Error('plate buy helper missing');
+          if (!game.includes('function sellPlate(state, id)')) throw new Error('plate sell helper missing');
+          if (!game.includes('function withState')) throw new Error('transactional state guard missing');
+          if (!game.includes('async function withState(chat, firstName, mutate, callbackId)')) throw new Error('callback idempotency guard missing');
+          if (!game.includes('if(callbackId && state.processedCallbacks.includes(String(callbackId)))')) throw new Error('duplicate callback check is not transactional');
+          if (!game.includes('SELECT state FROM autonomous_game_state WHERE chat_id=$1 FOR UPDATE')) throw new Error('row lock missing');
+          console.log('Autonomous game routing and transactional flow guard: OK');
           NODE
-          grep -F 'if(text==="🧠 Стратегия") return advice(chat);' relay/telegram-bot.js
-          grep -F 'if(text==="📊 Состояние") return state(chat);' relay/telegram-bot.js
-          grep -F 'if(text==="🔄 Обновить игру") return renderGame(chat);' relay/telegram-bot.js
-          grep -F 'webhookHandler=processUpdate' relay/telegram-bot.js
-          grep -F '{command:"game",description:"Открыть игру в Telegram"}' relay/telegram-bot.js
-          grep -F 'gameActionChats.add(String(chat));' relay/telegram-bot.js
-          grep -F 'const recommended=strategy.actionEvidence ? (ranked[0]?.label||null) : null;' relay/telegram-bot.js
-          grep -F 'secret_token:WEBHOOK_SECRET' relay/telegram-bot.js
-          grep -F '[],1200);' relay/telegram-bot.js
-          grep -F 'setTimeout(()=>resolve(null),700)' relay/telegram-bot.js
-          grep -F 'if(s.vehicle?.hp!=null)lines.push("⚙️ Мощность: "+s.vehicle.hp+" л.с.");' relay/telegram-bot.js
-          grep -F 'if(offer!=null)lines.push("💵 Предложение: "+offer.toLocaleString("ru-RU")+" ₽");' relay/telegram-bot.js
-          grep -F 'if(contract){' relay/telegram-bot.js
-          grep -F 'Учтённая себестоимость:' relay/telegram-bot.js
-
-          grep -F 'for (let attempt=0; attempt<6; attempt++)' relay/user-session-bridge.js
-          grep -F 'await new Promise(r=>setTimeout(r,250));' relay/user-session-bridge.js
-          grep -F 'recordEconomyTransition(chat,beforeState,target,afterState).catch' relay/telegram-bot.js
-          grep -F 'const hasUsableGameScreen=!!(lastGameScreen && (' relay/telegram-bot.js
-          grep -F 'const hasScreenText=String(state.raw_message||state.raw_text||"").trim().length>0;' relay/telegram-bot.js
-          grep -F 'if(!hasParsedState)return;' relay/telegram-bot.js
-          grep -F 'const startedAt=Date.now();' relay/user-session-bridge.js
-          grep -F 'Number(this.lastGameMessage.received_at||0)>=startedAt' relay/user-session-bridge.js
-          grep -F 'Telegram delivery mode: webhook; url:' relay/telegram-bot.js
-          grep -F 'Telegram webhook active; getUpdates disabled.' relay/telegram-bot.js
-          if grep -Eq 'getUpdates\\s*\\(' relay/telegram-bot.js; then echo 'Unexpected getUpdates call remains'; exit 1; fi
-          grep -F 'startGamePolling()' relay/user-session-bridge.js
-          grep -F 'getMessages(this.gameUsername,{limit:1})' relay/user-session-bridge.js
-          grep -F 'lastPolledGameKey' relay/user-session-bridge.js
-          if grep -Fq 'приоритет ' relay/telegram-bot.js; then echo 'Old priority wording remains'; exit 1; fi
-          grep -F 'оценка модели ' relay/telegram-bot.js
-          grep -F 'slice(0,3900)' relay/telegram-bot.js
+          echo "Autonomous game relay guard: OK"

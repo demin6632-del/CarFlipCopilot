@@ -7,6 +7,7 @@ const { acquireTelegramPollLock, releaseTelegramPollLock } = require("./telegram
 const { recordScreen: recordMemoryScreen, recordAction: recordMemoryAction, recent: recentMemory } = require("./game-memory");
 const { recordTransition: recordEconomyTransition, summary: economySummary, currentVehicleEconomics, recordPlateAuctionReturn, plateWarehouse, plateDecision } = require("./game-economy");
 const { buildStrategy, parseContract } = require("./strategy-engine");
+const autonomousGame = require("./autonomous-game");
 
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || "";
 const RELAY_TOKEN = process.env.COPILOT_TOKEN || "";
@@ -381,14 +382,14 @@ async function handlePhoto(chat,photo){
 
 async function handle(m){
   const chat=m.chat?.id;if(!chat)return;const text=String(m.text||"").trim();
-  if(text==="/start"){users.set(chat,{connected:false});return send(chat,"🚗 CarFlipCopilot\n\nЯ работаю прямо внутри Telegram. Android-приложение для общения со мной не нужно.\n\nМоя задача — смотреть состояние «Симулятора Перекупа», учитывать историю сделок и говорить одно конкретное следующее действие.\n\nНачни с «🔗 Подключить игру».");}
-  if(text==="/connect")return connect(chat);if(text==="/state")return state(chat);if(text==="/advice")return advice(chat);if(text==="/probe")return probe(chat);if(text==="/perekup")return gameDebug(chat);if(text==="/bridge")return bridgeStatus(chat);if(text==="/game")return gameDebug(chat);
+  if(text==="/start"){users.set(chat,{connected:false});return autonomousGame.handleText(chat,"/perekup",m.from?.first_name||"Перекуп",(c,t,e)=>send(c,t,e));}
+  if(text==="/connect")return connect(chat);if(text==="/state")return state(chat);if(text==="/advice")return advice(chat);if(text==="/probe")return probe(chat);if(text==="/perekup"||text==="/game")return autonomousGame.handleText(chat,"/perekup",m.from?.first_name||"Перекуп",(c,t,e)=>send(c,t,e));if(text==="/bridge")return bridgeStatus(chat);
   if(text==="/help")return send(chat,"Команды:\n/connect — подключение игры\n/state — состояние\n/advice — что делать сейчас\n/probe — проверить связь с игрой\n/bridge — статус Telegram-моста\n/game — открыть игру прямо в чате\n/help — эта справка\n\nМожно прислать скриншот текущей ситуации — бот разберёт его прямо здесь.");
   // Main-menu action must be handled before game-mode routing. If a game screen
   // arrived automatically, activeGameChats may already be set; in that case
   // pressing «🎮 Играть» must still open/refresh the game screen, not be sent
   // to the game bot as an unknown game button.
-  if(text==="🎮 Играть"){ return gameDebug(chat); }
+  if(text==="🎮 Играть"){ return autonomousGame.handleText(chat,"🎮 Автономная игра",m.from?.first_name||"Перекуп",(c,t,e)=>send(c,t,e)); }
   if(text==="💰 Экономика"){
     const e=await economySummary(chat,200);
     const live=userBridge.status();
@@ -962,6 +963,7 @@ async function probe(chat){
 }
 async function callback(q){
   const chat=q.message?.chat?.id,data=String(q.data||"");
+  if(data.startsWith("ag:")) return autonomousGame.handleCallback(chat,data,q.from?.first_name||"Перекуп",(c,t,e)=>send(c,t,e),()=>tg("answerCallbackQuery",{callback_query_id:q.id}),q.id);
   try{await tg("answerCallbackQuery",{callback_query_id:q.id});}catch{}
   if(data==="game")return renderGame(chat,{messageId:q.message?.message_id});
   if(data==="game_refresh")return renderGame(chat,{messageId:q.message?.message_id});
@@ -1149,6 +1151,7 @@ process.once("SIGINT",()=>gracefulShutdown("SIGINT"));
 
 console.log("Telegram bridge env:",{apiIdPresent:!!process.env.TELEGRAM_API_ID,apiHashPresent:!!process.env.TELEGRAM_API_HASH});
 if(process.env.TELEGRAM_API_ID&&process.env.TELEGRAM_API_HASH)userBridge.ensureClient().then(()=>console.log("Telegram user bridge initialized")).catch(e=>console.log("Telegram user bridge init:",e.message));
+autonomousGame.init().then(ok=>console.log("Autonomous game DB:",ok?"ready":"DATABASE_URL missing")).catch(e=>console.log("Autonomous game DB init:",e.message));
 registerBotCommands().catch(e=>console.log("Telegram command registration:",e.message));
 warmup().then(ok=>console.log("OCR worker warmup:",ok?"ready":"failed")).catch(e=>console.log("OCR warmup error:",e.message));
 loop();
