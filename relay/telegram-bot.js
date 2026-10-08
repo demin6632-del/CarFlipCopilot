@@ -1,4 +1,5 @@
 const http = require("http");
+const { Pool } = require("pg");
 const https = require("https");
 const { acquireTelegramPollLock, releaseTelegramPollLock } = require("./telegram-poll-lock");
 const autonomousGame = require("./autonomous-game");
@@ -8,6 +9,7 @@ const API = "https://api.telegram.org/bot" + BOT_TOKEN;
 const HEALTH_PORT = Number(process.env.PORT || 10000);
 const keepAliveAgent = new https.Agent({keepAlive:true,maxSockets:32,maxFreeSockets:8,timeout:60000,freeSocketTimeout:15000});
 let offset=0,polling=false;
+let pollStatePoolPromise=null;
 const updateQueues=new Map();
 const BOT_REQUEST_TIMEOUT=10000;
 
@@ -38,6 +40,38 @@ function enqueueChatUpdate(chatId,task){
 }
 process.on("unhandledRejection",e=>console.log("UNHANDLED REJECTION:",e?.stack||e?.message||e));
 process.on("uncaughtException",e=>console.log("UNCAUGHT EXCEPTION:",e?.stack||e?.message||e));
+
+function pollStateDb(){
+  if(!process.env.DATABASE_URL)return null;
+  if(!pollStatePoolPromise){
+    pollStatePoolPromise=Promise.resolve(new Pool({
+      connectionString:process.env.DATABASE_URL,
+      ssl:{rejectUnauthorized:false},
+      max:2,
+      connectionTimeoutMillis:5000,
+      query_timeout:7000,
+      statement_timeout:7000
+    }));
+  }
+  return pollStatePoolPromise;
+}
+async function loadTelegramOffset(){
+  const p=pollStateDb();
+  if(!p){offset=0;return 0;}
+  const pool=await p;
+  await pool.query(\`CREATE TABLE IF NOT EXISTS telegram_poll_state (id integer PRIMARY KEY, offset bigint NOT NULL DEFAULT 0, updated_at timestamptz NOT NULL DEFAULT now())\`);
+  await pool.query(\`INSERT INTO telegram_poll_state(id,offset) VALUES(1,0) ON CONFLICT(id) DO NOTHING\`);
+  const r=await pool.query(\`SELECT offset FROM telegram_poll_state WHERE id=1\`);
+  offset=Number(r.rows[0]?.offset||0);
+  console.log("Telegram poll offset loaded:",offset);
+  return offset;
+}
+async function saveTelegramOffset(nextOffset){
+  const p=pollStateDb();
+  if(!p)return;
+  const pool=await p;
+  await pool.query(\`UPDATE telegram_poll_state SET offset=$1,updated_at=now() WHERE id=1\`,[String(nextOffset)]);
+}
 
 function tg(method,body){
   return new Promise((resolve,reject)=>{
@@ -97,13 +131,18 @@ async function handleCallback(q){
   return autonomousGame.handleCallback(chat,data,q.from?.first_name||"Перекуп",(c,t,extra)=>send(c,t,extra),()=>tg("answerCallbackQuery",{callback_query_id:q.id}),q.id);
 }
 async function processUpdate(update){
-  if(!update||typeof update!=="object")return;
-  if(update.update_id!=null)offset=Math.max(offset,Number(update.update_id)+1);
+  if(!update||typeof update!=="object")return false;
   const chat=update.callback_query?.message?.chat?.id??update.message?.chat?.id??"global";
   return enqueueChatUpdate(chat,async()=>{
     try{
-      if(update.callback_query)return await handleCallback(update.callback_query);
-      if(update.message)return await handleMessage(update.message);
+      if(update.callback_query)await handleCallback(update.callback_query);
+      else if(update.message)await handleMessage(update.message);
+      if(update.update_id!=null){
+        const next=Math.max(offset,Number(update.update_id)+1);
+        offset=next;
+        await saveTelegramOffset(next);
+      }
+      return true;
     }catch(e){
       console.log("UPDATE HANDLER ERROR:",e?.stack||e?.message||e);
       if(chat!=="global"){try{await send(chat,"⚠️ Ошибка обработки. Попробуй ещё раз.");}catch(sendError){console.log("ERROR MESSAGE FAILED:",sendError?.message||sendError);}}
@@ -127,6 +166,7 @@ async function pollBotUpdates(){
     return false;
   }
   try{
+    await loadTelegramOffset();
     while(polling){
       try{
         const updates=await tgLongPoll({offset,timeout:20,limit:100,allowed_updates:["message","callback_query"]});
