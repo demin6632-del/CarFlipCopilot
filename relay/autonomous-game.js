@@ -6,23 +6,34 @@ const START_BALANCE = 3000000;
 const GARAGE_CAPACITY = 3;
 
 const CAR_PHOTOS = {
-  vesta_2019: "https://images.unsplash.com/photo-1684838997746-2fa4bc6b6194?auto=format&fit=crop&fm=jpg&q=85&w=1200",
-  focus_2017: "https://images.unsplash.com/photo-1668415759930-5a9dbe80c488?auto=format&fit=crop&fm=jpg&q=85&w=1200",
-  octavia_2018: "https://images.unsplash.com/photo-1684838997746-2fa4bc6b6194?auto=format&fit=crop&fm=jpg&q=85&w=1200",
-  camry_2015: "https://images.unsplash.com/photo-1668415759930-5a9dbe80c488?auto=format&fit=crop&fm=jpg&q=85&w=1200",
-  mazda6_2017: "https://images.unsplash.com/photo-1668415759930-5a9dbe80c488?auto=format&fit=crop&fm=jpg&q=85&w=1200",
-  a4_2016: "https://images.unsplash.com/photo-1684838997746-2fa4bc6b6194?auto=format&fit=crop&fm=jpg&q=85&w=1200",
-  x1_2015: "https://images.unsplash.com/photo-1668415759930-5a9dbe80c488?auto=format&fit=crop&fm=jpg&q=85&w=1200",
-  qashqai_2018: "https://images.unsplash.com/photo-1684838997746-2fa4bc6b6194?auto=format&fit=crop&fm=jpg&q=85&w=1200"
+  vesta_2019: "https://images.pexels.com/photos/7434579/pexels-photo-7434579.jpeg?auto=compress&cs=tinysrgb&w=1200",
+  focus_2017: "https://images.pexels.com/photos/112460/pexels-photo-112460.jpeg?auto=compress&cs=tinysrgb&w=1200",
+  octavia_2018: "https://images.pexels.com/photos/7434579/pexels-photo-7434579.jpeg?auto=compress&cs=tinysrgb&w=1200",
+  camry_2015: "https://images.pexels.com/photos/112460/pexels-photo-112460.jpeg?auto=compress&cs=tinysrgb&w=1200",
+  mazda6_2017: "https://images.pexels.com/photos/112460/pexels-photo-112460.jpeg?auto=compress&cs=tinysrgb&w=1200",
+  a4_2016: "https://images.pexels.com/photos/7434579/pexels-photo-7434579.jpeg?auto=compress&cs=tinysrgb&w=1200",
+  x1_2015: "https://images.pexels.com/photos/112460/pexels-photo-112460.jpeg?auto=compress&cs=tinysrgb&w=1200",
+  qashqai_2018: "https://images.pexels.com/photos/7434579/pexels-photo-7434579.jpeg?auto=compress&cs=tinysrgb&w=1200"
 };
 
 function carPhotoFor(car) {
   return CAR_PHOTOS[car?.catalogId] || null;
 }
 function carPhotoFromText(text) {
-  const s=String(text||"");
-  const found=CATALOG.find(c=>s.includes(c.name));
+  const s=String(text||"").toLowerCase();
+  const found=CATALOG.find(c=>s.includes(String(c.name).toLowerCase()));
   return found ? CAR_PHOTOS[found.id] : null;
+}
+function carPhotoFromState(state, text) {
+  const fromText=carPhotoFromText(text);
+  if(fromText) return fromText;
+  const pending=state?.pendingPurchase?.carId || state?.pendingDeal?.carId;
+  if(pending){
+    const car=[...(state.market||[]),...(state.garage||[])].find(x=>String(x.id)===String(pending));
+    const photo=carPhotoFor(car);
+    if(photo) return photo;
+  }
+  return null;
 }
 
 const CATALOG = [
@@ -839,19 +850,24 @@ async function send(sendFn,chat,text,markup) {
   return sendFn(chat,text,markup?{reply_markup:markup}:undefined);
 }
 async function screen(sendFn,chat,state,text,markup) {
-  const photo=carPhotoFromText(text);
   const keyboard=markup||menu();
-  if(photo && String(text||"").length<=1024) {
-    try { return await sendFn(chat,text,{photo_url:photo,reply_markup:keyboard}); } catch(e) {
-      console.log("CAR PHOTO SEND ERROR:",e?.message||e);
-    }
-  }
+  const body=String(text||"");
+  const photo=carPhotoFromState(state,body);
   if(photo) {
-    try { await sendFn(chat,"",{photo_url:photo}); } catch(e) {
-      console.log("CAR PHOTO FALLBACK ERROR:",e?.message||e);
+    if(body.length<=1024) {
+      try { return await sendFn(chat,body,{photo_url:photo,reply_markup:keyboard}); } catch(e) {
+        console.log("CAR PHOTO SEND ERROR:",e?.message||e);
+      }
+    } else {
+      try {
+        await sendFn(chat,"",{photo_url:photo});
+        return await sendFn(chat,body,{reply_markup:keyboard});
+      } catch(e) {
+        console.log("CAR PHOTO LONG SEND ERROR:",e?.message||e);
+      }
     }
   }
-  return send(sendFn,chat,text,keyboard);
+  return send(sendFn,chat,body,keyboard);
 }
 
 async function open(chat, firstName, sendFn) {
