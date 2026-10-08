@@ -174,6 +174,12 @@ async function pollBotUpdates(){
     return false;
   }
   try{
+    const ready=await setupTelegramDelivery();
+    if(!ready){
+      console.log("Telegram delivery setup failed; releasing poll lock.");
+      return false;
+    }
+    await registerBotCommands();
     await loadTelegramOffset();
     while(polling){
       try{
@@ -192,11 +198,11 @@ async function pollBotUpdates(){
 async function loop(){
   if(!BOT_TOKEN||polling)return;
   polling=true;
-  const ready=await setupTelegramDelivery();
-  if(!ready){polling=false;setTimeout(loop,5000);return;}
-  console.log("Telegram delivery active; autonomous game polling started.");
+  console.log("Telegram delivery starting; waiting for poll lock.");
   try{
-    await pollBotUpdates();
+    const started=await pollBotUpdates();
+    if(!started) console.log("Telegram delivery is passive; no polling lock owned.");
+
   }catch(e){
     console.log("TELEGRAM POLLING FATAL:",e?.stack||e?.message||e);
   }finally{
@@ -214,5 +220,4 @@ process.once("SIGTERM",()=>gracefulShutdown("SIGTERM"));
 process.once("SIGINT",()=>gracefulShutdown("SIGINT"));
 console.log("CarFlipCopilot mode: AUTONOMOUS GAME ONLY");
 autonomousGame.init().then(ok=>console.log("Autonomous game DB:",ok?"ready":"DATABASE_URL missing")).catch(e=>console.log("Autonomous game DB init:",e.message));
-registerBotCommands().catch(e=>console.log("Telegram command registration:",e.message));
 loop();
