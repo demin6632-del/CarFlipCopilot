@@ -59,9 +59,9 @@ async function loadTelegramOffset(){
   const p=pollStateDb();
   if(!p){offset=0;return 0;}
   const pool=await p;
-  await pool.query(\`CREATE TABLE IF NOT EXISTS telegram_poll_state (id integer PRIMARY KEY, offset bigint NOT NULL DEFAULT 0, updated_at timestamptz NOT NULL DEFAULT now())\`);
-  await pool.query(\`INSERT INTO telegram_poll_state(id,offset) VALUES(1,0) ON CONFLICT(id) DO NOTHING\`);
-  const r=await pool.query(\`SELECT offset FROM telegram_poll_state WHERE id=1\`);
+  await pool.query(`CREATE TABLE IF NOT EXISTS telegram_poll_state (id integer PRIMARY KEY, offset bigint NOT NULL DEFAULT 0, updated_at timestamptz NOT NULL DEFAULT now())`);
+  await pool.query(`INSERT INTO telegram_poll_state(id,offset) VALUES(1,0) ON CONFLICT(id) DO NOTHING`);
+  const r=await pool.query(`SELECT offset FROM telegram_poll_state WHERE id=1`);
   offset=Number(r.rows[0]?.offset||0);
   console.log("Telegram poll offset loaded:",offset);
   return offset;
@@ -70,7 +70,7 @@ async function saveTelegramOffset(nextOffset){
   const p=pollStateDb();
   if(!p)return;
   const pool=await p;
-  await pool.query(\`UPDATE telegram_poll_state SET offset=$1,updated_at=now() WHERE id=1\`,[String(nextOffset)]);
+  await pool.query(`UPDATE telegram_poll_state SET offset=$1,updated_at=now() WHERE id=1`,[String(nextOffset)]);
 }
 
 function tg(method,body){
