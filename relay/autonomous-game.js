@@ -5,6 +5,26 @@ const VERSION = 2;
 const START_BALANCE = 3000000;
 const GARAGE_CAPACITY = 3;
 
+const CAR_PHOTOS = {
+  vesta_2019: "https://i.pragmaticar.ru/img/used/8443531/large/2702d7968fc54b1ef3011766ff8cf55a.jpg",
+  focus_2017: "https://media.merrjep.al/Image/0caca8ae-6cee-4bee-a7f7-52859cfa928d/20250815/1280/1024/ford-focus-1-5-nafte-viti-2017.jpeg?AllowCropping=True",
+  octavia_2018: "https://www.bazos.sk/img/1/272/189192272.jpg",
+  camry_2015: "https://avtohit.ru/iwebp/4323/toyota-camry-4323-2-xl.webp",
+  mazda6_2017: "https://crdms.images.consumerreports.org/c_lfill%2Cw_768%2Cq_auto%2Cf_auto/prod/cars/chrome/white/2017MAC140002_1280_05",
+  a4_2016: "https://c0.carsie.ie/d43864c90df075c94489ddbe4ca5ffe90317d2dbbb83bc1663876797a9acf5be.jpg",
+  x1_2015: "https://images.cdn.autocar.co.uk/sites/autocar.co.uk/files/images/car-reviews/first-drives/legacy/bmw-x1-2015-new-014.jpg",
+  qashqai_2018: "https://public.keskofiles.com/f/k-auto/modelimages/nissan-qashqai-2018-zme-621-004.jpg?auto=format&q=75&w=1000"
+};
+
+function carPhotoFor(car) {
+  return CAR_PHOTOS[car?.catalogId] || null;
+}
+function carPhotoFromText(text) {
+  const s=String(text||"");
+  const found=CATALOG.find(c=>s.includes(c.name));
+  return found ? CAR_PHOTOS[found.id] : null;
+}
+
 const CATALOG = [
   { id:"vesta_2019", name:"Lada Vesta 1.6", year:2019, base:720000, demand:0.92, risk:0.12, repair:42000, sale:910000 },
   { id:"focus_2017", name:"Ford Focus 1.6", year:2017, base:890000, demand:0.78, risk:0.18, repair:68000, sale:1120000 },
@@ -819,6 +839,10 @@ async function send(sendFn,chat,text,markup) {
   return sendFn(chat,text,markup?{reply_markup:markup}:undefined);
 }
 async function screen(sendFn,chat,state,text,markup) {
+  const photo=carPhotoFromText(text);
+  if(photo) {
+    try { await sendFn(chat,"",{photo_url:photo}); } catch {}
+  }
   return send(sendFn,chat,text,markup||menu());
 }
 
@@ -1248,4 +1272,4 @@ async function handleCallback(chat,data,firstName,sendFn,answerFn,callbackId) {
   return true;
 }
 
-module.exports={init,load,save,open,handleText,handleCallback,CATALOG,BUYER_TYPES,newState,refreshMarket,createListing,addTx,scoreListing,bestDeal,recommendation,addProgress,updateContracts,buyerOffer,buyerOfferDetails,buyerProfile,negotiation,dealRisk,runDiagnostic,vehicleCost,purchaseListing,repairVehicle,prepareVehicle,buyPlate,sellPlate,acceptPendingSale,parsePurchaseOfferInput,negotiatePurchase};
+module.exports={init,load,save,open,handleText,handleCallback,CATALOG,CAR_PHOTOS,BUYER_TYPES,newState,refreshMarket,createListing,addTx,scoreListing,bestDeal,recommendation,addProgress,updateContracts,buyerOffer,buyerOfferDetails,buyerProfile,negotiation,dealRisk,runDiagnostic,vehicleCost,purchaseListing,repairVehicle,prepareVehicle,buyPlate,sellPlate,acceptPendingSale,parsePurchaseOfferInput,negotiatePurchase};
