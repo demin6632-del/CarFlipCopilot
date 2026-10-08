@@ -11,6 +11,8 @@ const keepAliveAgent = new https.Agent({keepAlive:true,maxSockets:32,maxFreeSock
 let offset=0,polling=false;
 let pollStatePoolPromise=null;
 const updateQueues=new Map();
+const failedUpdateAttempts=new Map();
+const MAX_UPDATE_RETRIES=5;
 const BOT_REQUEST_TIMEOUT=10000;
 
 const healthServer = http.createServer((req,res)=>{
@@ -153,7 +155,24 @@ async function processUpdate(update){
       return true;
     }catch(e){
       console.log("UPDATE HANDLER ERROR:",e?.stack||e?.message||e);
-      if(chat!=="global"){try{await send(chat,"⚠️ Ошибка обработки. Попробуй ещё раз.");}catch(sendError){console.log("ERROR MESSAGE FAILED:",sendError?.message||sendError);}}
+      if(chat!=="global"){
+        try{await send(chat,"⚠️ Ошибка обработки. Повторяю попытку автоматически.");}
+        catch(sendError){console.log("ERROR MESSAGE FAILED:",sendError?.message||sendError);}
+      }
+      if(update.update_id!=null){
+        const key=String(update.update_id);
+        const attempts=(failedUpdateAttempts.get(key)||0)+1;
+        failedUpdateAttempts.set(key,attempts);
+        if(attempts>=MAX_UPDATE_RETRIES){
+          const next=Math.max(offset,Number(update.update_id)+1);
+          offset=next;
+          failedUpdateAttempts.delete(key);
+          await saveTelegramOffset(next);
+          console.log("UPDATE SKIPPED AFTER RETRIES:",update.update_id);
+        }else{
+          console.log("UPDATE WILL RETRY:",update.update_id,"attempt",attempts+"/"+MAX_UPDATE_RETRIES);
+        }
+      }
     }
   });
 }
