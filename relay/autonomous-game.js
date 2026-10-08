@@ -841,7 +841,7 @@ async function handleText(chat,text,firstName,sendFn) {
         const run=await withState(chat,firstName,s=>{
           if(!s.pendingPurchase?.carId || s.pendingPurchase.carId!==pending.carId)return {ok:false,reason:"stale"};
           const r=negotiatePurchase(s,pending.carId,offer);
-          if(r.ok)s.pendingPurchase={...s.pendingPurchase,...r,offer,awaitingOffer:r.result==="counter"};
+          if(r.ok)s.pendingPurchase={...s.pendingPurchase,...r,offer,awaitingOffer:false};
           return r;
         });
         if(!run || !run.result || run.result.duplicate){
