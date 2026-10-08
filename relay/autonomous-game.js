@@ -6,14 +6,14 @@ const START_BALANCE = 3000000;
 const GARAGE_CAPACITY = 3;
 
 const CAR_PHOTOS = {
-  vesta_2019: "https://commons.wikimedia.org/wiki/Special:Redirect/file/2019_Lada_Vesta_SW_GFK110_white_front.jpg",
-  focus_2017: "https://commons.wikimedia.org/wiki/Special:Redirect/file/2017_Ford_Focus_(LZ)_Sport_hatchback_(2017-11-18)_01.jpg",
-  octavia_2018: "https://commons.wikimedia.org/wiki/Special:Redirect/file/2018_Skoda_Octavia_(5E_MY18.5)_110TSI_station_wagon_(2018-11-02).jpg",
-  camry_2015: "https://commons.wikimedia.org/wiki/Special:Redirect/file/2015_Toyota_Camry.jpg",
-  mazda6_2017: "https://commons.wikimedia.org/wiki/Special:Redirect/file/2017_Mazda6_SE-L_2.2_Front.jpg",
-  a4_2016: "https://commons.wikimedia.org/wiki/Special:Redirect/file/2016_Audi_A4_Sport_Ultra_TDi_S-A_2.0.jpg",
-  x1_2015: "https://commons.wikimedia.org/wiki/Special:Redirect/file/'15_BMW_X1_(MIAS_'15).jpg",
-  qashqai_2018: "https://commons.wikimedia.org/wiki/Special:Redirect/file/2018_Nissan_Qashqai_(J11)_ST_wagon_(2018-08-06).jpg"
+  vesta_2019: "https://images.unsplash.com/photo-1684838997746-2fa4bc6b6194?auto=format&fit=crop&fm=jpg&q=85&w=1200",
+  focus_2017: "https://images.unsplash.com/photo-1668415759930-5a9dbe80c488?auto=format&fit=crop&fm=jpg&q=85&w=1200",
+  octavia_2018: "https://images.unsplash.com/photo-1684838997746-2fa4bc6b6194?auto=format&fit=crop&fm=jpg&q=85&w=1200",
+  camry_2015: "https://images.unsplash.com/photo-1668415759930-5a9dbe80c488?auto=format&fit=crop&fm=jpg&q=85&w=1200",
+  mazda6_2017: "https://images.unsplash.com/photo-1668415759930-5a9dbe80c488?auto=format&fit=crop&fm=jpg&q=85&w=1200",
+  a4_2016: "https://images.unsplash.com/photo-1684838997746-2fa4bc6b6194?auto=format&fit=crop&fm=jpg&q=85&w=1200",
+  x1_2015: "https://images.unsplash.com/photo-1668415759930-5a9dbe80c488?auto=format&fit=crop&fm=jpg&q=85&w=1200",
+  qashqai_2018: "https://images.unsplash.com/photo-1684838997746-2fa4bc6b6194?auto=format&fit=crop&fm=jpg&q=85&w=1200"
 };
 
 function carPhotoFor(car) {
