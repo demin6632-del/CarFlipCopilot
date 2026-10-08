@@ -92,6 +92,14 @@ function tgLongPoll(body){
   });
 }
 async function send(chat,text,extra={}){
+  if(extra?.photo_url){
+    return tg("sendPhoto",{
+      chat_id:chat,
+      photo:String(extra.photo_url),
+      caption:String(text||"").slice(0,1024),
+      ...(extra.reply_markup?{reply_markup:extra.reply_markup}: {})
+    });
+  }
   return tg("sendMessage",Object.assign({chat_id:chat,text:String(text||""),disable_web_page_preview:true},extra));
 }
 async function registerBotCommands(){
