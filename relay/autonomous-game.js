@@ -20,9 +20,20 @@ function carPhotoFor(car) {
   return CAR_PHOTOS[car?.catalogId] || null;
 }
 function carPhotoFromText(text) {
-  const s=String(text||"");
-  const found=CATALOG.find(c=>s.includes(c.name));
+  const s=String(text||"").toLowerCase();
+  const found=CATALOG.find(c=>s.includes(String(c.name).toLowerCase()));
   return found ? CAR_PHOTOS[found.id] : null;
+}
+function carPhotoFromState(state, text) {
+  const fromText=carPhotoFromText(text);
+  if(fromText) return fromText;
+  const pending=state?.pendingPurchase?.carId || state?.pendingDeal?.carId;
+  if(pending){
+    const car=[...(state.market||[]),...(state.garage||[])].find(x=>String(x.id)===String(pending));
+    const photo=carPhotoFor(car);
+    if(photo) return photo;
+  }
+  return null;
 }
 
 const CATALOG = [
@@ -839,19 +850,24 @@ async function send(sendFn,chat,text,markup) {
   return sendFn(chat,text,markup?{reply_markup:markup}:undefined);
 }
 async function screen(sendFn,chat,state,text,markup) {
-  const photo=carPhotoFromText(text);
   const keyboard=markup||menu();
-  if(photo && String(text||"").length<=1024) {
-    try { return await sendFn(chat,text,{photo_url:photo,reply_markup:keyboard}); } catch(e) {
-      console.log("CAR PHOTO SEND ERROR:",e?.message||e);
-    }
-  }
+  const body=String(text||"");
+  const photo=carPhotoFromState(state,body);
   if(photo) {
-    try { await sendFn(chat,"",{photo_url:photo}); } catch(e) {
-      console.log("CAR PHOTO FALLBACK ERROR:",e?.message||e);
+    if(body.length<=1024) {
+      try { return await sendFn(chat,body,{photo_url:photo,reply_markup:keyboard}); } catch(e) {
+        console.log("CAR PHOTO SEND ERROR:",e?.message||e);
+      }
+    } else {
+      try {
+        await sendFn(chat,"",{photo_url:photo});
+        return await sendFn(chat,body,{reply_markup:keyboard});
+      } catch(e) {
+        console.log("CAR PHOTO LONG SEND ERROR:",e?.message||e);
+      }
     }
   }
-  return send(sendFn,chat,text,keyboard);
+  return send(sendFn,chat,body,keyboard);
 }
 
 async function open(chat, firstName, sendFn) {
