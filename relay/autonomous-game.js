@@ -7,12 +7,12 @@ const GARAGE_CAPACITY = 3;
 
 const CAR_PHOTOS = {
   vesta_2019: "https://images.pexels.com/photos/7434579/pexels-photo-7434579.jpeg?auto=compress&cs=tinysrgb&w=1200",
-  focus_2017: "https://images.pexels.com/photos/112460/pexels-photo-112460.jpeg?auto=compress&cs=tinysrgb&w=1200",
+  focus_2017: "https://images.pexels.com/photos/7900344/pexels-photo-7900344.jpeg?auto=compress&cs=tinysrgb&w=1200",
   octavia_2018: "https://images.pexels.com/photos/7434579/pexels-photo-7434579.jpeg?auto=compress&cs=tinysrgb&w=1200",
-  camry_2015: "https://images.pexels.com/photos/112460/pexels-photo-112460.jpeg?auto=compress&cs=tinysrgb&w=1200",
-  mazda6_2017: "https://images.pexels.com/photos/112460/pexels-photo-112460.jpeg?auto=compress&cs=tinysrgb&w=1200",
+  camry_2015: "https://images.pexels.com/photos/7900344/pexels-photo-7900344.jpeg?auto=compress&cs=tinysrgb&w=1200",
+  mazda6_2017: "https://images.pexels.com/photos/7900344/pexels-photo-7900344.jpeg?auto=compress&cs=tinysrgb&w=1200",
   a4_2016: "https://images.pexels.com/photos/7434579/pexels-photo-7434579.jpeg?auto=compress&cs=tinysrgb&w=1200",
-  x1_2015: "https://images.pexels.com/photos/112460/pexels-photo-112460.jpeg?auto=compress&cs=tinysrgb&w=1200",
+  x1_2015: "https://images.pexels.com/photos/7900344/pexels-photo-7900344.jpeg?auto=compress&cs=tinysrgb&w=1200",
   qashqai_2018: "https://images.pexels.com/photos/7434579/pexels-photo-7434579.jpeg?auto=compress&cs=tinysrgb&w=1200"
 };
 
