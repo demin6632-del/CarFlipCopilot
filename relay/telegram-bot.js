@@ -35,8 +35,7 @@ function withTimeout(promise,ms,label){
 function enqueueChatUpdate(chatId,task){
   const key=String(chatId||"global");
   const previous=updateQueues.get(key)||Promise.resolve();
-  const guarded=withTimeout(Promise.resolve().then(task),22000,"TELEGRAM UPDATE");
-  const current=previous.catch(()=>{}).then(()=>guarded);
+  const current=previous.catch(()=>{}).then(()=>Promise.resolve().then(task));
   updateQueues.set(key,current);
   return current.finally(()=>{if(updateQueues.get(key)===current)updateQueues.delete(key);});
 }
