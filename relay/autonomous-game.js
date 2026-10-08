@@ -6,14 +6,14 @@ const START_BALANCE = 3000000;
 const GARAGE_CAPACITY = 3;
 
 const CAR_PHOTOS = {
-  vesta_2019: "https://thumb.wikimedia.org/wikipedia/commons/thumb/2/22/2019_Lada_Vesta_SW_GFK110_white_front.jpg/960px-2019_Lada_Vesta_SW_GFK110_white_front.jpg",
-  focus_2017: "https://thumb.wikimedia.org/wikipedia/commons/thumb/6/6a/2017_Ford_Focus_(LZ)_Sport_hatchback_(2017-11-18)_01.jpg/960px-2017_Ford_Focus_(LZ)_Sport_hatchback_(2017-11-18)_01.jpg",
-  octavia_2018: "https://thumb.wikimedia.org/wikipedia/commons/thumb/1/1c/2018_Skoda_Octavia_(5E_MY18.5)_110TSI_station_wagon_(2018-11-02).jpg/960px-2018_Skoda_Octavia_(5E_MY18.5)_110TSI_station_wagon_(2018-11-02).jpg",
-  camry_2015: "https://thumb.wikimedia.org/wikipedia/commons/thumb/e/e3/2015_Toyota_Camry.jpg/960px-2015_Toyota_Camry.jpg",
-  mazda6_2017: "https://thumb.wikimedia.org/wikipedia/commons/thumb/0/09/2017_Mazda6_SE-L_2.2_Front.jpg/960px-2017_Mazda6_SE-L_2.2_Front.jpg",
-  a4_2016: "https://thumb.wikimedia.org/wikipedia/commons/thumb/f/f1/2016_Audi_A4_Sport_Ultra_TDi_S-A_2.0.jpg/960px-2016_Audi_A4_Sport_Ultra_TDi_S-A_2.0.jpg",
-  x1_2015: "https://thumb.wikimedia.org/wikipedia/commons/thumb/6/6d/'15_BMW_X1_(MIAS_'15).jpg/960px-'15_BMW_X1_(MIAS_'15).jpg",
-  qashqai_2018: "https://thumb.wikimedia.org/wikipedia/commons/thumb/e/ea/2018_Nissan_Qashqai_(J11)_ST_wagon_(2018-08-06).jpg/960px-2018_Nissan_Qashqai_(J11)_ST_wagon_(2018-08-06).jpg"
+  vesta_2019: "https://upload.wikimedia.org/wikipedia/commons/thumb/2/22/2019_Lada_Vesta_SW_GFK110_white_front.jpg/960px-2019_Lada_Vesta_SW_GFK110_white_front.jpg",
+  focus_2017: "https://upload.wikimedia.org/wikipedia/commons/thumb/6/6a/2017_Ford_Focus_(LZ)_Sport_hatchback_(2017-11-18)_01.jpg/960px-2017_Ford_Focus_(LZ)_Sport_hatchback_(2017-11-18)_01.jpg",
+  octavia_2018: "https://upload.wikimedia.org/wikipedia/commons/thumb/1/1c/2018_Skoda_Octavia_(5E_MY18.5)_110TSI_station_wagon_(2018-11-02).jpg/960px-2018_Skoda_Octavia_(5E_MY18.5)_110TSI_station_wagon_(2018-11-02).jpg",
+  camry_2015: "https://upload.wikimedia.org/wikipedia/commons/thumb/e/e3/2015_Toyota_Camry.jpg/960px-2015_Toyota_Camry.jpg",
+  mazda6_2017: "https://upload.wikimedia.org/wikipedia/commons/thumb/0/09/2017_Mazda6_SE-L_2.2_Front.jpg/960px-2017_Mazda6_SE-L_2.2_Front.jpg",
+  a4_2016: "https://upload.wikimedia.org/wikipedia/commons/thumb/f/f1/2016_Audi_A4_Sport_Ultra_TDi_S-A_2.0.jpg/960px-2016_Audi_A4_Sport_Ultra_TDi_S-A_2.0.jpg",
+  x1_2015: "https://upload.wikimedia.org/wikipedia/commons/thumb/6/6d/'15_BMW_X1_(MIAS_'15).jpg/960px-'15_BMW_X1_(MIAS_'15).jpg",
+  qashqai_2018: "https://upload.wikimedia.org/wikipedia/commons/thumb/e/ea/2018_Nissan_Qashqai_(J11)_ST_wagon_(2018-08-06).jpg/960px-2018_Nissan_Qashqai_(J11)_ST_wagon_(2018-08-06).jpg"
 };
 
 function carPhotoFor(car) {
@@ -197,8 +197,7 @@ function buyerProfile(state, car) {
 function buyerOfferDetails(state, car) {
   return buyerProfile(state, car);
 }
-function buyerOffer(state, car) {
-  return buyerOfferDetails(state, car).amount;
+function buyerOffer(state, car) {  return buyerOfferDetails(state, car).amount;
 }
 
 function negotiation(state, car, deal) {
@@ -397,8 +396,7 @@ function hiddenDefectLabel(c) {
   if (revealed >= 2) return "🔬 Глубокая диагностика: скрытых дефектов не осталось.";
   if (revealed >= 1) return "🔎 Быстрая диагностика: часть скрытых дефектов проверена.";
   return "❓ Скрытые дефекты: неизвестно.";}
-function diagnosticCost(c, deep) {
-  return deep ? 35000 : 12000;
+function diagnosticCost(c, deep) {  return deep ? 35000 : 12000;
 }
 function runDiagnostic(state, c, deep) {
   const cost = diagnosticCost(c, deep);
@@ -597,8 +595,7 @@ function sandboxWarehouseKeyboard(c,state) {
   ]};
 }function sandboxDonorKeyboard(target,donor) {
   sandbox.buildCar(donor);
-  return {inline_keyboard:[
-    ...donor.sandbox.parts.filter(p=>p.installed).map(p=>[{text:"📦 Снять "+p.name+" · "+p.condition+"%",callback_data:"ag:extract:"+target.id+"|"+donor.id+"|"+p.id}]),
+  return {inline_keyboard:[    ...donor.sandbox.parts.filter(p=>p.installed).map(p=>[{text:"📦 Снять "+p.name+" · "+p.condition+"%",callback_data:"ag:extract:"+target.id+"|"+donor.id+"|"+p.id}]),
     [{text:"⬅️ Склад",callback_data:"ag:warehouse:"+target.id}]
   ]};
 }
@@ -798,7 +795,6 @@ function repairVehicle(state, id) {
   addTx(state,"repair",-cost,"Ремонт "+c.model);
   return {ok:true,car:c,cost};
 }
-
 function prepareVehicle(state, id) {
   const c=state.garage.find(x=>x.id===id);
   if(!c)return {ok:false,reason:"missing"};
@@ -997,8 +993,7 @@ async function handleCallback(chat,data,firstName,sendFn,answerFn,callbackId) {
       if(!offer)return {text:"⚠️ Лот уже продан или исчез с рынка.",markup:sandboxMarketKeyboard(c)};
       const result=sandbox.buyPartMarketOffer(c,offer.id,state.player.balance);
       if(!result.ok){
-        return {text:"❌ ПОКУПКА ДЕТАЛИ НЕ ВЫПОЛНЕНА\n\n"+(result.reason==="insufficient_funds"?"Недостаточно денег.\nНужно: "+fmt(result.price)+" ₽\nБаланс: "+fmt(result.available)+" ₽":"Лот недоступен."),markup:sandboxMarketKeyboard(c)};
-      }
+        return {text:"❌ ПОКУПКА ДЕТАЛИ НЕ ВЫПОЛНЕНА\n\n"+(result.reason==="insufficient_funds"?"Недостаточно денег.\nНужно: "+fmt(result.price)+" ₽\nБаланс: "+fmt(result.available)+" ₽":"Лот недоступен."),markup:sandboxMarketKeyboard(c)};      }
       addTx(state,"part_purchase",-result.cost,"Покупка детали: "+result.part.name+" ("+offer.sourceTitle+")");
       return {text:"✅ ДЕТАЛЬ КУПЛЕНА\n\n"+result.part.name+"\nИсточник: "+offer.sourceTitle+"\nСостояние: "+result.part.condition+"%\nЦена: "+fmt(result.cost)+" ₽\n\n📦 Деталь находится на складе.",markup:sandboxWarehouseKeyboard(c,state)};
     }
