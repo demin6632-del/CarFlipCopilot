@@ -6,14 +6,14 @@ const START_BALANCE = 3000000;
 const GARAGE_CAPACITY = 3;
 
 const CAR_PHOTOS = {
-  vesta_2019: "https://i.pragmaticar.ru/img/used/8443531/large/2702d7968fc54b1ef3011766ff8cf55a.jpg",
-  focus_2017: "https://media.merrjep.al/Image/0caca8ae-6cee-4bee-a7f7-52859cfa928d/20250815/1280/1024/ford-focus-1-5-nafte-viti-2017.jpeg?AllowCropping=True",
-  octavia_2018: "https://www.bazos.sk/img/1/272/189192272.jpg",
-  camry_2015: "https://avtohit.ru/iwebp/4323/toyota-camry-4323-2-xl.webp",
-  mazda6_2017: "https://crdms.images.consumerreports.org/c_lfill%2Cw_768%2Cq_auto%2Cf_auto/prod/cars/chrome/white/2017MAC140002_1280_05",
-  a4_2016: "https://c0.carsie.ie/d43864c90df075c94489ddbe4ca5ffe90317d2dbbb83bc1663876797a9acf5be.jpg",
-  x1_2015: "https://images.cdn.autocar.co.uk/sites/autocar.co.uk/files/images/car-reviews/first-drives/legacy/bmw-x1-2015-new-014.jpg",
-  qashqai_2018: "https://public.keskofiles.com/f/k-auto/modelimages/nissan-qashqai-2018-zme-621-004.jpg?auto=format&q=75&w=1000"
+  vesta_2019: "https://commons.wikimedia.org/wiki/Special:Redirect/file/2019_Lada_Vesta_SW_GFK110_white_front.jpg",
+  focus_2017: "https://commons.wikimedia.org/wiki/Special:Redirect/file/2017_Ford_Focus_(LZ)_Sport_hatchback_(2017-11-18)_01.jpg",
+  octavia_2018: "https://commons.wikimedia.org/wiki/Special:Redirect/file/2018_Skoda_Octavia_(5E_MY18.5)_110TSI_station_wagon_(2018-11-02).jpg",
+  camry_2015: "https://commons.wikimedia.org/wiki/Special:Redirect/file/2015_Toyota_Camry.jpg",
+  mazda6_2017: "https://commons.wikimedia.org/wiki/Special:Redirect/file/2017_Mazda6_SE-L_2.2_Front.jpg",
+  a4_2016: "https://commons.wikimedia.org/wiki/Special:Redirect/file/2016_Audi_A4_Sport_Ultra_TDi_S-A_2.0.jpg",
+  x1_2015: "https://commons.wikimedia.org/wiki/Special:Redirect/file/'15_BMW_X1_(MIAS_'15).jpg",
+  qashqai_2018: "https://commons.wikimedia.org/wiki/Special:Redirect/file/2018_Nissan_Qashqai_(J11)_ST_wagon_(2018-08-06).jpg"
 };
 
 function carPhotoFor(car) {
@@ -840,10 +840,18 @@ async function send(sendFn,chat,text,markup) {
 }
 async function screen(sendFn,chat,state,text,markup) {
   const photo=carPhotoFromText(text);
-  if(photo) {
-    try { await sendFn(chat,"",{photo_url:photo}); } catch {}
+  const keyboard=markup||menu();
+  if(photo && String(text||"").length<=1024) {
+    try { return await sendFn(chat,text,{photo_url:photo,reply_markup:keyboard}); } catch(e) {
+      console.log("CAR PHOTO SEND ERROR:",e?.message||e);
+    }
   }
-  return send(sendFn,chat,text,markup||menu());
+  if(photo) {
+    try { await sendFn(chat,"",{photo_url:photo}); } catch(e) {
+      console.log("CAR PHOTO FALLBACK ERROR:",e?.message||e);
+    }
+  }
+  return send(sendFn,chat,text,keyboard);
 }
 
 async function open(chat, firstName, sendFn) {
