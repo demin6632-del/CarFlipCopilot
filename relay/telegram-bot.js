@@ -128,7 +128,7 @@ async function registerBotCommands(){
 async function handleMessage(m){
   const chat=m?.chat?.id;if(chat==null)return;
   const text=String(m.text||"").trim();
-  if(text==="/start"||text==="/game"||text==="/perekup"||text==="/help"){
+  if(text==="/help") return send(chat,"🧭 AUTOFLIP — ПОМОЩЬ\n\n/start — начать\n/game — открыть игру\n/perekup — открыть игру\n/help — эта помощь\n\nИспользуй кнопки внутри игры.",{reply_markup:{inline_keyboard:[[{text:"🎮 Открыть AUTOFLIP",callback_data:"ag:home"}]]}});\n  if(text==="/start"||text==="/game"||text==="/perekup"){
     try{await tg("sendMessage",{chat_id:chat,text:" ",reply_markup:{remove_keyboard:true}});}catch{}
     return autonomousGame.handleText(chat,"/perekup",m.from?.first_name||"Перекуп",(c,t,extra)=>send(c,t,extra));
   }
