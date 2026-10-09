@@ -92,14 +92,63 @@ function tgLongPoll(body){
     req.on("error",reject);req.setTimeout(30000,()=>req.destroy(new Error("Telegram getUpdates timeout")));req.write(data);req.end();
   });
 }
+function downloadPhoto(url,redirects=0){
+  return new Promise((resolve,reject)=>{
+    if(redirects>4)return reject(new Error("Photo URL redirect limit exceeded"));
+    let parsed;
+    try{parsed=new URL(url);}catch(e){return reject(new Error("Invalid photo URL"));}
+    if(parsed.protocol!=="https:")return reject(new Error("Photo URL must use HTTPS"));
+    const req=https.get(parsed,{agent:keepAliveAgent,headers:{"user-agent":"AUTOFLIP Telegram Bot/1.0","accept":"image/avif,image/webp,image/apng,image/*,*/*;q=0.8"}},res=>{
+      if(res.statusCode>=300&&res.statusCode<400&&res.headers.location){
+        res.resume();
+        const next=new URL(res.headers.location,parsed).toString();
+        return resolve(downloadPhoto(next,redirects+1));
+      }
+      if(res.statusCode!==200){res.resume();return reject(new Error("Photo download HTTP "+res.statusCode));}
+      const type=String(res.headers["content-type"]||"").toLowerCase();
+      if(!type.startsWith("image/")){res.resume();return reject(new Error("Photo URL returned non-image content: "+type));}
+      const chunks=[];let size=0;const max=9*1024*1024;
+      res.on("data",chunk=>{size+=chunk.length;if(size>max){req.destroy(new Error("Photo exceeds 9 MB limit"));return;}chunks.push(chunk);});
+      res.on("end",()=>{if(size)resolve({buffer:Buffer.concat(chunks,size),contentType:type});else reject(new Error("Downloaded photo is empty"));});
+      res.on("error",reject);
+    });
+    req.setTimeout(12000,()=>req.destroy(new Error("Photo download timeout")));
+    req.on("error",reject);
+  });
+}
+function tgSendPhotoUpload(chat,caption,photoUrl,replyMarkup){
+  return downloadPhoto(String(photoUrl)).then(({buffer,contentType})=>new Promise((resolve,reject)=>{
+    const boundary="----AUTOFLIP"+Math.random().toString(16).slice(2);
+    const fields={chat_id:String(chat),caption:String(caption||"").slice(0,1024)};
+    if(replyMarkup)fields.reply_markup=JSON.stringify(replyMarkup);
+    const chunks=[];
+    for(const [name,value] of Object.entries(fields)){
+      chunks.push(Buffer.from("--"+boundary+"\r\nContent-Disposition: form-data; name=\""+name+"\"\r\n\r\n"+value+"\r\n"));
+    }
+    const extension=contentType.includes("png")?"png":contentType.includes("webp")?"webp":"jpg";
+    chunks.push(Buffer.from("--"+boundary+"\r\nContent-Disposition: form-data; name=\"photo\"; filename=\"autoflip-car."+extension+"\"\r\nContent-Type: "+contentType+"\r\n\r\n"));
+    chunks.push(buffer);
+    chunks.push(Buffer.from("\r\n--"+boundary+"--\r\n"));
+    const body=Buffer.concat(chunks);
+    const req=https.request({hostname:"api.telegram.org",path:"/bot"+BOT_TOKEN+"/sendPhoto",method:"POST",agent:keepAliveAgent,headers:{"content-type":"multipart/form-data; boundary="+boundary,"content-length":body.length}},res=>{
+      let data="";res.on("data",chunk=>data+=chunk);res.on("end",()=>{try{const json=JSON.parse(data);if(!json.ok)return reject(new Error(json.description||"Telegram sendPhoto failed"));resolve(json.result);}catch(e){reject(e);}});
+    });
+    req.on("error",reject);req.setTimeout(BOT_REQUEST_TIMEOUT,()=>req.destroy(new Error("Telegram photo upload timeout")));req.end(body);
+  }));
+}
 async function send(chat,text,extra={}){
   if(extra?.photo_url){
-    return tg("sendPhoto",{
-      chat_id:chat,
-      photo:String(extra.photo_url),
-      caption:String(text||"").slice(0,1024),
-      ...(extra.reply_markup?{reply_markup:extra.reply_markup}: {})
-    });
+    try{
+      return await tgSendPhotoUpload(chat,text,extra.photo_url,extra.reply_markup);
+    }catch(e){
+      console.log("CAR PHOTO UPLOAD ERROR:",e?.message||e);
+      return tg("sendMessage",{
+        chat_id:chat,
+        text:String(text||"")+"\n\n📷 Фото этой модели временно недоступно.",
+        disable_web_page_preview:true,
+        ...(extra.reply_markup?{reply_markup:extra.reply_markup}:{})
+      });
+    }
   }
   return tg("sendMessage",Object.assign({chat_id:chat,text:String(text||""),disable_web_page_preview:true},extra));
 }
