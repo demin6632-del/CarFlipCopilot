@@ -11,7 +11,7 @@ const CAR_PHOTOS = {
   octavia_2018: "https://upload.wikimedia.org/wikipedia/commons/5/5d/2018_Skoda_Octavia_SE_TDi_S-A_1.6_Front.jpg",
   camry_2015: "https://s1.cdn.autoevolution.com/images/gallery/TOYOTA-Camry-5331_53.jpg",
   mazda6_2017: "https://eu.cdn.autosonshow.tv/757/autocaptureautoimage/DG17PBV/MAZDA__6__D_SPORT_NAV__DIESEL__RED__2017__DG17PBV-e06_md.jpg",
-  a4_2016: "https://www.autopadre.com/cdn-cgi/image/format%3Dauto%2Cquality%3D85/static/template_make_model_images/audi-a4/2016_audi-a4_2016-Audi-A4_shutterstock-350842307.jpg",
+  a4_2016: "https://upload.wikimedia.org/wikipedia/commons/0/08/Audi_A4_B9_white_%281%29.jpg",
   x1_2015: "https://mediapool.bmwgroup.com/cache/P9/201509/P90198967/P90198967-bmw-x1-25d-xline-2015-2250px.jpg",
   qashqai_2018: "https://upload.wikimedia.org/wikipedia/commons/a/a6/2018_Nissan_Qashqai_%28J11%29_ST_wagon_%282018-11-02%29.jpg"
 };
