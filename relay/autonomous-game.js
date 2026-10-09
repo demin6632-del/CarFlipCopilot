@@ -6,14 +6,14 @@ const START_BALANCE = 3000000;
 const GARAGE_CAPACITY = 3;
 
 const CAR_PHOTOS = {
-  vesta_2019: "https://images.pexels.com/photos/7434579/pexels-photo-7434579.jpeg?auto=compress&cs=tinysrgb&w=1200",
-  focus_2017: "https://images.pexels.com/photos/7900344/pexels-photo-7900344.jpeg?auto=compress&cs=tinysrgb&w=1200",
-  octavia_2018: "https://images.pexels.com/photos/7434579/pexels-photo-7434579.jpeg?auto=compress&cs=tinysrgb&w=1200",
-  camry_2015: "https://images.pexels.com/photos/7900344/pexels-photo-7900344.jpeg?auto=compress&cs=tinysrgb&w=1200",
-  mazda6_2017: "https://images.pexels.com/photos/7900344/pexels-photo-7900344.jpeg?auto=compress&cs=tinysrgb&w=1200",
-  a4_2016: "https://images.pexels.com/photos/7434579/pexels-photo-7434579.jpeg?auto=compress&cs=tinysrgb&w=1200",
-  x1_2015: "https://images.pexels.com/photos/7900344/pexels-photo-7900344.jpeg?auto=compress&cs=tinysrgb&w=1200",
-  qashqai_2018: "https://images.pexels.com/photos/7434579/pexels-photo-7434579.jpeg?auto=compress&cs=tinysrgb&w=1200"
+  vesta_2019: "https://kanavto.ru/car-photos/538192lx011ystngk/large/63739ce0b378dc86a0f12a472e4dee03.jpg",
+  focus_2017: "https://photos.carspecs.us/5a49a93e8890ce10feeea7a33c2055f9a50cf9e1-2000.jpg",
+  octavia_2018: "https://upload.wikimedia.org/wikipedia/commons/5/5d/2018_Skoda_Octavia_SE_TDi_S-A_1.6_Front.jpg",
+  camry_2015: "https://s1.cdn.autoevolution.com/images/gallery/TOYOTA-Camry-5331_53.jpg",
+  mazda6_2017: "https://eu.cdn.autosonshow.tv/757/autocaptureautoimage/DG17PBV/MAZDA__6__D_SPORT_NAV__DIESEL__RED__2017__DG17PBV-e06_md.jpg",
+  a4_2016: "https://www.autopadre.com/cdn-cgi/image/format%3Dauto%2Cquality%3D85/static/template_make_model_images/audi-a4/2016_audi-a4_2016-Audi-A4_shutterstock-350842307.jpg",
+  x1_2015: "https://mediapool.bmwgroup.com/cache/P9/201509/P90198967/P90198967-bmw-x1-25d-xline-2015-2250px.jpg",
+  qashqai_2018: "https://upload.wikimedia.org/wikipedia/commons/a/a6/2018_Nissan_Qashqai_%28J11%29_ST_wagon_%282018-11-02%29.jpg"
 };
 
 function carPhotoFor(car) {
