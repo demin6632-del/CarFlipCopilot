@@ -190,17 +190,23 @@ async function handleMessage(m){
   }
   return autonomousGame.handleText(chat,text,m.from?.first_name||"Перекуп",(c,t,extra)=>send(c,t,extra));
 }
-async function handleCallback(q){
+async function handleCallback(q, acknowledged=false){
   const chat=q?.message?.chat?.id,data=String(q?.data||"");if(chat==null)return;
-  if(!data.startsWith("ag:")){try{await tg("answerCallbackQuery",{callback_query_id:q.id});}catch{}return;}
-  return autonomousGame.handleCallback(chat,data,q.from?.first_name||"Перекуп",(c,t,extra)=>send(c,t,extra),()=>tg("answerCallbackQuery",{callback_query_id:q.id}),q.id);
+  if(!acknowledged){try{await tg("answerCallbackQuery",{callback_query_id:q.id});}catch{}}
+  if(!data.startsWith("ag:"))return;
+  return autonomousGame.handleCallback(chat,data,q.from?.first_name||"Перекуп",(c,t,extra)=>send(c,t,extra),()=>Promise.resolve(),q.id);
 }
 async function processUpdate(update){
   if(!update||typeof update!=="object")return false;
+  // Сразу убираем индикатор ожидания Telegram, не дожидаясь очереди чата/БД.
+  if(update.callback_query?.id){
+    try{await tg("answerCallbackQuery",{callback_query_id:update.callback_query.id});}
+    catch(e){console.log("CALLBACK ACK WARNING:",e?.message||e);}
+  }
   const chat=update.callback_query?.message?.chat?.id??update.message?.chat?.id??"global";
   return enqueueChatUpdate(chat,async()=>{
     try{
-      if(update.callback_query)await handleCallback(update.callback_query);
+      if(update.callback_query)await handleCallback(update.callback_query,true);
       else if(update.message)await handleMessage(update.message);
       if(update.update_id!=null){
         const next=Math.max(offset,Number(update.update_id)+1);
