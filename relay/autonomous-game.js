@@ -958,8 +958,24 @@ async function handleCallback(chat,data,firstName,sendFn,answerFn,callbackId) {
     }
     if(action==="offer"){
       const c=state.market.find(x=>x.id===id); if(!c)return {text:"⚠️ Лот уже исчез с рынка.",markup:marketKeyboard(state)};
+      state.pendingPurchase={carId:id,awaitingOffer:false};
+      const quick=[70,80,90].map(percent=>[{text:"💬 Предложить "+percent+"% · "+fmt(Math.floor(c.buyPrice*percent/100/1000)*1000),callback_data:"ag:offer"+percent+":"+id}]);
+      return {text:"💬 ТОРГ С ПРОДАВЦОМ\n\n🚘 "+c.model+"\n💵 Цена продавца: "+fmt(c.buyPrice)+"\n\nВыбери готовое предложение кнопкой — вводить сумму не нужно. Чем ниже цена, тем выше риск отказа.\n\nИли введи свою сумму вручную.",markup:{inline_keyboard:[...quick,[{text:"⌨️ Ввести свою сумму",callback_data:"ag:offer_custom:"+id}],[{text:"⬅️ Осмотр",callback_data:"ag:inspect:"+id}]]}};
+    }
+    if(action==="offer_custom"){
+      const c=state.market.find(x=>x.id===id); if(!c)return {text:"⚠️ Лот уже исчез с рынка.",markup:marketKeyboard(state)};
       state.pendingPurchase={carId:id,awaitingOffer:true};
-      return {text:"💬 ТОРГ С ПРОДАВЦОМ\n\n🚘 "+c.model+"\n💵 Цена продавца: "+fmt(c.buyPrice)+"\n\n✍️ Напиши одним сообщением свою цену в рублях.\nНапример: 1250000 или 1 250 000 ₽\n\nЛюбая целая сумма больше 0. Цена должна быть не выше цены продавца.",markup:{inline_keyboard:[[{text:"⬅️ Осмотр",callback_data:"ag:inspect:"+id}]]}};
+      return {text:"⌨️ ВВОД СВОЕЙ ЦЕНЫ\n\n🚘 "+c.model+"\n💵 Цена продавца: "+fmt(c.buyPrice)+"\n\nВведи сумму в рублях одним сообщением. Например: 1250000.\nЦена должна быть больше 0 и не выше цены продавца.",markup:{inline_keyboard:[[{text:"⬅️ Назад к кнопкам",callback_data:"ag:offer:"+id}],[{text:"⬅️ Осмотр",callback_data:"ag:inspect:"+id}]]}};
+    }
+    if(["offer70","offer80","offer90"].includes(action)){
+      const c=state.market.find(x=>x.id===id); if(!c)return {text:"⚠️ Лот уже исчез с рынка.",markup:marketKeyboard(state)};
+      const percent=Number(action.slice(5));
+      const offer=Math.max(1,Math.floor(c.buyPrice*percent/100/1000)*1000);
+      const result=negotiatePurchase(state,id,offer);
+      if(!result.ok)return {text:"⚠️ Не удалось отправить предложение. Попробуй ещё раз.",markup:{inline_keyboard:[[{text:"💬 Повторить торг",callback_data:"ag:offer:"+id}],[{text:"⬅️ Осмотр",callback_data:"ag:inspect:"+id}]]}};
+      if(result.result==="rejected")return {text:"❌ ПРОДАВЕЦ ОТКАЗАЛСЯ\n\nТвоё предложение: "+fmt(result.offer)+"\nЦена продавца остаётся "+fmt(c.buyPrice)+".",markup:{inline_keyboard:[[{text:"💬 Другое предложение",callback_data:"ag:offer:"+id}],[{text:"⬅️ Осмотр",callback_data:"ag:inspect:"+id}]]}};
+      const temp={pendingPurchase:result};
+      return {text:purchaseOfferText(temp,c),markup:result.result==="counter"?{inline_keyboard:[[{text:"🤝 Принять "+fmt(result.counter),callback_data:"ag:buy:"+id}],[{text:"💬 Другое предложение",callback_data:"ag:offer:"+id}],[{text:"⬅️ Осмотр",callback_data:"ag:inspect:"+id}]]}:{inline_keyboard:[[{text:"💳 Купить за "+fmt(result.finalPrice),callback_data:"ag:buy:"+id}],[{text:"💬 Другое предложение",callback_data:"ag:offer:"+id}],[{text:"⬅️ Осмотр",callback_data:"ag:inspect:"+id}]]}};
     }
     if(action==="submit_offer"){
       const c=state.market.find(x=>x.id===id); if(!c)return {text:"⚠️ Лот уже исчез с рынка.",markup:marketKeyboard(state)};
