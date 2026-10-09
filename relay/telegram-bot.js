@@ -1,6 +1,7 @@
 const http = require("http");
 const { Pool } = require("pg");
 const https = require("https");
+const sharp = require("sharp");
 const { acquireTelegramPollLock, releaseTelegramPollLock } = require("./telegram-poll-lock");
 const autonomousGame = require("./autonomous-game");
 
@@ -117,7 +118,9 @@ function downloadPhoto(url,redirects=0){
   });
 }
 function tgSendPhotoUpload(chat,caption,photoUrl,replyMarkup){
-  return downloadPhoto(String(photoUrl)).then(({buffer,contentType})=>new Promise((resolve,reject)=>{
+  return downloadPhoto(String(photoUrl)).then(async ({buffer})=>{
+    const jpeg=await sharp(buffer).rotate().jpeg({quality:86,mozjpeg:true}).toBuffer();
+    return new Promise((resolve,reject)=>{
     const boundary="----AUTOFLIP"+Math.random().toString(16).slice(2);
     const fields={chat_id:String(chat),caption:String(caption||"").slice(0,1024)};
     if(replyMarkup)fields.reply_markup=JSON.stringify(replyMarkup);
@@ -125,16 +128,16 @@ function tgSendPhotoUpload(chat,caption,photoUrl,replyMarkup){
     for(const [name,value] of Object.entries(fields)){
       chunks.push(Buffer.from("--"+boundary+"\r\nContent-Disposition: form-data; name=\""+name+"\"\r\n\r\n"+value+"\r\n"));
     }
-    const extension=contentType.includes("png")?"png":contentType.includes("webp")?"webp":"jpg";
-    chunks.push(Buffer.from("--"+boundary+"\r\nContent-Disposition: form-data; name=\"photo\"; filename=\"autoflip-car."+extension+"\"\r\nContent-Type: "+contentType+"\r\n\r\n"));
-    chunks.push(buffer);
+    chunks.push(Buffer.from("--"+boundary+"\r\nContent-Disposition: form-data; name=\"photo\"; filename=\"autoflip-car.jpg\"\r\nContent-Type: image/jpeg\r\n\r\n"));
+    chunks.push(jpeg);
     chunks.push(Buffer.from("\r\n--"+boundary+"--\r\n"));
     const body=Buffer.concat(chunks);
     const req=https.request({hostname:"api.telegram.org",path:"/bot"+BOT_TOKEN+"/sendPhoto",method:"POST",agent:keepAliveAgent,headers:{"content-type":"multipart/form-data; boundary="+boundary,"content-length":body.length}},res=>{
       let data="";res.on("data",chunk=>data+=chunk);res.on("end",()=>{try{const json=JSON.parse(data);if(!json.ok)return reject(new Error(json.description||"Telegram sendPhoto failed"));resolve(json.result);}catch(e){reject(e);}});
     });
     req.on("error",reject);req.setTimeout(BOT_REQUEST_TIMEOUT,()=>req.destroy(new Error("Telegram photo upload timeout")));req.end(body);
-  }));
+    });
+  });
 }
 async function send(chat,text,extra={}){
   if(extra?.photo_url){
