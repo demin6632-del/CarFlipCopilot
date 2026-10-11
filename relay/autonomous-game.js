@@ -759,6 +759,14 @@ function negotiatePurchase(state,id,requestedOffer) {
   if(offer===null)return {ok:false,reason:"invalid_offer"};
   if(offer>c.buyPrice)return {ok:false,reason:"too_high"};
   const pressure=Math.max(.05,Math.min(.75,(c.marketPressure||.5)*.55)), roll=rng(state);
+  // Продавец никогда не принимает абсурдно низкие предложения: минимум 70% от цены лота.
+  // Вместо согласия он выставляет встречную цену, близкую к заявленной стоимости.
+  const minimumAcceptable=Math.ceil(c.buyPrice*.70);
+  if(offer<minimumAcceptable){
+    const counter=Math.round(c.buyPrice*(.975+rng(state)*.025)/1000)*1000;
+    state.pendingPurchase={carId:id,offer,result:"counter",counter,finalPrice:counter};
+    return {ok:true,result:"counter",offer,counter,finalPrice:counter};
+  }
   if(roll>pressure){state.pendingPurchase={carId:id,offer,result:"accepted",finalPrice:offer};return {ok:true,result:"accepted",offer,finalPrice:offer};}
   if(roll>pressure*.55){const counter=Math.round(c.buyPrice*(.975+rng(state)*.025)/1000)*1000;state.pendingPurchase={carId:id,offer,result:"counter",counter,finalPrice:counter};return {ok:true,result:"counter",offer,counter,finalPrice:counter};}
   state.pendingPurchase={carId:id,offer,result:"rejected"};return {ok:true,result:"rejected",offer};
