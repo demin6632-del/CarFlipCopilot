@@ -18,6 +18,7 @@ async function run() {
   const battleChat = "economy-battle-" + suffix;
   const aiChat = "economy-ai-" + suffix;
   const streetChat = "economy-street-" + suffix;
+  const ledgerChat = "economy-ledger-" + suffix;
   const send = async () => true;
   const answer = async () => true;
 
@@ -38,6 +39,13 @@ async function run() {
       battleState.transactions.filter(x => x.kind === "container_battle_entry").length,
       1
     );
+    let ledgerRows = await pool.query(
+      "SELECT kind,amount FROM autonomous_economy_ledger WHERE chat_id=$1",
+      [battleChat]
+    );
+    assert.equal(ledgerRows.rowCount, 1);
+    assert.equal(ledgerRows.rows[0].kind, "container_battle_entry");
+    assert.equal(Number(ledgerRows.rows[0].amount), -100000);
 
     // Simulate a retry after the original room has already closed.
     await pool.query(
@@ -53,6 +61,11 @@ async function run() {
       battleState.transactions.filter(x => x.kind === "container_battle_entry").length,
       1
     );
+    ledgerRows = await pool.query(
+      "SELECT transaction_id FROM autonomous_economy_ledger WHERE chat_id=$1",
+      [battleChat]
+    );
+    assert.equal(ledgerRows.rowCount, 1);
 
     const streetInitial = await game.load(streetChat, "Street Tester");
     const streetCar = { ...streetInitial.market[0], status: "owned" };
@@ -96,6 +109,13 @@ async function run() {
       [streetChat]
     );
     assert.equal(streetDuelCount.rows[0].count, 1);
+    ledgerRows = await pool.query(
+      "SELECT kind,amount FROM autonomous_economy_ledger WHERE chat_id=$1",
+      [streetChat]
+    );
+    assert.equal(ledgerRows.rowCount, 1);
+    assert.equal(ledgerRows.rows[0].kind, "street_duel_entry");
+    assert.equal(Number(ledgerRows.rows[0].amount), -50000);
 
     const aiInitial = await game.load(aiChat, "AI Tester");
     const car = { ...aiInitial.market[0], status: "owned" };
@@ -136,10 +156,43 @@ async function run() {
     );
     assert.equal(duelCount.rows[0].count, 1);
     assert.ok([aiBalance - 50000, aiBalance, aiBalance + 45000].includes(balanceAfterFirstDuel));
+    ledgerRows = await pool.query(
+      "SELECT kind,amount FROM autonomous_economy_ledger WHERE chat_id=$1",
+      [aiChat]
+    );
+    assert.equal(
+      ledgerRows.rowCount,
+      aiState.transactions.filter(x =>
+        x.kind === "street_duel_entry" || x.kind === "street_duel_refund" || x.kind === "street_duel_prize"
+      ).length
+    );
 
-    console.log("Autonomous game economy idempotency integration: OK");
+    const legacyState = await game.load(ledgerChat, "Ledger Tester");
+    legacyState.transactions = [{
+      time: Date.now(), kind: "legacy_backfill_test", amount: -123,
+      balance: legacyState.player.balance - 123, description: "Legacy ledger backfill test"
+    }];
+    legacyState.player.balance -= 123;
+    await game.save(ledgerChat, legacyState);
+    let backfill = await pool.query(
+      "SELECT transaction_id,kind,amount FROM autonomous_economy_ledger WHERE chat_id=$1",
+      [ledgerChat]
+    );
+    assert.equal(backfill.rowCount, 1);
+    assert.equal(backfill.rows[0].kind, "legacy_backfill_test");
+    assert.equal(Number(backfill.rows[0].amount), -123);
+    assert.ok(legacyState.transactions[0].id);
+    await game.save(ledgerChat, legacyState);
+    backfill = await pool.query(
+      "SELECT transaction_id FROM autonomous_economy_ledger WHERE chat_id=$1",
+      [ledgerChat]
+    );
+    assert.equal(backfill.rowCount, 1);
+
+    console.log("Autonomous game economy idempotency and ledger integration: OK");
   } finally {
-    await pool.query("DELETE FROM autonomous_game_state WHERE chat_id = ANY($1::text[])", [[battleChat, aiChat, streetChat]]).catch(() => {});
+    await pool.query("DELETE FROM autonomous_economy_ledger WHERE chat_id = ANY($1::text[])", [[battleChat, aiChat, streetChat, ledgerChat]]).catch(() => {});
+    await pool.query("DELETE FROM autonomous_game_state WHERE chat_id = ANY($1::text[])", [[battleChat, aiChat, streetChat, ledgerChat]]).catch(() => {});
     await pool.query("DELETE FROM autonomous_container_battles WHERE owner_chat_id=$1", [battleChat]).catch(() => {});
     await pool.query("DELETE FROM autonomous_street_duels WHERE challenger_chat_id = ANY($1::text[])", [[aiChat, streetChat]]).catch(() => {});
     await pool.end();
