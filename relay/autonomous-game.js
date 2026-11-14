@@ -1377,7 +1377,7 @@ async function open(chat, firstName, sendFn) {
 
 async function leaderboardText(chat) {
   const p=db();
-  if(!p) return "🏆 РЕЙТИНГ ИГРОКОВ\\n\\nБаза данных пока недоступна.";
+  if(!p) return "🏆 РЕЙТИНГ ИГРОКОВ\n\nБаза данных пока недоступна.";
   const pool=await p;
   const result=await pool.query(`
     WITH ranked AS (
@@ -1397,23 +1397,23 @@ async function leaderboardText(chat) {
     ORDER BY balance DESC, level DESC, respect DESC
   `);
   const rows=result.rows||[];
-  if(!rows.length) return "🏆 РЕЙТИНГ ИГРОКОВ\\n\\nПока никто не начал карьеру.";
+  if(!rows.length) return "🏆 РЕЙТИНГ ИГРОКОВ\n\nПока никто не начал карьеру.";
   const top=rows.slice(0,10);
   const lines=top.map((r,i)=>
     (i+1)+". "+String(r.name||"Перекуп").slice(0,24)+" · ур. "+r.level+
-    "\\n   💰 "+fmt(r.balance)+" · 🤝 "+r.sales+" продаж · ⭐ "+r.respect
+    "\n   💰 "+fmt(r.balance)+" · 🤝 "+r.sales+" продаж · ⭐ "+r.respect
   );
   const own=rows.find(r=>String(r.chat_id)===String(chat));
   lines.push("");
   if(own && Number(own.place)>10) lines.push("Твоё место: №"+own.place+" · "+fmt(own.balance));
   else if(own) lines.push("Ты в первой десятке — место №"+own.place+".");
   lines.push("Всего игроков: "+rows.length);
-  return "🏆 РЕЙТИНГ ИГРОКОВ\\n\\n"+lines.join("\\n");
+  return "🏆 РЕЙТИНГ ИГРОКОВ\n\n"+lines.join("\n");
 }
 
 async function streetDuelChampionshipText(chat){
   const p=db();
-  if(!p)return "🏆 ЧЕМПИОНАТ AUTOFLIP\\n\\nБаза данных пока недоступна.";
+  if(!p)return "🏆 ЧЕМПИОНАТ AUTOFLIP\n\nБаза данных пока недоступна.";
   const pool=await p;
   const result=await pool.query(`
     WITH finished AS (
@@ -1447,18 +1447,18 @@ async function streetDuelChampionshipText(chat){
   `);
   const rows=result.rows||[];
   const month=new Intl.DateTimeFormat("ru-RU",{month:"long",year:"numeric",timeZone:"Europe/Moscow"}).format(new Date());
-  if(!rows.length)return "🏆 ЧЕМПИОНАТ AUTOFLIP\\nСезон: "+month+"\\n\\nПока в этом месяце не было дуэлей. Создай вызов и начни борьбу за первое место!";
+  if(!rows.length)return "🏆 ЧЕМПИОНАТ AUTOFLIP\nСезон: "+month+"\n\nПока в этом месяце не было дуэлей. Создай вызов и начни борьбу за первое место!";
   const lines=rows.slice(0,10).map(r=>
     (r.place<=3?["🥇","🥈","🥉"][Number(r.place)-1]:String(r.place)+".")+" "+String(r.name||"Перекуп").slice(0,22)+
-    "\\n   🏁 "+r.wins+" побед · "+r.losses+" поражений · "+r.draws+" ничьих"+
-    "\\n   📈 "+(Number(r.net_profit)>=0?"+":"")+fmt(r.net_profit)
+    "\n   🏁 "+r.wins+" побед · "+r.losses+" поражений · "+r.draws+" ничьих"+
+    "\n   📈 "+(Number(r.net_profit)>=0?"+":"")+fmt(r.net_profit)
   );
   const own=rows.find(r=>String(r.chat_id)===String(chat));
   lines.push("");
   if(own)lines.push("Твоя позиция: №"+own.place+" · "+own.wins+" побед · "+(Number(own.net_profit)>=0?"+":"")+fmt(own.net_profit));
   else lines.push("Ты ещё не участвовал в дуэлях этого сезона.");
   lines.push("Участников сезона: "+rows.length);
-  return "🏆 ЧЕМПИОНАТ AUTOFLIP\\nСезон: "+month+"\\n\\n"+lines.join("\\n");
+  return "🏆 ЧЕМПИОНАТ AUTOFLIP\nСезон: "+month+"\n\n"+lines.join("\n");
 }
 async function handleText(chat,text,firstName,sendFn) {
   const raw=String(text||"").trim();
@@ -1517,28 +1517,29 @@ async function marketplaceBrowseScreen(chat, page, sendFn) {
   const safePage = Number.isInteger(page) && page >= 0 && page <= 200000 ? page : 0;
   const p = db();
   if (!p) {
-    await sendFn(chat, "🌐 ОБЩИЙ РЫНОК\\n\\nСервис базы данных временно недоступен.", { reply_markup: menu() });
+    await sendFn(chat, "🌐 ОБЩИЙ РЫНОК\n\nСервис базы данных временно недоступен.", { reply_markup: menu() });
     return true;
   }
   try {
     const pool = await p;
-    const rows = await listActiveMarketplaceListings(pool, { limit: 5, offset: safePage * 5 });
-    const lines = rows.map((listing, index) => {
+    const rows = await listActiveMarketplaceListings(pool, { limit: 6, offset: safePage * 5 });
+    const visibleRows = rows.slice(0, 5);
+    const lines = visibleRows.map((listing, index) => {
       const car = listing.vehicle;
       return (index + 1 + safePage * 5) + ". 🚘 " + car.model +
         (car.year ? " · " + car.year : "") +
-        "\\n   🔢 " + (car.plate || "номер не указан") +
+        "\n   🔢 " + (car.plate || "номер не указан") +
         " · " + car.mileage.toLocaleString("ru-RU") + " км" +
-        "\\n   🛠 Состояние: " + car.condition + "/100" +
-        "\\n   💰 " + fmt(listing.askingPrice);
+        "\n   🛠 Состояние: " + car.condition + "/100" +
+        "\n   💰 " + fmt(listing.askingPrice);
     });
-    const text = "🌐 ОБЩИЙ РЫНОК AUTOFLIP\\n\\n" +
-      (rows.length ? lines.join("\\n\\n") : "Пока нет активных объявлений игроков.") +
-      "\\n\\nСтраница " + (safePage + 1) +
-      "\\nПокупка и безопасная передача автомобилей появятся на следующем этапе.";
+    const text = "🌐 ОБЩИЙ РЫНОК AUTOFLIP\n\n" +
+      (visibleRows.length ? lines.join("\n\n") : "Пока нет активных объявлений игроков.") +
+      "\n\nСтраница " + (safePage + 1) +
+      "\nПокупка и безопасная передача автомобилей появятся на следующем этапе.";
     const buttons = [];
     if (safePage > 0) buttons.push({ text: "⬅️ Назад", callback_data: "ag:pmarket:" + (safePage - 1) });
-    if (rows.length === 5) buttons.push({ text: "Вперёд ➡️", callback_data: "ag:pmarket:" + (safePage + 1) });
+    if (rows.length > 5) buttons.push({ text: "Вперёд ➡️", callback_data: "ag:pmarket:" + (safePage + 1) });
     buttons.push({ text: "🔄 Обновить", callback_data: "ag:pmarket:" + safePage });
     buttons.push({ text: "⬅️ Главное меню", callback_data: "ag:home" });
     await sendFn(chat, text, { reply_markup: { inline_keyboard: buttons.map(button => [button]) } });
