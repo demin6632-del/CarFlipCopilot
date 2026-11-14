@@ -1300,6 +1300,16 @@ function prepareVehicle(state, id) {
   return {ok:true,car:c,cost};
 }
 
+const MARKETPLACE_READ_ONLY_ACTIONS = new Set([
+  "pmsrc", "warehouse", "winfo", "parts", "system", "assembly",
+  "part", "fasteners", "car", "contracts", "plates", "stats"
+]);
+
+function isMarketplaceListingActionBlocked(action, car) {
+  return Boolean(car && car.marketplaceListingId) &&
+    !MARKETPLACE_READ_ONLY_ACTIONS.has(String(action || ""));
+}
+
 function acceptPendingSale(state, id) {
   const c=state.garage.find(x=>x.id===id);
   if(!c)return {ok:false,reason:"missing"};
@@ -1699,6 +1709,9 @@ async function handleCallback(chat,data,firstName,sendFn,answerFn,callbackId) {
     const carId=rawId.split("|")[0];
     const c=state.garage.find(x=>String(x.id)===String(carId));
     if(!c && ["car","repair","prep","sell"].includes(action))return {text:"⚠️ Машина уже не в гараже.",markup:garageKeyboard(state)};
+    if(isMarketplaceListingActionBlocked(action,c)) {
+      return {text:"🔒 Автомобиль выставлен на общий рынок. Чтобы изменить его состояние или использовать его в других операциях, сначала отмени объявление.",markup:carKeyboard(c)};
+    }
     if(action==="pmrefresh"){
       if(!c)return {text:"⚠️ Машина уже не в гараже.",markup:garageKeyboard(state)};
       sandbox.buildCar(c);
@@ -2043,4 +2056,4 @@ async function handleCallback(chat,data,firstName,sendFn,answerFn,callbackId) {
   return true;
 }
 
-module.exports={init,load,save,open,handleText,handleCallback,leaderboardText,CATALOG,CAR_PHOTOS,BUYER_TYPES,newState,refreshMarket,createListing,createUniqueVehiclePlate,ensureVehiclePlates,addTx,scoreListing,bestDeal,recommendation,addProgress,updateContracts,buyerOffer,buyerOfferDetails,buyerProfile,negotiation,dealRisk,runDiagnostic,vehicleCost,purchaseListing,repairVehicle,prepareVehicle,buyPlate,sellPlate,acceptPendingSale,parsePurchaseOfferInput,negotiatePurchase,streetDuelPower,STREET_DUEL_STAKE};
+module.exports={init,load,save,open,handleText,handleCallback,leaderboardText,isMarketplaceListingActionBlocked,CATALOG,CAR_PHOTOS,BUYER_TYPES,newState,refreshMarket,createListing,createUniqueVehiclePlate,ensureVehiclePlates,addTx,scoreListing,bestDeal,recommendation,addProgress,updateContracts,buyerOffer,buyerOfferDetails,buyerProfile,negotiation,dealRisk,runDiagnostic,vehicleCost,purchaseListing,repairVehicle,prepareVehicle,buyPlate,sellPlate,acceptPendingSale,parsePurchaseOfferInput,negotiatePurchase,streetDuelPower,STREET_DUEL_STAKE};
