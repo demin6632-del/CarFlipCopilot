@@ -73,32 +73,35 @@ async function syncVehiclePlateRegistry(client, ownerChatId, state, createCandid
     let plate = String(vehicle.plate || "").trim();
     let accepted = false;
 
-    // Keep a legacy plate only if it is not duplicated locally and the global
-    // registry says it belongs to this exact vehicle.
-    if (plate && !localSeen.has(normalizePlate(plate))) {
+    // The registry is authoritative for an already-issued vehicle UID. Recover
+    // its plate even if a damaged/legacy JSON state has lost the plate field.
+    const existing = await client.query(
+      "SELECT plate, owner_chat_id, retired_at FROM vehicle_plate_registry " +
+      "WHERE vehicle_uid=$1::uuid LIMIT 1",
+      [uid]
+    );
+    const existingRow = existing.rows[0];
+    if (existingRow) {
+      if (existingRow.retired_at) {
+        throw new Error("Retired vehicle UID cannot be reactivated");
+      }
+      if (String(existingRow.owner_chat_id) !== String(ownerChatId)) {
+        throw new Error("Vehicle ownership conflict: explicit transfer is required");
+      }
+      plate = existingRow.plate;
+      accepted = true;
+    }
+
+    // A new UID may claim its legacy plate only if it is not duplicated locally
+    // and the global registry has never assigned that plate to another vehicle.
+    if (!accepted && plate && !localSeen.has(normalizePlate(plate))) {
       const claim = await client.query(
         "INSERT INTO vehicle_plate_registry(plate, vehicle_uid, owner_chat_id, source) " +
         "VALUES($1, $2::uuid, $3, 'state-reconcile') " +
         "ON CONFLICT DO NOTHING RETURNING plate",
         [plate, uid, String(ownerChatId)]
       );
-      if (claim.rowCount) {
-        accepted = true;
-      } else {
-        const existing = await client.query(
-          "SELECT plate, vehicle_uid, owner_chat_id, retired_at FROM vehicle_plate_registry " +
-          "WHERE vehicle_uid=$1::uuid LIMIT 1",
-          [uid]
-        );
-        const row = existing.rows[0];
-        if (row && !row.retired_at) {
-          if (String(row.owner_chat_id) !== String(ownerChatId)) {
-            throw new Error("Vehicle ownership conflict: explicit transfer is required");
-          }
-          plate = row.plate;
-          accepted = true;
-        }
-      }
+      accepted = claim.rowCount === 1;
     }
 
     if (!accepted) {
