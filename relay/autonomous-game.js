@@ -20,7 +20,7 @@ function carPhotoFor(car) {
   return CAR_PHOTOS[car?.catalogId] || null;
 }
 function normalizeCarModelName(value) {
-  return String(value||"").toLowerCase().replace(/ё/g,"е").replace(/\\s+/g," ").trim();
+  return String(value||"").toLowerCase().replace(/ё/g,"е").replace(/\s+/g," ").trim();
 }
 function carMatchesFromText(text) {
   const body=normalizeCarModelName(text);
