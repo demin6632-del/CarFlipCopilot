@@ -61,7 +61,7 @@ async function syncVehiclePlateRegistry(client, ownerChatId, state, createCandid
   if (historicalValues.size) {
     await client.query(
       "INSERT INTO vehicle_plate_registry(plate, source, retired_at) " +
-      "SELECT value, 'legacy-history', now() FROM unnest($1::text[]) AS value " +
+      "SELECT history.plate_value, 'legacy-history', now() FROM unnest($1::text[]) AS history(plate_value) " +
       "ON CONFLICT DO NOTHING",
       [[...historicalValues]]
     );
