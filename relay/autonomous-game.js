@@ -939,13 +939,15 @@ function streetDuelText(duel,chat){
   return ["🏁 РЕЗУЛЬТАТ ДУЭЛИ №"+duel.id,"","🚘 "+(duel.challenger_name||"Игрок 1")+": "+(duel.challenger_car?.model||"—")+" · "+(duel.challenger_power||0)+" ед.","🚘 "+(duel.opponent_name||"Игрок 2")+": "+(duel.opponent_car?.model||"—")+" · "+(duel.opponent_power||0)+" ед.","","🏆 Победитель: "+(r.winnerName||"Ничья"),"⚡ Разница мощности: "+(r.powerDifference||0)+" ед.","💰 Выплата: "+fmt(r.payout||0),"🏦 Комиссия: "+fmt(r.fee||0)].join("\n");
 }
 function streetDuelKeyboard(duel,chat,state){
+  const aiRow=(state?.garage||[]).length?[[{text:"🤖 Сразиться с ИИ · "+fmt(STREET_DUEL_STAKE),callback_data:"ag:duel_ai"}]]:[];
   if(duel?.status==="open")return {inline_keyboard:[
     ...(String(duel.challenger_chat_id)!==String(chat)?[[{text:"🏁 Принять вызов · "+fmt(duel.stake),callback_data:"ag:duel_join:"+duel.id}]]:[]),
     ...(String(duel.challenger_chat_id)===String(chat)?[[{text:"❌ Отменить вызов и вернуть ставку",callback_data:"ag:duel_cancel:"+duel.id}]]:[]),
+    ...aiRow,
     [{text:"🔄 Обновить",callback_data:"ag:duel"}],[{text:"⬅️ Главное меню",callback_data:"ag:home"}]
   ]};
   const rows=(state?.garage||[]).map(c=>[{text:"🚘 Вызвать: "+c.model+" · "+fmt(STREET_DUEL_STAKE),callback_data:"ag:duel_create:"+c.id}]);
-  return {inline_keyboard:[...rows,[{text:"🔄 Обновить",callback_data:"ag:duel"}],[{text:"⬅️ Главное меню",callback_data:"ag:home"}]]};
+  return {inline_keyboard:[...aiRow,...rows,[{text:"🔄 Обновить",callback_data:"ag:duel"}],[{text:"⬅️ Главное меню",callback_data:"ag:home"}]]};
 }
 async function createStreetDuel(chat,name,carId){
   const p=db();if(!p)throw new Error("DATABASE_URL не настроен");const pool=await p;const client=await pool.connect();
@@ -1023,6 +1025,49 @@ async function joinStreetDuel(chat,name,duelId){
     await client.query("COMMIT");return {ok:true,duel:upd.rows[0],result};
   }catch(e){await client.query("ROLLBACK").catch(()=>{});throw e;}finally{client.release();}
 }
+async function createStreetDuelAI(chat,name){
+  const p=db();if(!p)throw new Error("DATABASE_URL не настроен");const pool=await p;const client=await pool.connect();
+  try{
+    await client.query("BEGIN");
+    const pr=await client.query("SELECT state FROM autonomous_game_state WHERE chat_id=$1 FOR UPDATE",[String(chat)]);
+    if(!pr.rowCount){await client.query("ROLLBACK");return {ok:false,reason:"no_profile"};}
+    const state=pr.rows[0].state;
+    if(!Array.isArray(state.garage)||!state.garage.length){await client.query("ROLLBACK");return {ok:false,reason:"no_car"};}
+    if(Number(state.player?.balance||0)<STREET_DUEL_STAKE){await client.query("ROLLBACK");return {ok:false,reason:"money"};}
+    const playerCar=state.garage.slice().sort((a,b)=>streetDuelPower(b)-streetDuelPower(a))[0];
+    const playerPower=streetDuelPower(playerCar);
+    const base=CATALOG.slice().sort((a,b)=>Math.abs((DUEL_BASE_POWER[a.id]||140)-playerPower)-Math.abs((DUEL_BASE_POWER[b.id]||140)-playerPower))[0];
+    const opponentCar={
+      id:"ai_"+Date.now(),catalogId:base.id,model:base.name,year:base.year,
+      mileage:50000+Math.floor(Math.random()*130000),condition:82+Math.floor(Math.random()*19),
+      status:"ai",aiOpponent:true
+    };
+    const opponentPower=Math.max(35,Math.round(playerPower*(0.92+Math.random()*0.16)));
+    addTx(state,"street_duel_entry",-STREET_DUEL_STAKE,"Взнос в дуэль с ИИ");
+    const playerRoll=playerPower*(0.96+Math.random()*0.08);
+    const aiRoll=opponentPower*(0.96+Math.random()*0.08);
+    const draw=Math.abs(playerRoll-aiRoll)<0.75;
+    const playerWon=!draw&&playerRoll>aiRoll;
+    const payout=draw?STREET_DUEL_STAKE:playerWon?Math.round(STREET_DUEL_STAKE*1.9):0;
+    const fee=playerWon?STREET_DUEL_STAKE*2-payout:0;
+    if(draw)addTx(state,"street_duel_refund",STREET_DUEL_STAKE,"Возврат ставки за ничью с ИИ");
+    else if(playerWon)addTx(state,"street_duel_prize",payout,"Победа над ИИ в уличной дуэли");
+    const result={
+      mode:"ai",winnerChat:draw?null:playerWon?String(chat):"autoflip-ai",
+      winnerName:draw?"Ничья":playerWon?String(name||"Перекуп"):"AUTOFLIP ИИ",
+      payout,fee,powerDifference:Math.round(Math.abs(playerRoll-aiRoll)),
+      challengerRoll:Math.round(playerRoll),opponentRoll:Math.round(aiRoll),draw
+    };
+    const duel=await client.query(
+      "INSERT INTO autonomous_street_duels(status,challenger_chat_id,challenger_name,challenger_car,challenger_power,opponent_name,opponent_car,opponent_power,stake,result,finished_at) VALUES('finished',$1,$2,$3::jsonb,$4,'AUTOFLIP ИИ',$5::jsonb,$6,$7,$8::jsonb,now()) RETURNING *",
+      [String(chat),String(name||"Перекуп"),JSON.stringify(playerCar),playerPower,JSON.stringify(opponentCar),opponentPower,STREET_DUEL_STAKE,JSON.stringify(result)]
+    );
+    await client.query("UPDATE autonomous_game_state SET state=$2::jsonb,updated_at=now() WHERE chat_id=$1",[String(chat),JSON.stringify(state)]);
+    await client.query("COMMIT");
+    return {ok:true,duel:duel.rows[0],result};
+  }catch(e){await client.query("ROLLBACK").catch(()=>{});throw e;}finally{client.release();}
+}
+
 function containerText(state) {
   const parts=Array.isArray(state.player.containerParts)?state.player.containerParts:[];
   return ["📦 КОНТЕЙНЕРНЫЙ ТЕРМИНАЛ","","Открывай контейнеры с запчастями и находками.","Каждый контейнер содержит случайную награду: деньги, детали или редкий приз.","","💰 Баланс: "+fmt(state.player.balance),"🧩 Деталей на складе: "+parts.length,...(parts.length?["","СКЛАД ДЕТАЛЕЙ",...parts.slice(0,8).map((p,i)=>(i+1)+". "+p.name+" · "+p.condition+"% · оценка "+fmt(p.value))]:[])].join("\n");
@@ -1335,6 +1380,13 @@ async function handleCallback(chat,data,firstName,sendFn,answerFn,callbackId) {
     const duel=await getOpenStreetDuel(),state=await load(chat,firstName);
     const shown=duel||await getStreetDuelForPlayer(chat);
     await sendFn(chat,streetDuelText(shown,chat),{reply_markup:streetDuelKeyboard(shown,chat,state)});return true;
+  }
+  if(action==="duel_ai"){
+    const result=await createStreetDuelAI(chat,firstName),state=await load(chat,firstName);
+    const openDuel=await getOpenStreetDuel();
+    const messages={no_profile:"Сначала открой игру командой /start.",no_car:"В гараже нет автомобиля для гонки. Сначала купи машину.",money:"Для дуэли с ИИ нужно 50 000 ₽."};
+    const text=result.ok?streetDuelText(result.duel,chat):"⚠️ "+(messages[result.reason]||"Не удалось начать дуэль с ИИ.");
+    await sendFn(chat,text,{reply_markup:streetDuelKeyboard(openDuel,chat,state)});return true;
   }
   if(action==="duel_create"){
     const result=await createStreetDuel(chat,firstName,id),duel=result.duel||await getOpenStreetDuel(),state=await load(chat,firstName);
