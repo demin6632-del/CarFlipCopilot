@@ -526,7 +526,8 @@ function mainText(state) {
 }
 function menu() {
   return {inline_keyboard:[
-    [{text:"🚗 Рынок",callback_data:"ag:market"},{text:"🏠 Гараж",callback_data:"ag:garage"}],
+    [{text:"🚗 Рынок",callback_data:"ag:market"},{text:"🌐 Общий рынок",callback_data:"ag:pmarket:0"}],
+    [{text:"🏠 Гараж",callback_data:"ag:garage"}],
     [{text:"📅 Сегодня",callback_data:"ag:day"},{text:"📋 Контракты",callback_data:"ag:contracts"}],
     [{text:"🔢 Номера",callback_data:"ag:plates"},{text:"📊 Статистика",callback_data:"ag:stats"}],
     [{text:"🏦 Банк",callback_data:"ag:finance"},{text:"🏆 Рейтинг игроков",callback_data:"ag:leaderboard"}],
