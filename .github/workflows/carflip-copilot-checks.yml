@@ -24,6 +24,7 @@ jobs:
       - run: node --check game-memory.js
       - run: node --check game-economy.js
       - run: node --check autonomous-game.js
+      - run: node --check vehicle-plate-registry-backfill.js
       - run: npm test
 
   postgres-integration:
