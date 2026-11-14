@@ -357,6 +357,31 @@ async function run() {
       .filter(x => x.kind === "container_open" || x.kind === "container_cash" || x.kind === "container_jackpot")
       .reduce((sum, tx) => sum + Number(tx.amount || 0), 0));
     assert.ok(genericState.processedCallbacks.includes(genericCallback));
+
+    // The durable callback receipt must still reject a replay after the legacy 100-ID window rolls over.
+    const firstRefreshCallback = "generic-refresh-first-" + suffix;
+    await game.handleCallback(
+      genericChat, "ag:refresh", "Generic Callback Tester", send, answer, firstRefreshCallback
+    );
+    for (let i = 0; i < 105; i++) {
+      await game.handleCallback(
+        genericChat, "ag:refresh", "Generic Callback Tester", send, answer,
+        "generic-refresh-" + i + "-" + suffix
+      );
+    }
+    const beforeOldReplay = await game.load(genericChat, "Generic Callback Tester");
+    const turnBeforeOldReplay = beforeOldReplay.meta.turn;
+    assert.equal(beforeOldReplay.processedCallbacks.includes(firstRefreshCallback), false);
+    await game.handleCallback(
+      genericChat, "ag:refresh", "Generic Callback Tester", send, answer, firstRefreshCallback
+    );
+    const afterOldReplay = await game.load(genericChat, "Generic Callback Tester");
+    assert.equal(afterOldReplay.meta.turn, turnBeforeOldReplay);
+    const durableReceipt = await pool.query(
+      "SELECT callback_id FROM autonomous_processed_callbacks WHERE chat_id=$1 AND callback_id=$2",
+      [genericChat, firstRefreshCallback]
+    );
+    assert.equal(durableReceipt.rowCount, 1);
     ledgerRows = await pool.query(
       "SELECT transaction_id FROM autonomous_economy_ledger WHERE chat_id=$1",
       [genericChat]
