@@ -5,7 +5,8 @@
   "scripts": {
     "start": "node server.js",
     "start:telegram": "node telegram-bot.js",
-    "test": "node self-test.js && node autonomous-game.test.js && node vehicle-plate-registry.test.js && node player-marketplace-listings.test.js && node player-marketplace-lock.test.js"
+    "test": "node self-test.js && node autonomous-game.test.js && node vehicle-plate-registry.test.js && node player-marketplace-listings.test.js && node player-marketplace-lock.test.js",
+    "marketplace:expire": "node player-marketplace-expiry-worker.js"
   },
   "dependencies": {
     "qrcode": "^1.5.4",
