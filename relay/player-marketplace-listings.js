@@ -152,11 +152,65 @@ async function cancelMarketplaceListing(pool, input) {
   }
 }
 
+async function expireMarketplaceListings(pool, { batchSize = 50 } = {}) {
+  if (!Number.isInteger(batchSize) || batchSize < 1 || batchSize > 500) {
+    throw marketplaceError("INVALID_BATCH_SIZE", "Expiry batch size must be between 1 and 500");
+  }
+  const expired = [];
+  for (let index = 0; index < batchSize; index += 1) {
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      const listingResult = await client.query(
+        "SELECT id,vehicle_uid,seller_chat_id,status FROM autonomous_marketplace_listings " +
+        "WHERE status='active' AND expires_at<=now() ORDER BY expires_at,id FOR UPDATE SKIP LOCKED LIMIT 1"
+      );
+      if (!listingResult.rowCount) {
+        await client.query("COMMIT");
+        break;
+      }
+      const listing = listingResult.rows[0];
+      const stateResult = await client.query(
+        "SELECT state FROM autonomous_game_state WHERE chat_id=$1 FOR UPDATE",
+        [String(listing.seller_chat_id)]
+      );
+      if (stateResult.rowCount) {
+        const state = stateResult.rows[0].state;
+        state.garage = Array.isArray(state.garage) ? state.garage : [];
+        const car = state.garage.find(item =>
+          String(item.vehicleUid) === String(listing.vehicle_uid) &&
+          String(item.marketplaceListingId || "") === String(listing.id)
+        );
+        if (car) {
+          delete car.marketplaceListingId;
+          await client.query(
+            "UPDATE autonomous_game_state SET state=$2::jsonb,updated_at=now() WHERE chat_id=$1",
+            [String(listing.seller_chat_id), JSON.stringify(state)]
+          );
+        }
+      }
+      await client.query(
+        "UPDATE autonomous_marketplace_listings SET status='expired',updated_at=now() WHERE id=$1::uuid AND status='active'",
+        [String(listing.id)]
+      );
+      await client.query("COMMIT");
+      expired.push(String(listing.id));
+    } catch (error) {
+      await client.query("ROLLBACK").catch(() => {});
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+  return { ok: true, expiredCount: expired.length, listingIds: expired };
+}
+
 module.exports = {
   MAX_PRICE,
   MAX_EXPIRY_HOURS,
   validateListingInput,
   vehicleSnapshot,
   createMarketplaceListing,
-  cancelMarketplaceListing
+  cancelMarketplaceListing,
+  expireMarketplaceListings
 };
