@@ -38,15 +38,49 @@ async function main() {
   try {
     if (!APPLY) {
       const audit = await pool.query(`
+        WITH profiles AS (
+          SELECT
+            chat_id,
+            state,
+            CASE WHEN jsonb_typeof(state->'garage')='array'
+              THEN state->'garage' ELSE '[]'::jsonb END AS garage,
+            CASE WHEN jsonb_typeof(state->'market')='array'
+              THEN state->'market' ELSE '[]'::jsonb END AS market
+          FROM autonomous_game_state
+        ),
+        vehicles AS (
+          SELECT chat_id, 'garage'::text AS location, v AS vehicle
+          FROM profiles CROSS JOIN LATERAL jsonb_array_elements(garage) v
+          UNION ALL
+          SELECT chat_id, 'market'::text AS location, v AS vehicle
+          FROM profiles CROSS JOIN LATERAL jsonb_array_elements(market) v
+        ),
+        normalized AS (
+          SELECT
+            chat_id,
+            location,
+            NULLIF(BTRIM(vehicle->>'plate'),'') AS plate,
+            UPPER(REGEXP_REPLACE(BTRIM(COALESCE(vehicle->>'plate','')), '[[:space:]]+', '', 'g')) AS plate_key
+          FROM vehicles
+        ),
+        duplicate_keys AS (
+          SELECT plate_key
+          FROM normalized
+          WHERE plate_key <> ''
+          GROUP BY plate_key
+          HAVING COUNT(*) > 1
+        )
         SELECT
-          COUNT(*)::int AS profiles,
-          COALESCE(SUM(jsonb_array_length(COALESCE(state->'garage','[]'::jsonb))),0)::int AS garage_vehicles,
-          COALESCE(SUM(jsonb_array_length(COALESCE(state->'market','[]'::jsonb))),0)::int AS market_vehicles,
-          COALESCE(SUM((
-            SELECT COUNT(*) FROM jsonb_array_elements(COALESCE(state->'garage','[]'::jsonb) || COALESCE(state->'market','[]'::jsonb)) v
-            WHERE NULLIF(BTRIM(v->>'plate'),'') IS NULL
-          )),0)::int AS vehicles_missing_plates
-        FROM autonomous_game_state
+          (SELECT COUNT(*)::int FROM profiles) AS profiles,
+          (SELECT COUNT(*)::int FROM vehicles) AS active_vehicles,
+          (SELECT COUNT(*)::int FROM normalized WHERE plate IS NULL) AS vehicles_missing_plates,
+          (SELECT COUNT(*)::int FROM normalized WHERE plate_key IN (SELECT plate_key FROM duplicate_keys)) AS vehicles_with_duplicate_plates,
+          (SELECT COUNT(DISTINCT plate_key)::int FROM normalized WHERE plate_key <> '') AS distinct_active_plate_keys,
+          (SELECT COALESCE(SUM(
+            CASE WHEN jsonb_typeof(state->'meta'->'vehiclePlatesIssued')='array'
+              THEN jsonb_array_length(state->'meta'->'vehiclePlatesIssued') ELSE 0 END
+          ),0)::int FROM profiles) AS historical_plate_entries,
+          (SELECT to_regclass('public.vehicle_plate_registry') IS NOT NULL) AS registry_table_exists
       `);
       console.log("DRY RUN — no data was changed.");
       console.log(JSON.stringify(audit.rows[0], null, 2));
