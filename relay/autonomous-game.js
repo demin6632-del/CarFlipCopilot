@@ -169,16 +169,24 @@ function plateCode(state) {
   return letters[Math.floor(rng(state)*letters.length)] + nums + letters[Math.floor(rng(state)*letters.length)] + letters[Math.floor(rng(state)*letters.length)] + " " + region;
 }
 function createUniqueVehiclePlate(state) {
-  const used=new Set([...(state.garage||[]),...(state.market||[])].map(car=>car.plate).filter(Boolean));
+  if(!state.meta) state.meta={};
+  if(!Array.isArray(state.meta.vehiclePlatesIssued)) state.meta.vehiclePlatesIssued=[];
+  const used=new Set([
+    ...state.meta.vehiclePlatesIssued,
+    ...(state.garage||[]).map(car=>car.plate),
+    ...(state.market||[]).map(car=>car.plate)
+  ].filter(Boolean));
   let plate;
   do { plate=plateCode(state); } while(used.has(plate));
+  state.meta.vehiclePlatesIssued.push(plate);
   return plate;
 }
 function ensureVehiclePlates(state) {
   if(!state||!state.meta) return;
   state.garage=Array.isArray(state.garage)?state.garage:[];
   state.market=Array.isArray(state.market)?state.market:[];
-  const used=new Set();
+  if(!Array.isArray(state.meta.vehiclePlatesIssued)) state.meta.vehiclePlatesIssued=[];
+  const used=new Set(state.meta.vehiclePlatesIssued.filter(Boolean));
   for(const car of [...state.garage,...state.market]) {
     if(!car.plate||used.has(car.plate)) {
       let plate;
@@ -186,6 +194,7 @@ function ensureVehiclePlates(state) {
       car.plate=plate;
     }
     used.add(car.plate);
+    if(!state.meta.vehiclePlatesIssued.includes(car.plate)) state.meta.vehiclePlatesIssued.push(car.plate);
   }
 }
 function createPlateListing(state) {
