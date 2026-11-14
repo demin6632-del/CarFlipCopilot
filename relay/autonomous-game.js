@@ -1,7 +1,7 @@
 const { Pool } = require("pg");
 const sandbox = require("./car-sandbox");
 const { syncVehiclePlateRegistry } = require("./vehicle-plate-registry");
-const { listActiveMarketplaceListings, listMarketplaceListingsForSeller, createMarketplaceListing, cancelMarketplaceListing } = require("./player-marketplace-listings");
+const { listActiveMarketplaceListings, getActiveMarketplaceListing, listMarketplaceListingsForSeller, createMarketplaceListing, cancelMarketplaceListing } = require("./player-marketplace-listings");
 
 const VERSION = 2;
 const START_BALANCE = 3000000;
@@ -1582,6 +1582,7 @@ async function marketplaceBrowseScreen(chat, page, sendFn) {
       "\n\nСтраница " + (safePage + 1) +
       "\nПокупка и безопасная передача автомобилей появятся на следующем этапе.";
     const buttons = [];
+    for (const listing of visibleRows) buttons.push({ text: "🔎 Подробнее: " + listing.vehicle.model.slice(0, 30), callback_data: "ag:pmarket_view:" + listing.id });
     if (safePage > 0) buttons.push({ text: "⬅️ Назад", callback_data: "ag:pmarket:" + (safePage - 1) });
     if (rows.length > 5) buttons.push({ text: "Вперёд ➡️", callback_data: "ag:pmarket:" + (safePage + 1) });
     buttons.push({ text: "🚘 Выставить автомобиль", callback_data: "ag:pmarket_sell" });
@@ -1596,6 +1597,43 @@ async function marketplaceBrowseScreen(chat, page, sendFn) {
   return true;
 }
 
+
+async function marketplaceDetailScreen(chat, listingId, sendFn, returnPage = 0) {
+  const p = db();
+  if (!p) {
+    await sendFn(chat, "⚠️ Общий рынок временно недоступен.", { reply_markup: { inline_keyboard: [[{ text: "⬅️ К общему рынку", callback_data: "ag:pmarket:" + returnPage }]] } });
+    return true;
+  }
+  try {
+    const listing = await getActiveMarketplaceListing(await p, listingId);
+    if (!listing) {
+      await sendFn(chat, "⌛ Это объявление больше недоступно: оно снято продавцом или срок размещения истёк.", {
+        reply_markup: { inline_keyboard: [[{ text: "🔄 Обновить общий рынок", callback_data: "ag:pmarket:" + returnPage }], [{ text: "⬅️ Главное меню", callback_data: "ag:home" }]] }
+      });
+      return true;
+    }
+    const car = listing.vehicle;
+    const date = value => value ? new Date(value).toLocaleString("ru-RU") : "—";
+    const body = "🚘 ОБЪЯВЛЕНИЕ AUTOFLIP\\n\\n" +
+      car.model + (car.year ? " · " + car.year : "") +
+      "\\n🔢 Госномер: " + (car.plate || "не указан") +
+      "\\n🛣 Пробег: " + car.mileage.toLocaleString("ru-RU") + " км" +
+      "\\n🛠 Состояние: " + car.condition + "/100" +
+      "\\n🔧 Повреждения: " + car.damage +
+      "\\n💰 Цена продавца: " + fmt(listing.askingPrice) +
+      "\\n🗓 Размещено: " + date(listing.createdAt) +
+      "\\n⌛ Действует до: " + date(listing.expiresAt) +
+      "\\n\\nПокупка через AUTOFLIP появится после запуска безопасной передачи автомобиля и оплаты.";
+    const markup = { inline_keyboard: [[{ text: "⬅️ Назад к объявлениям", callback_data: "ag:pmarket:" + returnPage }], [{ text: "📋 Мои объявления", callback_data: "ag:pmarket_mine" }]] };
+    const photo = carPhotoFor(car);
+    if (photo && body.length <= 1024) await sendFn(chat, body, { photo_url: photo, reply_markup: markup });
+    else await sendFn(chat, body, { reply_markup: markup });
+  } catch (error) {
+    console.log("PLAYER MARKETPLACE DETAIL ERROR:", error?.stack || error?.message || error);
+    await sendFn(chat, "⚠️ Не удалось открыть объявление. Попробуй обновить общий рынок.", { reply_markup: { inline_keyboard: [[{ text: "🌐 Общий рынок", callback_data: "ag:pmarket:" + returnPage }]] } });
+  }
+  return true;
+}
 
 async function marketplaceMineScreen(chat, sendFn) {
   const p = db();
@@ -1654,6 +1692,7 @@ async function handleCallback(chat,data,firstName,sendFn,answerFn,callbackId) {
   if(!String(data).startsWith("ag:")) return false;
   const [_,action,id]=String(data).split(":");
   if(action==="pmarket") return marketplaceBrowseScreen(chat, Math.max(0, Number(id)||0), sendFn);
+  if(action==="pmarket_view") return marketplaceDetailScreen(chat, id, sendFn);
   if(action==="pmarket_mine") return marketplaceMineScreen(chat, sendFn);
   if(action==="pmarket_sell") return marketplaceSellScreen(chat, firstName, sendFn);
   if(action==="pmarket_vehicle") {
