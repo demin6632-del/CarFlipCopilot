@@ -25,19 +25,19 @@ player data.
 
 - `vehicle-plate-registry.js` now contains an isolated transactional reservation helper.
 - `vehicle-plate-registry.test.js` covers normalization, stable IDs, repeat reconciliation, foreign collisions, retired numbers, and local duplicates.
-- The helper is now wired into every audited transactional write to `autonomous_game_state`, including the normal `withState()` path, initial profile creation, container-battle transactions, and street-duel transactions.
+- The helper is now wired into every audited transactional write to `autonomous_game_state`, including `load()` (existing and new profiles), `save()`, the normal `withState()` path, container-battle transactions, and street-duel transactions.
 - Registry synchronization and JSONB state persistence share the same PostgreSQL transaction. A failure rolls both back.
 - Active vehicles removed from a player's garage/market are retired in the registry. Explicit transfers must update registry ownership first, then reconcile both player states in the same transaction.
-- This code is still gated: it must not be deployed until the schema is installed and the PostgreSQL integration test passes.
+- GitHub Actions now passes the schema and application-helper integration tests on a disposable PostgreSQL 16 service. This is not a production migration: the code must not be deployed until the schema is installed through an approved rollout.
 
 ## Application integration audit
 
 - Add a stable UUID to every vehicle object. The helper derives a repeatable
   UUID from the owner ID and existing vehicle ID for legacy cars, then persists
   it in JSONB during reconciliation.
-- Reconcile every current garage and market vehicle while holding the existing
-  `withState()` database transaction. Do not reserve a plate in a separate
-  transaction from the state save.
+- Reconcile every current garage and market vehicle while holding the player's
+  PostgreSQL row lock. `load()`, `save()`, and `withState()` now run registry
+  reconciliation and JSONB persistence in the same transaction.
 - For a new plate, generate a candidate and attempt an INSERT. On a uniqueness
   conflict, generate another candidate and retry with a strict retry limit.
 - For an existing plate, claim it only if it is not already assigned to another
@@ -49,22 +49,38 @@ player data.
   registry row retired in that same transaction. Do not retire a vehicle merely
   because it moves from market to garage or between players. A player-to-player
   transfer must change the registry owner before reconciling the old and new states.
-- Keep callback idempotency and existing per-chat row locking intact. Add
-  concurrency tests using two different player transactions trying to reserve
-  the same candidate simultaneously.
+- Keep callback idempotency and existing per-chat row locking intact. The
+  PostgreSQL integration test now uses two concurrent player transactions to
+  reserve the same candidate and verifies that the second player receives a
+  different globally unique plate.
 - The audited game-state UPDATE statements now all call the registry helper before
-  persisting JSONB. The read-only existing-state branch of `load()` does not
-  write to the database; it is reconciled on the next transactional write.
+  persisting JSONB. `load()` now locks the profile row, normalizes legacy state,
+  reconciles every active vehicle, persists the registry and JSONB state
+  atomically, and only then returns the profile.
+
+## Read-only production audit (2026-11-14)
+
+The production Neon branch was inspected without changing data:
+
+- 1 player profile.
+- 1 vehicle in the garage and 4 in the market.
+- All 5 active vehicles currently have no registration plate.
+- No profile currently has legacy `vehiclePlatesIssued` history.
+- The `vehicle_plate_registry` table does not exist yet.
+
+This small legacy state makes the first backfill easy to review, but it still
+requires a backup and an explicitly approved production migration. The audit
+must be repeated immediately before rollout because live game data can change.
 
 ## Rollout gates
 
 1. Review this SQL and the backfill rules.
-2. Provision a compute endpoint on the isolated Neon test branch only if it is
-   available at no additional cost; otherwise run the migration in a disposable
-   local PostgreSQL test environment.
-3. Test fresh schema creation, repeated migration, normalized collisions,
-   concurrent allocation, vehicle ownership transfer, vehicle retirement, and
-   rollback after a simulated state-save failure.
+2. Use the GitHub Actions PostgreSQL 16 service for isolated migration and
+   application-helper integration tests. Do not provision Neon test compute
+   merely to run these tests.
+3. Keep the disposable CI tests passing for fresh and repeated schema creation,
+   normalized collisions, concurrent allocation, vehicle ownership transfer,
+   vehicle retirement, legacy-history import, and transaction rollback.
 4. Add application integration and tests on a feature branch.
 5. Back up production and verify the migration against a fresh production
    snapshot before any production change.
@@ -81,8 +97,8 @@ player data.
   can create replacement listings during gameplay.
 - `purchaseListing()` moves a vehicle from market to garage without changing
   its plate. `acceptPendingSale()` removes a vehicle from the garage.
-- `open()` calls `load()` outside `withState()`; therefore the first-screen
-  and legacy-normalization paths must also be handled safely before global
-  allocation is enabled.
+- `open()` calls `load()` outside `withState()`. This is now safe because
+  `load()` itself performs row-locked registry reconciliation and persistence
+  before returning a profile.
 - Vehicle IDs such as `car_<turn>_<sequence>` are only local to one player.
   They cannot be used alone as a global vehicle identity.
