@@ -42,6 +42,10 @@ class FakePool {
           }
           return { rowCount: 0, rows: [] };
         }
+        if (sql.includes("WHERE status='active' AND expires_at<=now()")) {
+          const row = [...pool.listings.values()].find(x => x.status === "active" && new Date(x.expires_at).getTime() <= Date.now());
+          return { rowCount: row ? 1 : 0, rows: row ? [row] : [] };
+        }
         if (sql.includes("SELECT state FROM autonomous_game_state")) {
           return { rowCount: 1, rows: [{ state: JSON.parse(JSON.stringify(pool.state)) }] };
         }
@@ -72,6 +76,11 @@ class FakePool {
         if (sql.includes("SELECT id,vehicle_uid,seller_chat_id,status FROM autonomous_marketplace_listings")) {
           const row = pool.listings.get(params[0]);
           return { rowCount: row ? 1 : 0, rows: row ? [row] : [] };
+        }
+        if (sql.includes("UPDATE autonomous_marketplace_listings SET status='expired'")) {
+          const row = pool.listings.get(params[0]);
+          if (row && row.status === "active") row.status = "expired";
+          return { rowCount: row ? 1 : 0, rows: [] };
         }
         if (sql.includes("UPDATE autonomous_marketplace_listings SET status='cancelled'")) {
           const row = pool.listings.get(params[0]);
@@ -151,6 +160,16 @@ async function test(name, fn) {
       error => error.code === "REGISTRY_OWNERSHIP_MISMATCH"
     );
     assert.equal(pool.listings.size, 0);
+    assert.equal("marketplaceListingId" in pool.state.garage[0], false);
+  });
+
+  await test("expired listings are closed and the seller's vehicle is unlocked", async () => {
+    const pool = new FakePool();
+    await marketplace.createMarketplaceListing(pool, { sellerChatId: SELLER, vehicleId: "car-1", askingPrice: 850000 });
+    pool.listings.get(LISTING_ID).expires_at = new Date(Date.now() - 1000);
+    const result = await marketplace.expireMarketplaceListings(pool);
+    assert.equal(result.expiredCount, 1);
+    assert.equal(pool.listings.get(LISTING_ID).status, "expired");
     assert.equal("marketplaceListingId" in pool.state.garage[0], false);
   });
 
