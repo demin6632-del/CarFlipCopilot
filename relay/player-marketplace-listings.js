@@ -249,7 +249,6 @@ function publicListingRow(row) {
     : {};
   return {
     id: String(row.id),
-    sellerChatId: String(row.seller_chat_id),
     askingPrice: Number(row.asking_price),
     status: String(row.status),
     createdAt: row.created_at,
