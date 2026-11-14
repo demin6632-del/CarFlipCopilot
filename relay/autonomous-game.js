@@ -883,7 +883,7 @@ function battleKeyboard(battle,chat) {
     [{text:"📦 Контейнеры",callback_data:"ag:containers"}]
   ]};
 }
-async function createContainerBattle(chat,name) {
+async function createContainerBattle(chat,name,callbackId) {
   const p=db(); if(!p) throw new Error("DATABASE_URL не настроен");
   const pool=await p;
   const client=await pool.connect();
@@ -895,7 +895,16 @@ async function createContainerBattle(chat,name) {
     const profile=await client.query("SELECT state FROM autonomous_game_state WHERE chat_id=$1 FOR UPDATE",[String(chat)]);
     if(!profile.rowCount){await client.query("ROLLBACK");return {ok:false,reason:"no_profile"};}
     const state=profile.rows[0].state;
+    state.processedCallbacks=Array.isArray(state.processedCallbacks)?state.processedCallbacks:[];
+    if(callbackId && state.processedCallbacks.includes(String(callbackId))){
+      await client.query("ROLLBACK");
+      return {ok:false,reason:"duplicate"};
+    }
     if(Number(state.player?.balance||0)<100000){await client.query("ROLLBACK");return {ok:false,reason:"money"};}
+    if(callbackId){
+      state.processedCallbacks.push(String(callbackId));
+      state.processedCallbacks=state.processedCallbacks.slice(-100);
+    }
     state.player.balance-=100000;
     state.transactions=Array.isArray(state.transactions)?state.transactions:[];
     state.transactions.unshift({time:Date.now(),kind:"container_battle_entry",amount:-100000,balance:state.player.balance,description:"Взнос в контейнерную битву",profit:0});
@@ -1100,6 +1109,10 @@ async function createStreetDuelAI(chat,name,callbackId){
     if(callbackId&&state.processedCallbacks.includes(String(callbackId))){await client.query("ROLLBACK");return {ok:false,reason:"duplicate"};}
     if(!Array.isArray(state.garage)||!state.garage.length){await client.query("ROLLBACK");return {ok:false,reason:"no_car"};}
     if(Number(state.player?.balance||0)<STREET_DUEL_STAKE){await client.query("ROLLBACK");return {ok:false,reason:"money"};}
+    if(callbackId){
+      state.processedCallbacks.push(String(callbackId));
+      state.processedCallbacks=state.processedCallbacks.slice(-100);
+    }
     const playerCar=state.garage.slice().sort((a,b)=>streetDuelPower(b)-streetDuelPower(a))[0];
     const playerPower=streetDuelPower(playerCar);
     const eligibleAiCars=CATALOG.filter(car=>car.id!==playerCar.catalogId);
@@ -1492,7 +1505,7 @@ async function handleCallback(chat,data,firstName,sendFn,answerFn,callbackId) {
     return true;
   }
   if(action==="battle_create"){
-    const result=await createContainerBattle(chat,firstName);
+    const result=await createContainerBattle(chat,firstName,callbackId);
     const battle=result.battle||await getContainerBattle();
     await sendFn(chat,result.ok?"✅ Комната создана. Приглашай других игроков!": "⚠️ Уже есть открытая комната. Можно присоединиться к ней.",{reply_markup:battleKeyboard(battle,chat)});
     return true;
