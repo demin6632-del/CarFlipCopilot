@@ -1000,15 +1000,13 @@ function streetDuelText(duel,chat){
   return ["🏁 РЕЗУЛЬТАТ ДУЭЛИ №"+duel.id,"","🚘 "+(duel.challenger_name||"Игрок 1")+": "+(duel.challenger_car?.model||"—")+" · "+(duel.challenger_power||0)+" ед.","🔢 Госномер: "+(duel.challenger_car?.plate||"не указан"),"🚘 "+(duel.opponent_name||"Игрок 2")+": "+(duel.opponent_car?.model||"—")+" · "+(duel.opponent_power||0)+" ед.","🔢 Госномер: "+(duel.opponent_car?.plate||"не указан"),"","🏆 Победитель: "+(r.winnerName||"Ничья"),"⚡ Разница мощности: "+(r.powerDifference||0)+" ед.","💰 Выплата: "+fmt(r.payout||0),"🏦 Комиссия: "+fmt(r.fee||0)].join("\n");
 }
 function streetDuelKeyboard(duel,chat,state){
-  const aiRow=(state?.garage||[]).length?[[{text:"🤖 Сразиться с ИИ · "+fmt(STREET_DUEL_STAKE),callback_data:"ag:duel_ai"}]]:[];
   if(duel?.status==="open")return {inline_keyboard:[
     ...(String(duel.challenger_chat_id)!==String(chat)?[[{text:"🏁 Принять вызов · "+fmt(duel.stake),callback_data:"ag:duel_join:"+duel.id}]]:[]),
     ...(String(duel.challenger_chat_id)===String(chat)?[[{text:"❌ Отменить вызов и вернуть ставку",callback_data:"ag:duel_cancel:"+duel.id}]]:[]),
-    ...aiRow,
     [{text:"🔄 Обновить",callback_data:"ag:duel"}],[{text:"⬅️ Главное меню",callback_data:"ag:home"}]
   ]};
   const rows=(state?.garage||[]).map(c=>[{text:"🚘 Вызвать: "+c.model+" · "+fmt(STREET_DUEL_STAKE),callback_data:"ag:duel_create:"+c.id}]);
-  return {inline_keyboard:[...aiRow,...rows,[{text:"🔄 Обновить",callback_data:"ag:duel"}],[{text:"⬅️ Главное меню",callback_data:"ag:home"}]]};
+  return {inline_keyboard:[...rows,[{text:"🔄 Обновить",callback_data:"ag:duel"}],[{text:"⬅️ Главное меню",callback_data:"ag:home"}]]};
 }
 async function createStreetDuel(chat,name,carId){
   const p=db();if(!p)throw new Error("DATABASE_URL не настроен");const pool=await p;const client=await pool.connect();
@@ -1463,11 +1461,10 @@ async function handleCallback(chat,data,firstName,sendFn,answerFn,callbackId) {
     await screen(sendFn,chat,state,streetDuelText(shown,chat),streetDuelKeyboard(shown,chat,state));return true;
   }
   if(action==="duel_ai"){
-    const result=await createStreetDuelAI(chat,firstName,callbackId),state=await load(chat,firstName);
-    const openDuel=await getOpenStreetDuel();
-    const messages={no_profile:"Сначала открой игру командой /start.",no_car:"В гараже нет автомобиля для гонки. Сначала купи машину.",money:"Для дуэли с ИИ нужно 50 000 ₽.",duplicate:"Эта дуэль уже обработана. Открой раздел дуэлей ещё раз."};
-    const text=result.ok?streetDuelText(result.duel,chat):"⚠️ "+(messages[result.reason]||"Не удалось начать дуэль с ИИ.");
-    await screen(sendFn,chat,state,text,streetDuelKeyboard(openDuel,chat,state));return true;
+    await sendFn(chat,"⚠️ Дуэли с ИИ отключены. В AUTOFLIP соперниками могут быть только реальные игроки.",{
+      reply_markup:{inline_keyboard:[[{text:"🏁 Открыть уличные дуэли",callback_data:"ag:duel"}],[{text:"⬅️ Главное меню",callback_data:"ag:home"}]]}
+    });
+    return true;
   }
   if(action==="duel_create"){
     const result=await createStreetDuel(chat,firstName,id),duel=result.duel||await getOpenStreetDuel(),state=await load(chat,firstName);
