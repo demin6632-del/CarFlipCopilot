@@ -932,12 +932,14 @@ function streetDuelText(duel,chat){
     const own=String(duel.challenger_chat_id)===String(chat);
     return ["🏁 УЛИЧНЫЙ ВЫЗОВ №"+duel.id,"","👤 Вызов: "+duel.challenger_name,"🚘 Автомобиль: "+duel.challenger_car.model,"⚡ Мощность: "+duel.challenger_power+" ед.","💰 Ставка: "+fmt(duel.stake),"","⏳ "+(own?"Ожидаем соперника. Взнос уже списан.":"Прими вызов своим лучшим автомобилем.")].join("\n");
   }
+  if(duel.status==="cancelled")return "🏁 ВЫЗОВ №"+duel.id+" ОТМЕНЁН\n\nСтавка 50 000 ₽ возвращена создателю.";
   const r=duel.result||{};
   return ["🏁 РЕЗУЛЬТАТ ДУЭЛИ №"+duel.id,"","🚘 "+(duel.challenger_name||"Игрок 1")+": "+(duel.challenger_car?.model||"—")+" · "+(duel.challenger_power||0)+" ед.","🚘 "+(duel.opponent_name||"Игрок 2")+": "+(duel.opponent_car?.model||"—")+" · "+(duel.opponent_power||0)+" ед.","","🏆 Победитель: "+(r.winnerName||"Ничья"),"⚡ Разница мощности: "+(r.powerDifference||0)+" ед.","💰 Выплата: "+fmt(r.payout||0),"🏦 Комиссия: "+fmt(r.fee||0)].join("\n");
 }
 function streetDuelKeyboard(duel,chat,state){
   if(duel?.status==="open")return {inline_keyboard:[
     ...(String(duel.challenger_chat_id)!==String(chat)?[[{text:"🏁 Принять вызов · "+fmt(duel.stake),callback_data:"ag:duel_join:"+duel.id}]]:[]),
+    ...(String(duel.challenger_chat_id)===String(chat)?[[{text:"❌ Отменить вызов и вернуть ставку",callback_data:"ag:duel_cancel:"+duel.id}]]:[]),
     [{text:"🔄 Обновить",callback_data:"ag:duel"}],[{text:"⬅️ Главное меню",callback_data:"ag:home"}]
   ]};
   const rows=(state?.garage||[]).map(c=>[{text:"🚘 Вызвать: "+c.model+" · "+fmt(STREET_DUEL_STAKE),callback_data:"ag:duel_create:"+c.id}]);
@@ -960,6 +962,24 @@ async function createStreetDuel(chat,name,carId){
     state.transactions[0].description="Взнос в уличную дуэль №"+r.rows[0].id;
     await client.query("UPDATE autonomous_game_state SET state=$2::jsonb,updated_at=now() WHERE chat_id=$1",[String(chat),JSON.stringify(state)]);
     await client.query("COMMIT");return {ok:true,duel:r.rows[0]};
+  }catch(e){await client.query("ROLLBACK").catch(()=>{});throw e;}finally{client.release();}
+}
+
+async function cancelStreetDuel(chat,duelId){
+  const p=db();if(!p)throw new Error("DATABASE_URL не настроен");const pool=await p;const client=await pool.connect();
+  try{
+    await client.query("BEGIN");
+    const dr=await client.query("SELECT * FROM autonomous_street_duels WHERE id=$1 AND status='open' FOR UPDATE",[Number(duelId)]);
+    if(!dr.rowCount){await client.query("ROLLBACK");return {ok:false,reason:"closed"};}
+    const duel=dr.rows[0];
+    if(String(duel.challenger_chat_id)!==String(chat)){await client.query("ROLLBACK");return {ok:false,reason:"owner"};}
+    const pr=await client.query("SELECT state FROM autonomous_game_state WHERE chat_id=$1 FOR UPDATE",[String(chat)]);
+    if(!pr.rowCount){await client.query("ROLLBACK");return {ok:false,reason:"no_profile"};}
+    const state=pr.rows[0].state;
+    addTx(state,"street_duel_refund",Number(duel.stake),"Возврат ставки за отмену дуэли №"+duel.id);
+    await client.query("UPDATE autonomous_game_state SET state=$2::jsonb,updated_at=now() WHERE chat_id=$1",[String(chat),JSON.stringify(state)]);
+    const upd=await client.query("UPDATE autonomous_street_duels SET status='cancelled',result=$2::jsonb,finished_at=now() WHERE id=$1 RETURNING *",[duel.id,JSON.stringify({winnerName:"Вызов отменён",payout:Number(duel.stake),fee:0})]);
+    await client.query("COMMIT");return {ok:true,duel:upd.rows[0]};
   }catch(e){await client.query("ROLLBACK").catch(()=>{});throw e;}finally{client.release();}
 }
 async function joinStreetDuel(chat,name,duelId){
@@ -1268,6 +1288,12 @@ async function handleCallback(chat,data,firstName,sendFn,answerFn,callbackId) {
     const result=await createStreetDuel(chat,firstName,id),duel=result.duel||await getOpenStreetDuel(),state=await load(chat,firstName);
     const messages={exists:"Уже есть открытый вызов. Дождись его завершения.",no_profile:"Сначала открой игру командой /start.",car:"Эта машина уже не в гараже.",money:"Для вызова нужно 50 000 ₽."};
     await sendFn(chat,result.ok?"🏁 Вызов создан! 50 000 ₽ списаны и зарезервированы.":"⚠️ "+(messages[result.reason]||"Не удалось создать вызов."),{reply_markup:streetDuelKeyboard(duel,chat,state)});return true;
+  }
+  if(action==="duel_cancel"){
+    const result=await cancelStreetDuel(chat,id),state=await load(chat,firstName);
+    const duel=result.duel||await getOpenStreetDuel()||await getStreetDuelForPlayer(chat);
+    const message=result.ok?"✅ Вызов отменён. Ставка 50 000 ₽ возвращена.":(result.reason==="owner"?"⚠️ Отменить вызов может только его создатель.":"⚠️ Этот вызов уже закрыт.");
+    await sendFn(chat,message,{reply_markup:streetDuelKeyboard(duel,chat,state)});return true;
   }
   if(action==="duel_join"){
     const result=await joinStreetDuel(chat,firstName,id),state=await load(chat,firstName);
