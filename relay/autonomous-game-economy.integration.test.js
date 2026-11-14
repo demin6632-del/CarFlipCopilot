@@ -33,6 +33,7 @@ async function run() {
     await game.init(); // schema and append-only trigger creation must be idempotent
 
     // A repeated purchase callback must transfer the car and debit the buyer only once.
+    let ledgerRows;
     const buyInitial = await game.load(buyChat, "Vehicle Buyer");
     const buyCandidate = buyInitial.market
       .filter(car => Number(car.buyPrice) <= Number(buyInitial.player.balance))
@@ -74,7 +75,7 @@ async function run() {
       battleState.transactions.filter(x => x.kind === "container_battle_entry").length,
       1
     );
-    let ledgerRows = await pool.query(
+    ledgerRows = await pool.query(
       "SELECT kind,amount FROM autonomous_economy_ledger WHERE chat_id=$1",
       [battleChat]
     );
@@ -476,8 +477,9 @@ async function run() {
 
     console.log("Autonomous game economy idempotency and ledger integration: OK");
   } finally {
-    await pool.query("DELETE FROM autonomous_economy_ledger WHERE chat_id = ANY($1::text[])", [[battleChat, battleGuestChat, aiChat, streetChat, cancelChat, challengeChat, opponentChat, ledgerChat, genericChat]]).catch(() => {});
-    await pool.query("DELETE FROM autonomous_game_state WHERE chat_id = ANY($1::text[])", [[battleChat, aiChat, streetChat, ledgerChat, genericChat]]).catch(() => {});
+    await pool.query("DELETE FROM autonomous_economy_ledger WHERE chat_id = ANY($1::text[])", [[battleChat, battleGuestChat, aiChat, streetChat, cancelChat, challengeChat, opponentChat, ledgerChat, genericChat, buyChat]]).catch(() => {});
+    await pool.query("DELETE FROM autonomous_processed_callbacks WHERE chat_id = ANY($1::text[])", [[battleChat, battleGuestChat, aiChat, streetChat, cancelChat, challengeChat, opponentChat, ledgerChat, genericChat, buyChat]]).catch(() => {});
+    await pool.query("DELETE FROM autonomous_game_state WHERE chat_id = ANY($1::text[])", [[battleChat, aiChat, streetChat, ledgerChat, genericChat, buyChat]]).catch(() => {});
     await pool.query("DELETE FROM autonomous_container_battles WHERE owner_chat_id=$1", [battleChat]).catch(() => {});
     await pool.query("DELETE FROM autonomous_street_duels WHERE challenger_chat_id = ANY($1::text[])", [[aiChat, streetChat, cancelChat, challengeChat]]).catch(() => {});
     await pool.end();
