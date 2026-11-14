@@ -1614,16 +1614,16 @@ async function marketplaceDetailScreen(chat, listingId, sendFn, returnPage = 0) 
     }
     const car = listing.vehicle;
     const date = value => value ? new Date(value).toLocaleString("ru-RU") : "—";
-    const body = "🚘 ОБЪЯВЛЕНИЕ AUTOFLIP\\n\\n" +
+    const body = "🚘 ОБЪЯВЛЕНИЕ AUTOFLIP\n\n" +
       car.model + (car.year ? " · " + car.year : "") +
-      "\\n🔢 Госномер: " + (car.plate || "не указан") +
-      "\\n🛣 Пробег: " + car.mileage.toLocaleString("ru-RU") + " км" +
-      "\\n🛠 Состояние: " + car.condition + "/100" +
-      "\\n🔧 Повреждения: " + car.damage +
-      "\\n💰 Цена продавца: " + fmt(listing.askingPrice) +
-      "\\n🗓 Размещено: " + date(listing.createdAt) +
-      "\\n⌛ Действует до: " + date(listing.expiresAt) +
-      "\\n\\nПокупка через AUTOFLIP появится после запуска безопасной передачи автомобиля и оплаты.";
+      "\n🔢 Госномер: " + (car.plate || "не указан") +
+      "\n🛣 Пробег: " + car.mileage.toLocaleString("ru-RU") + " км" +
+      "\n🛠 Состояние: " + car.condition + "/100" +
+      "\n🔧 Повреждения: " + car.damage +
+      "\n💰 Цена продавца: " + fmt(listing.askingPrice) +
+      "\n🗓 Размещено: " + date(listing.createdAt) +
+      "\n⌛ Действует до: " + date(listing.expiresAt) +
+      "\n\nПокупка через AUTOFLIP появится после запуска безопасной передачи автомобиля и оплаты.";
     const markup = { inline_keyboard: [[{ text: "⬅️ Назад к объявлениям", callback_data: "ag:pmarket:" + returnPage }], [{ text: "📋 Мои объявления", callback_data: "ag:pmarket_mine" }]] };
     const photo = carPhotoFor(car);
     if (photo && body.length <= 1024) await sendFn(chat, body, { photo_url: photo, reply_markup: markup });
@@ -1638,26 +1638,26 @@ async function marketplaceDetailScreen(chat, listingId, sendFn, returnPage = 0) 
 async function marketplaceMineScreen(chat, sendFn) {
   const p = db();
   if (!p) {
-    await sendFn(chat, "📋 МОИ ОБЪЯВЛЕНИЯ\\n\\nБаза данных временно недоступна.", { reply_markup: menu() });
+    await sendFn(chat, "📋 МОИ ОБЪЯВЛЕНИЯ\n\nБаза данных временно недоступна.", { reply_markup: menu() });
     return true;
   }
   try {
     const rows = await listMarketplaceListingsForSeller(await p, String(chat), { limit: 30, offset: 0 });
     if (!rows.length) {
-      await sendFn(chat, "📋 МОИ ОБЪЯВЛЕНИЯ\\n\\nУ тебя пока нет объявлений.", { reply_markup: { inline_keyboard: [[{ text: "🚘 Выставить автомобиль", callback_data: "ag:pmarket_sell" }], [{ text: "🌐 Общий рынок", callback_data: "ag:pmarket:0" }], [{ text: "⬅️ Меню", callback_data: "ag:home" }]] } });
+      await sendFn(chat, "📋 МОИ ОБЪЯВЛЕНИЯ\n\nУ тебя пока нет объявлений.", { reply_markup: { inline_keyboard: [[{ text: "🚘 Выставить автомобиль", callback_data: "ag:pmarket_sell" }], [{ text: "🌐 Общий рынок", callback_data: "ag:pmarket:0" }], [{ text: "⬅️ Меню", callback_data: "ag:home" }]] } });
       return true;
     }
     const statusText = { active: "🟢 Активно", cancelled: "⚪ Отменено", sold: "✅ Продано", expired: "⌛ Истекло" };
     const lines = rows.map((row, index) => (index + 1) + ". 🚘 " + row.vehicle.model +
-      "\\n   " + (statusText[row.status] || row.status) + " · " + fmt(row.askingPrice) +
-      "\\n   🔢 " + (row.vehicle.plate || "номер не указан") +
-      "\\n   До: " + new Date(row.expiresAt).toLocaleString("ru-RU"));
+      "\n   " + (statusText[row.status] || row.status) + " · " + fmt(row.askingPrice) +
+      "\n   🔢 " + (row.vehicle.plate || "номер не указан") +
+      "\n   До: " + new Date(row.expiresAt).toLocaleString("ru-RU"));
     const buttons = rows.filter(item => item.status === "active").map(row => [{
       text: "❌ Снять: " + row.vehicle.model.slice(0, 28), callback_data: "ag:pmarket_cancel:" + row.id
     }]);
     buttons.push([{ text: "🚘 Выставить автомобиль", callback_data: "ag:pmarket_sell" }]);
     buttons.push([{ text: "🌐 Общий рынок", callback_data: "ag:pmarket:0" }, { text: "⬅️ Меню", callback_data: "ag:home" }]);
-    await sendFn(chat, "📋 МОИ ОБЪЯВЛЕНИЯ\\n\\n" + lines.join("\\n\\n"), { reply_markup: { inline_keyboard: buttons } });
+    await sendFn(chat, "📋 МОИ ОБЪЯВЛЕНИЯ\n\n" + lines.join("\n\n"), { reply_markup: { inline_keyboard: buttons } });
   } catch (error) {
     console.log("PLAYER MARKETPLACE MINE ERROR:", error?.stack || error?.message || error);
     await sendFn(chat, "⚠️ Не удалось загрузить твои объявления. Попробуй позже.", { reply_markup: menu() });
@@ -1669,7 +1669,7 @@ async function marketplaceSellScreen(chat, firstName, sendFn) {
   const state = await load(chat, firstName);
   const available = (Array.isArray(state.garage) ? state.garage : []).filter(car => !car.marketplaceListingId);
   if (!available.length) {
-    await sendFn(chat, "🚘 ВЫСТАВЛЕНИЕ АВТОМОБИЛЯ\\n\\nВ гараже нет автомобилей, доступных для размещения.", { reply_markup: { inline_keyboard: [[{ text: "📋 Мои объявления", callback_data: "ag:pmarket_mine" }], [{ text: "⬅️ Общий рынок", callback_data: "ag:pmarket:0" }]] } });
+    await sendFn(chat, "🚘 ВЫСТАВЛЕНИЕ АВТОМОБИЛЯ\n\nВ гараже нет автомобилей, доступных для размещения.", { reply_markup: { inline_keyboard: [[{ text: "📋 Мои объявления", callback_data: "ag:pmarket_mine" }], [{ text: "⬅️ Общий рынок", callback_data: "ag:pmarket:0" }]] } });
     return true;
   }
   const buttons = available.slice(0, 20).map(car => [{
@@ -1677,7 +1677,7 @@ async function marketplaceSellScreen(chat, firstName, sendFn) {
     callback_data: "ag:pmarket_vehicle:" + String(car.id)
   }]);
   buttons.push([{ text: "⬅️ Общий рынок", callback_data: "ag:pmarket:0" }]);
-  await sendFn(chat, "🚘 ВЫСТАВЛЕНИЕ АВТОМОБИЛЯ\\n\\nВыбери свою машину. Система проверит её глобальный номер и владельца.\\nСрок объявления — 7 дней.", { reply_markup: { inline_keyboard: buttons } });
+  await sendFn(chat, "🚘 ВЫСТАВЛЕНИЕ АВТОМОБИЛЯ\n\nВыбери свою машину. Система проверит её глобальный номер и владельца.\nСрок объявления — 7 дней.", { reply_markup: { inline_keyboard: buttons } });
   return true;
 }
 
