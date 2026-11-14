@@ -181,11 +181,11 @@ async function handleMessage(m){
   const chat=m?.chat?.id;if(chat==null)return;
   const text=String(m.text||"").trim();
   const command=text.split(/\s/,1)[0].split("@")[0].toLowerCase();
-  const controlActions={"🚗 Рынок":"market","🏠 Гараж":"garage","📅 Сегодня":"day","📋 Контракты":"contracts","🔢 Номера":"plates","📊 Статистика":"stats","🏠 Главное меню":"home","⬅️ В меню":"home"};
+  const controlActions={"🚗 Рынок":"market","🏠 Гараж":"garage","📅 Сегодня":"day","📋 Контракты":"contracts","🔢 Номера":"plates","📊 Статистика":"stats","🏆 Рейтинг игроков":"leaderboard","🏠 Главное меню":"home","⬅️ В меню":"home"};
   if(controlActions[text]) return autonomousGame.handleCallback(chat,"ag:"+controlActions[text],m.from?.first_name||"Перекуп",(c,t,extra)=>send(c,t,extra));
   if(command==="/help") return send(chat,"🧭 AUTOFLIP — ПОМОЩЬ\n\n/start — начать\n/game — открыть игру\n/perekup — открыть игру\n/help — эта помощь\n\nИспользуй кнопки внутри игры.",{reply_markup:{inline_keyboard:[[{text:"🎮 Открыть AUTOFLIP",callback_data:"ag:home"}]]}});
   if(command==="/start"||command==="/game"||command==="/perekup"){
-    await tg("sendMessage",{chat_id:chat,text:"🎮 КНОПКИ УПРАВЛЕНИЯ AUTOFLIP\nВыбирай раздел кнопками внизу. Вводить команды вручную не нужно.",reply_markup:{keyboard:[[{text:"🚗 Рынок"},{text:"🏠 Гараж"}],[{text:"📅 Сегодня"},{text:"📋 Контракты"}],[{text:"🔢 Номера"},{text:"📊 Статистика"}],[{text:"🏠 Главное меню"}]],resize_keyboard:true,is_persistent:true}});
+    await tg("sendMessage",{chat_id:chat,text:"🎮 КНОПКИ УПРАВЛЕНИЯ AUTOFLIP\nВыбирай раздел кнопками внизу. Вводить команды вручную не нужно.",reply_markup:{keyboard:[[{text:"🚗 Рынок"},{text:"🏠 Гараж"}],[{text:"📅 Сегодня"},{text:"📋 Контракты"}],[{text:"🔢 Номера"},{text:"📊 Статистика"}],[{text:"🏆 Рейтинг игроков"}],[{text:"🏠 Главное меню"}]],resize_keyboard:true,is_persistent:true}});
     return autonomousGame.handleText(chat,"/perekup",m.from?.first_name||"Перекуп",(c,t,extra)=>send(c,t,extra));
   }
   return autonomousGame.handleText(chat,text,m.from?.first_name||"Перекуп",(c,t,extra)=>send(c,t,extra));
