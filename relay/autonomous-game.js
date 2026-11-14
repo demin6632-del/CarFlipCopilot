@@ -133,6 +133,14 @@ async function init() {
       description text NOT NULL DEFAULT '',
       occurred_at timestamptz NOT NULL
     );
+    CREATE TABLE IF NOT EXISTS autonomous_processed_callbacks (
+      chat_id text NOT NULL,
+      callback_id text NOT NULL,
+      processed_at timestamptz NOT NULL DEFAULT now(),
+      PRIMARY KEY(chat_id, callback_id)
+    );
+    CREATE INDEX IF NOT EXISTS autonomous_processed_callbacks_time_idx
+      ON autonomous_processed_callbacks(processed_at);
     CREATE INDEX IF NOT EXISTS autonomous_economy_ledger_chat_time_idx
       ON autonomous_economy_ledger(chat_id, occurred_at DESC);
     CREATE OR REPLACE FUNCTION reject_autonomous_economy_ledger_mutation()
@@ -458,6 +466,14 @@ async function save(chat,state) {
   }catch(e){await client.query("ROLLBACK").catch(()=>{});throw e;}
   finally{client.release();}
 }
+async function claimProcessedCallback(client, chat, callbackId) {
+  if (!callbackId) return true;
+  const result = await client.query(
+    "INSERT INTO autonomous_processed_callbacks(chat_id,callback_id) VALUES($1,$2) ON CONFLICT DO NOTHING RETURNING callback_id",
+    [String(chat), String(callbackId)]
+  );
+  return result.rowCount === 1;
+}
 async function withState(chat, firstName, mutate, callbackId) {
   const p=db(); if(!p) throw new Error("DATABASE_URL не настроен");
   const pool=await p;
@@ -475,6 +491,10 @@ async function withState(chat, firstName, mutate, callbackId) {
     state.meta=state.meta||{seed:seedFor(chat),turn:0,createdAt:Date.now(),day:1,plateCycle:0};
     ensureVehiclePlates(state);
     if(callbackId && state.processedCallbacks.includes(String(callbackId))) {
+      await client.query("ROLLBACK");
+      return {state,result:{duplicate:true}};
+    }
+    if(callbackId && !(await claimProcessedCallback(client, chat, callbackId))) {
       await client.query("ROLLBACK");
       return {state,result:{duplicate:true}};
     }
@@ -972,6 +992,10 @@ async function createContainerBattle(chat,name,callbackId) {
       await client.query("ROLLBACK");
       return {ok:false,reason:"duplicate"};
     }
+    if(callbackId && !(await claimProcessedCallback(client, chat, callbackId))){
+      await client.query("ROLLBACK");
+      return {ok:false,reason:"duplicate"};
+    }
     if(Number(state.player?.balance||0)<100000){await client.query("ROLLBACK");return {ok:false,reason:"money"};}
     if(callbackId){
       state.processedCallbacks.push(String(callbackId));
@@ -1107,6 +1131,10 @@ async function createStreetDuel(chat,name,carId,callbackId){
       await client.query("ROLLBACK");
       return {ok:false,reason:"duplicate"};
     }
+    if(callbackId && !(await claimProcessedCallback(client, chat, callbackId))){
+      await client.query("ROLLBACK");
+      return {ok:false,reason:"duplicate"};
+    }
     const car=(state.garage||[]).find(x=>String(x.id)===String(carId));
     if(!car){await client.query("ROLLBACK");return {ok:false,reason:"car"};}
     if(Number(state.player?.balance||0)<STREET_DUEL_STAKE){await client.query("ROLLBACK");return {ok:false,reason:"money"};}
@@ -1194,6 +1222,7 @@ async function createStreetDuelAI(chat,name,callbackId){
     ensureVehiclePlates(state);
     state.processedCallbacks=Array.isArray(state.processedCallbacks)?state.processedCallbacks:[];
     if(callbackId&&state.processedCallbacks.includes(String(callbackId))){await client.query("ROLLBACK");return {ok:false,reason:"duplicate"};}
+    if(callbackId && !(await claimProcessedCallback(client, chat, callbackId))){await client.query("ROLLBACK");return {ok:false,reason:"duplicate"};}
     if(!Array.isArray(state.garage)||!state.garage.length){await client.query("ROLLBACK");return {ok:false,reason:"no_car"};}
     if(Number(state.player?.balance||0)<STREET_DUEL_STAKE){await client.query("ROLLBACK");return {ok:false,reason:"money"};}
     if(callbackId){
