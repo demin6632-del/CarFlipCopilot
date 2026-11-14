@@ -163,7 +163,7 @@ async function expireMarketplaceListings(pool, { batchSize = 50 } = {}) {
       await client.query("BEGIN");
       const listingResult = await client.query(
         "SELECT id,vehicle_uid,seller_chat_id,status FROM autonomous_marketplace_listings " +
-        "WHERE status='active' AND expires_at<=now() ORDER BY expires_at,id FOR UPDATE SKIP LOCKED LIMIT 1"
+        "WHERE status='active' AND expires_at<=now() ORDER BY expires_at,id LIMIT 1 FOR UPDATE SKIP LOCKED"
       );
       if (!listingResult.rowCount) {
         await client.query("COMMIT");
