@@ -1,0 +1,148 @@
+"use strict";
+
+const assert = require("node:assert/strict");
+const crypto = require("node:crypto");
+const { Pool } = require("pg");
+const { purchaseMarketplaceListing } = require("./player-marketplace-settlement");
+
+const connectionString = process.env.TEST_DATABASE_URL || process.env.DATABASE_URL;
+if (!connectionString) {
+  console.error("TEST_DATABASE_URL or DATABASE_URL is required for settlement PostgreSQL integration tests");
+  process.exit(1);
+}
+const pool = new Pool({
+  connectionString,
+  ssl: process.env.DATABASE_SSL === "false" ? false : { rejectUnauthorized: false },
+  max: 8
+});
+
+async function test(name, fn) {
+  await fn();
+  console.log("PASS:", name);
+}
+
+(async () => {
+  const suffix = crypto.randomUUID();
+  const seller = "settlement-seller-" + suffix;
+  const buyerA = "settlement-buyer-a-" + suffix;
+  const buyerB = "settlement-buyer-b-" + suffix;
+  const vehicleUid = crypto.randomUUID();
+  const listingId = crypto.randomUUID();
+  const plate = "А" + String(100 + Math.floor(Math.random() * 900)) + "ВС " + String(10 + Math.floor(Math.random() * 90));
+  const car = {
+    id: "car-" + suffix, vehicleUid, plate, model: "Settlement Integration Car",
+    catalogId: "settlement_test", year: 2021, mileage: 52000, condition: 94,
+    damage: 1, vin: "TESTVIN" + suffix.replace(/-/g, "").slice(0, 10),
+    tuning: { engine: "stock" }, history: [{ event: "first registration" }],
+    marketplaceListingId: listingId
+  };
+  const sellerState = { player: { balance: 400000, garageCapacity: 3 }, garage: [car], transactions: [], meta: {} };
+  const buyerState = id => ({ player: { balance: 2000000, garageCapacity: 3 }, garage: [], transactions: [], meta: {} });
+
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS autonomous_game_state (
+        chat_id text PRIMARY KEY,
+        version integer NOT NULL DEFAULT 1,
+        state jsonb NOT NULL,
+        updated_at timestamptz NOT NULL DEFAULT now()
+      )
+    `);
+    await pool.query(
+      "INSERT INTO vehicle_plate_registry(plate,vehicle_uid,owner_chat_id,source) VALUES($1,$2::uuid,$3,'settlement-integration-test')",
+      [plate, vehicleUid, seller]
+    );
+    await pool.query(
+      "INSERT INTO autonomous_game_state(chat_id,version,state) VALUES($1,1,$2::jsonb),($3,1,$4::jsonb),($5,1,$6::jsonb)",
+      [seller, JSON.stringify(sellerState), buyerA, JSON.stringify(buyerState(buyerA)), buyerB, JSON.stringify(buyerState(buyerB))]
+    );
+    await pool.query(
+      "INSERT INTO autonomous_marketplace_listings(id,vehicle_uid,seller_chat_id,asking_price,status,vehicle_snapshot,expires_at) " +
+      "VALUES($1::uuid,$2::uuid,$3,850000,'active',$4::jsonb,now()+interval '1 day')",
+      [listingId, vehicleUid, seller, JSON.stringify({ model: car.model, plate, year: 2021, mileage: 52000, condition: 94, damage: 1 })]
+    );
+
+    await test("PostgreSQL settlement moves the exact vehicle and reconciles both balances and ledger", async () => {
+      const result = await purchaseMarketplaceListing(pool, {
+        buyerChatId: buyerA, listingId, callbackId: "pg-settlement-" + suffix
+      });
+      assert.equal(result.ok, true);
+      const states = await pool.query(
+        "SELECT chat_id,state FROM autonomous_game_state WHERE chat_id=ANY($1::text[])",
+        [[seller, buyerA]]
+      );
+      const byId = new Map(states.rows.map(row => [row.chat_id, row.state]));
+      assert.equal(byId.get(buyerA).player.balance, 1150000);
+      assert.equal(byId.get(seller).player.balance, 1250000);
+      assert.equal(byId.get(buyerA).garage.length, 1);
+      assert.equal(byId.get(seller).garage.length, 0);
+      assert.equal(byId.get(buyerA).garage[0].vehicleUid, vehicleUid);
+      assert.equal(byId.get(buyerA).garage[0].plate, plate);
+      assert.equal(byId.get(buyerA).garage[0].vin, car.vin);
+      assert.deepEqual(byId.get(buyerA).garage[0].tuning, car.tuning);
+      assert.deepEqual(byId.get(buyerA).garage[0].history, car.history);
+      assert.equal("marketplaceListingId" in byId.get(buyerA).garage[0], false);
+
+      const registry = await pool.query("SELECT owner_chat_id,plate FROM vehicle_plate_registry WHERE vehicle_uid=$1::uuid", [vehicleUid]);
+      assert.equal(registry.rows[0].owner_chat_id, buyerA);
+      assert.equal(registry.rows[0].plate, plate);
+      const listing = await pool.query("SELECT status,sold_to_chat_id FROM autonomous_marketplace_listings WHERE id=$1::uuid", [listingId]);
+      assert.equal(listing.rows[0].status, "sold");
+      assert.equal(listing.rows[0].sold_to_chat_id, buyerA);
+      const ledger = await pool.query("SELECT chat_id,kind,amount,balance_after FROM autonomous_economy_ledger WHERE chat_id=ANY($1::text[]) AND kind IN ('marketplace_purchase','marketplace_sale')", [[buyerA, seller]]);
+      assert.equal(ledger.rowCount, 2);
+      assert.deepEqual(ledger.rows.map(row => [row.chat_id, Number(row.amount), Number(row.balance_after)]).sort((a,b)=>a[0].localeCompare(b[0])), [
+        [buyerA, -850000, 1150000], [seller, 850000, 1250000]
+      ].sort((a,b)=>a[0].localeCompare(b[0])));
+      const history = await pool.query("SELECT count(*)::int AS count FROM autonomous_marketplace_transactions WHERE listing_id=$1::uuid", [listingId]);
+      assert.equal(history.rows[0].count, 1);
+    });
+
+    await test("two buyers racing for one listing cannot both complete the purchase", async () => {
+      const secondUid = crypto.randomUUID();
+      const secondListing = crypto.randomUUID();
+      const secondPlate = "В" + String(100 + Math.floor(Math.random() * 900)) + "ЕК " + String(10 + Math.floor(Math.random() * 90));
+      const secondCar = { ...car, id: "race-car-" + suffix, vehicleUid: secondUid, plate: secondPlate, marketplaceListingId: secondListing };
+      await pool.query(
+        "INSERT INTO vehicle_plate_registry(plate,vehicle_uid,owner_chat_id,source) VALUES($1,$2::uuid,$3,'settlement-race-test')",
+        [secondPlate, secondUid, seller]
+      );
+      const currentSeller = await pool.query("SELECT state FROM autonomous_game_state WHERE chat_id=$1", [seller]);
+      const nextSellerState = currentSeller.rows[0].state;
+      nextSellerState.garage.push(secondCar);
+      await pool.query("UPDATE autonomous_game_state SET state=$2::jsonb WHERE chat_id=$1", [seller, JSON.stringify(nextSellerState)]);
+      await pool.query(
+        "INSERT INTO autonomous_marketplace_listings(id,vehicle_uid,seller_chat_id,asking_price,status,vehicle_snapshot,expires_at) " +
+        "VALUES($1::uuid,$2::uuid,$3,750000,'active',$4::jsonb,now()+interval '1 day')",
+        [secondListing, secondUid, seller, JSON.stringify({ model: secondCar.model, plate: secondPlate, year: 2021, mileage: 52000, condition: 94, damage: 1 })]
+      );
+
+      const results = await Promise.allSettled([
+        purchaseMarketplaceListing(pool, { buyerChatId: buyerA, listingId: secondListing, callbackId: "race-a-" + suffix }),
+        purchaseMarketplaceListing(pool, { buyerChatId: buyerB, listingId: secondListing, callbackId: "race-b-" + suffix })
+      ]);
+      assert.equal(results.filter(item => item.status === "fulfilled" && item.value.ok).length, 1);
+      assert.equal(results.filter(item => item.status === "rejected").length, 1);
+      const listing = await pool.query("SELECT status,sold_to_chat_id FROM autonomous_marketplace_listings WHERE id=$1::uuid", [secondListing]);
+      assert.equal(listing.rows[0].status, "sold");
+      const count = await pool.query("SELECT count(*)::int AS count FROM autonomous_marketplace_transactions WHERE listing_id=$1::uuid", [secondListing]);
+      assert.equal(count.rows[0].count, 1);
+      const owners = await pool.query("SELECT owner_chat_id FROM vehicle_plate_registry WHERE vehicle_uid=$1::uuid", [secondUid]);
+      assert.equal(owners.rows[0].owner_chat_id, listing.rows[0].sold_to_chat_id);
+    });
+
+    console.log("Player marketplace settlement PostgreSQL integration: OK");
+  } finally {
+    await pool.query("DELETE FROM autonomous_marketplace_transactions WHERE listing_id IN (SELECT id FROM autonomous_marketplace_listings WHERE seller_chat_id=$1)", [seller]).catch(() => {});
+    await pool.query("DELETE FROM autonomous_marketplace_listings WHERE seller_chat_id=$1", [seller]).catch(() => {});
+    await pool.query("DELETE FROM autonomous_economy_ledger WHERE chat_id=ANY($1::text[])", [[seller, buyerA, buyerB]]).catch(() => {});
+    await pool.query("DELETE FROM autonomous_processed_callbacks WHERE chat_id=ANY($1::text[])", [[seller, buyerA, buyerB]]).catch(() => {});
+    await pool.query("DELETE FROM autonomous_game_state WHERE chat_id=ANY($1::text[])", [[seller, buyerA, buyerB]]).catch(() => {});
+    await pool.query("DELETE FROM vehicle_plate_registry WHERE owner_chat_id=ANY($1::text[]) OR vehicle_uid IN (SELECT vehicle_uid FROM autonomous_marketplace_listings WHERE seller_chat_id=$2)", [[seller, buyerA, buyerB], seller]).catch(() => {});
+    await pool.end();
+  }
+})().catch(async error => {
+  console.error(error);
+  await pool.end().catch(() => {});
+  process.exitCode = 1;
+});
