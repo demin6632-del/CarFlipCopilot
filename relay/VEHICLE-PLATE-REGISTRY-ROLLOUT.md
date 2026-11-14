@@ -25,6 +25,8 @@ player data.
 
 - `vehicle-plate-registry.js` now contains an isolated transactional reservation helper.
 - `vehicle-plate-registry.test.js` covers normalization, stable IDs, repeat reconciliation, foreign collisions, retired numbers, and local duplicates.
+- `vehicle-plate-registry.postgres.integration.test.js` exercises real PostgreSQL reservations, transfers, retirement, concurrent allocation, rollback, legacy history, and the transactional `load()` path.
+- `vehicle-plate-registry-backfill.js` provides a resumable per-profile backfill. It is read-only by default and requires both `--apply` and `--confirm-production` before writing.
 - The helper is now wired into every audited transactional write to `autonomous_game_state`, including `load()` (existing and new profiles), `save()`, the normal `withState()` path, container-battle transactions, and street-duel transactions.
 - Registry synchronization and JSONB state persistence share the same PostgreSQL transaction. A failure rolls both back.
 - Active vehicles removed from a player's garage/market are retired in the registry. Explicit transfers must update registry ownership first, then reconcile both player states in the same transaction.
@@ -80,13 +82,19 @@ must be repeated immediately before rollout because live game data can change.
    merely to run these tests.
 3. Keep the disposable CI tests passing for fresh and repeated schema creation,
    normalized collisions, concurrent allocation, vehicle ownership transfer,
-   vehicle retirement, legacy-history import, and transaction rollback.
+   vehicle retirement, legacy-history import, transactional profile loading,
+   and transaction rollback.
 4. Review and approve the application integration and test coverage on this feature branch.
-5. Back up production and verify the migration against a fresh production
-   snapshot before any production change.
-6. Apply to production only after the user explicitly approves the rollout.
-7. Deploy the application only after the schema is ready. Verify the running
-   Render commit before reporting completion.
+5. Schedule a maintenance window and pause bot writes so no profiles are created
+   while the initial backfill is running. Take and verify a production backup.
+6. Run `node vehicle-plate-registry-backfill.js` first. This is a read-only dry
+   run. Review the counts before considering any write operation.
+7. Apply the schema, then run the backfill with both
+   `--apply --confirm-production` only after the user explicitly approves it.
+   The script commits one player at a time and can be safely rerun after an
+   interruption. Verify every profile and active vehicle is registered.
+8. Deploy the application only after the schema and backfill are ready. Resume
+   bot writes and verify the running Render commit before reporting completion.
 
 ## Important existing-code findings
 
