@@ -50,6 +50,9 @@ jobs:
           if (!game.includes('function acceptPendingSale(state, id)')) throw new Error('sale flow helper missing');
           if (!game.includes('function buyPlate(state, id)')) throw new Error('plate buy helper missing');
           if (!game.includes('function sellPlate(state, id)')) throw new Error('plate sell helper missing');
+          if (!game.includes('function containerText(state)')) throw new Error('container terminal missing');
+          if (!game.includes('if(action==="crate_open")')) throw new Error('container opening flow missing');
+          if (!bot.includes('"📦 Контейнеры":"containers"')) throw new Error('container keyboard route missing');
           if (!game.includes('function withState')) throw new Error('transactional state guard missing');
           if (!game.includes('async function withState(chat, firstName, mutate, callbackId)')) throw new Error('callback idempotency guard missing');
           if (!game.includes('if(callbackId && state.processedCallbacks.includes(String(callbackId)))')) throw new Error('duplicate callback check is not transactional');
