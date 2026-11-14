@@ -189,6 +189,17 @@ test("recommendation never returns a listing outside the current market", () => 
   assert.ok(s.market.some(x => x.id === r.car.id));
 });
 
+test("street duel power is positive and rewards condition and tuning", () => {
+  const s=game.newState("duel-power", "Tester");
+  const source={...s.market[0],status:"owned",condition:90,mileage:60000};
+  const base=game.streetDuelPower(source);
+  const tuned={...source,sandbox:{version:1,mileage:source.mileage,parts:[],flags:{ecuTune:true}}};
+  const boosted=game.streetDuelPower(tuned);
+  assert.ok(base>0);
+  assert.ok(boosted>base);
+  assert.equal(game.STREET_DUEL_STAKE,50000);
+});
+
 console.log("Autonomous game tests: OK");
 
 
