@@ -23,6 +23,7 @@ async function run() {
   const challengeChat = "economy-challenger-" + suffix;
   const opponentChat = "economy-opponent-" + suffix;
   const ledgerChat = "economy-ledger-" + suffix;
+  const genericChat = "economy-generic-" + suffix;
   const send = async () => true;
   const answer = async () => true;
 
@@ -335,6 +336,36 @@ async function run() {
       ).length
     );
 
+    // Generic state-mutating economy callbacks must also be idempotent under concurrent delivery.
+    const genericInitial = await game.load(genericChat, "Generic Callback Tester");
+    const genericBalance = genericInitial.player.balance;
+    const genericCallback = "generic-crate-" + suffix;
+    await Promise.all([
+      game.handleCallback(
+        genericChat, "ag:crate_open:standard", "Generic Callback Tester", send, answer, genericCallback
+      ),
+      game.handleCallback(
+        genericChat, "ag:crate_open:standard", "Generic Callback Tester", send, answer, genericCallback
+      )
+    ]);
+    const genericState = await game.load(genericChat, "Generic Callback Tester");
+    assert.equal(
+      genericState.transactions.filter(x => x.kind === "container_open").length,
+      1
+    );
+    assert.equal(genericState.player.balance, genericBalance + genericState.transactions
+      .filter(x => x.kind === "container_open" || x.kind === "container_cash" || x.kind === "container_jackpot")
+      .reduce((sum, tx) => sum + Number(tx.amount || 0), 0));
+    assert.ok(genericState.processedCallbacks.includes(genericCallback));
+    ledgerRows = await pool.query(
+      "SELECT transaction_id FROM autonomous_economy_ledger WHERE chat_id=$1",
+      [genericChat]
+    );
+    assert.equal(
+      ledgerRows.rowCount,
+      genericState.transactions.filter(x => x.kind === "container_open" || x.kind === "container_cash" || x.kind === "container_jackpot").length
+    );
+
     const legacyState = await game.load(ledgerChat, "Ledger Tester");
     legacyState.transactions = [{
       time: Date.now(), kind: "legacy_backfill_test", amount: -123,
@@ -367,8 +398,8 @@ async function run() {
 
     console.log("Autonomous game economy idempotency and ledger integration: OK");
   } finally {
-    await pool.query("DELETE FROM autonomous_economy_ledger WHERE chat_id = ANY($1::text[])", [[battleChat, battleGuestChat, aiChat, streetChat, cancelChat, challengeChat, opponentChat, ledgerChat]]).catch(() => {});
-    await pool.query("DELETE FROM autonomous_game_state WHERE chat_id = ANY($1::text[])", [[battleChat, aiChat, streetChat, ledgerChat]]).catch(() => {});
+    await pool.query("DELETE FROM autonomous_economy_ledger WHERE chat_id = ANY($1::text[])", [[battleChat, battleGuestChat, aiChat, streetChat, cancelChat, challengeChat, opponentChat, ledgerChat, genericChat]]).catch(() => {});
+    await pool.query("DELETE FROM autonomous_game_state WHERE chat_id = ANY($1::text[])", [[battleChat, aiChat, streetChat, ledgerChat, genericChat]]).catch(() => {});
     await pool.query("DELETE FROM autonomous_container_battles WHERE owner_chat_id=$1", [battleChat]).catch(() => {});
     await pool.query("DELETE FROM autonomous_street_duels WHERE challenger_chat_id = ANY($1::text[])", [[aiChat, streetChat, cancelChat, challengeChat]]).catch(() => {});
     await pool.end();
