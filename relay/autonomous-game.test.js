@@ -528,3 +528,14 @@ test("full autonomous trading loop keeps economy consistent", () => {
   assert.ok(s.contracts.find(x => x.id === "profit_300k").completed);
   assert.ok(s.player.balance > startBalance);
 });
+
+
+(async()=>{
+  let sent=null;
+  const handled=await game.handleCallback("ai-duel-disabled-test","ag:duel_ai","Tester",async(chat,text,extra)=>{sent={chat,text,extra};});
+  assert.equal(handled,true);
+  assert.match(sent.text,/Дуэли с ИИ отключены/);
+  assert.match(sent.text,/только реальные игроки/);
+  assert.deepEqual(sent.extra.reply_markup.inline_keyboard.map(row=>row[0].callback_data),["ag:duel","ag:home"]);
+  console.log("PASS: AI street-duel callback is blocked without database access");
+})().catch(error=>{console.error(error);process.exitCode=1;});
