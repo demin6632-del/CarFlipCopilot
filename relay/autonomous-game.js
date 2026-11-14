@@ -234,7 +234,8 @@ function dealRisk(state, car) {
   if (car.mileageRolledBack && roll < risk * 0.30) {
     const penalty=Math.round((45000+rng(state)*95000)/1000)*1000;
     return {type:"incident",penalty,text:"Покупатель проверил историю и обнаружил несоответствие пробега."};
-  }\n  if (roll < risk * 0.18) {
+  }
+  if (roll < risk * 0.18) {
     const penalty = Math.round((9000 + rng(state) * 36000) / 1000) * 1000;
     return {type:"incident", penalty, text:"Покупатель заметил дополнительный дефект."};
   }
