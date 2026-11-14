@@ -5,7 +5,7 @@ const { expireMarketplaceListings } = require("./player-marketplace-listings");
 
 function readBatchSize(value) {
   if (value == null || value === "") return 50;
-  if (!/^\\d+$/.test(String(value))) {
+  if (!/^\d+$/.test(String(value))) {
     throw new Error("MARKETPLACE_EXPIRY_BATCH_SIZE must be an integer from 1 to 500");
   }
   const parsed = Number(value);
