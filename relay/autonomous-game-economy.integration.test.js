@@ -16,6 +16,7 @@ const pool = new Pool({
 async function run() {
   const suffix = String(Date.now());
   const battleChat = "economy-battle-" + suffix;
+  const battleGuestChat = "economy-battle-guest-" + suffix;
   const aiChat = "economy-ai-" + suffix;
   const streetChat = "economy-street-" + suffix;
   const ledgerChat = "economy-ledger-" + suffix;
@@ -48,25 +49,64 @@ async function run() {
     assert.equal(ledgerRows.rows[0].kind, "container_battle_entry");
     assert.equal(Number(ledgerRows.rows[0].amount), -100000);
 
-    // Simulate a retry after the original room has already closed.
-    await pool.query(
-      "UPDATE autonomous_container_battles SET status='finished',finished_at=now() WHERE owner_chat_id=$1 AND status='open'",
+    const openBattle = await pool.query(
+      "SELECT id FROM autonomous_container_battles WHERE owner_chat_id=$1 AND status='open'",
       [battleChat]
     );
+    assert.equal(openBattle.rowCount, 1);
+    const battleGuestInitial = await game.load(battleGuestChat, "Battle Guest");
+    const battleGuestBalance = battleGuestInitial.player.balance;
+    await game.handleCallback(
+      battleGuestChat, "ag:battle_join:" + openBattle.rows[0].id, "Battle Guest", send, answer,
+      "battle-join-" + suffix
+    );
+    let battleGuestState = await game.load(battleGuestChat, "Battle Guest");
+    assert.equal(battleGuestState.player.balance, battleGuestBalance - 100000);
+    ledgerRows = await pool.query(
+      "SELECT transaction_id FROM autonomous_economy_ledger WHERE chat_id=$1",
+      [battleGuestChat]
+    );
+    assert.equal(ledgerRows.rowCount, 1);
+
+    await game.handleCallback(
+      battleChat, "ag:battle_start:" + openBattle.rows[0].id, "Battle Tester", send, answer,
+      "battle-start-" + suffix
+    );
+    battleState = await game.load(battleChat, "Battle Tester");
+    battleGuestState = await game.load(battleGuestChat, "Battle Guest");
+    const battleResult = await pool.query(
+      "SELECT results FROM autonomous_container_battles WHERE id=$1",
+      [openBattle.rows[0].id]
+    );
+    assert.equal(battleResult.rowCount, 1);
+    const ownerReward = battleResult.rows[0].results.find(x => String(x.chatId) === battleChat)?.reward || 0;
+    const guestReward = battleResult.rows[0].results.find(x => String(x.chatId) === battleGuestChat)?.reward || 0;
+    assert.equal(battleState.player.balance, battleBalance - 100000 + ownerReward);
+    assert.equal(battleGuestState.player.balance, battleGuestBalance - 100000 + guestReward);
+    for (const [chatId, state] of [[battleChat, battleState], [battleGuestChat, battleGuestState]]) {
+      const rows = await pool.query(
+        "SELECT transaction_id FROM autonomous_economy_ledger WHERE chat_id=$1",
+        [chatId]
+      );
+      assert.equal(
+        rows.rowCount,
+        state.transactions.filter(x =>
+          x.kind === "container_battle_entry" || x.kind === "container_battle_prize"
+        ).length
+      );
+    }
+
+    // Replaying the original create callback after the room has finished must not charge again.
     await game.handleCallback(
       battleChat, "ag:battle_create", "Battle Tester", send, answer, battleCallback
     );
     battleState = await game.load(battleChat, "Battle Tester");
-    assert.equal(battleState.player.balance, battleBalance - 100000);
-    assert.equal(
-      battleState.transactions.filter(x => x.kind === "container_battle_entry").length,
-      1
-    );
-    ledgerRows = await pool.query(
-      "SELECT transaction_id FROM autonomous_economy_ledger WHERE chat_id=$1",
+    assert.equal(battleState.player.balance, battleBalance - 100000 + ownerReward);
+    const battleCount = await pool.query(
+      "SELECT COUNT(*)::integer AS count FROM autonomous_container_battles WHERE owner_chat_id=$1",
       [battleChat]
     );
-    assert.equal(ledgerRows.rowCount, 1);
+    assert.equal(battleCount.rows[0].count, 1);
 
     const streetInitial = await game.load(streetChat, "Street Tester");
     const streetCar = { ...streetInitial.market[0], status: "owned" };
@@ -200,7 +240,7 @@ async function run() {
 
     console.log("Autonomous game economy idempotency and ledger integration: OK");
   } finally {
-    await pool.query("DELETE FROM autonomous_economy_ledger WHERE chat_id = ANY($1::text[])", [[battleChat, aiChat, streetChat, ledgerChat]]).catch(() => {});
+    await pool.query("DELETE FROM autonomous_economy_ledger WHERE chat_id = ANY($1::text[])", [[battleChat, battleGuestChat, aiChat, streetChat, ledgerChat]]).catch(() => {});
     await pool.query("DELETE FROM autonomous_game_state WHERE chat_id = ANY($1::text[])", [[battleChat, aiChat, streetChat, ledgerChat]]).catch(() => {});
     await pool.query("DELETE FROM autonomous_container_battles WHERE owner_chat_id=$1", [battleChat]).catch(() => {});
     await pool.query("DELETE FROM autonomous_street_duels WHERE challenger_chat_id = ANY($1::text[])", [[aiChat, streetChat]]).catch(() => {});
