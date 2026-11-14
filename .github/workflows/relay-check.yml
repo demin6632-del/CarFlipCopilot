@@ -57,6 +57,13 @@ jobs:
           if (!game.includes('players.length<10')) throw new Error('container battle capacity guard missing');
           if (!game.includes('container_battle_prize')) throw new Error('container battle payout missing');
           if (!bot.includes('"⚔️ Сражения":"battle"')) throw new Error('container battle keyboard route missing');
+          if (!bot.includes('"🏁 Уличные дуэли":"duel"')) throw new Error('street duel keyboard route missing');
+          if (!game.includes('CREATE TABLE IF NOT EXISTS autonomous_street_duels')) throw new Error('street duel storage missing');
+          if (!game.includes('async function createStreetDuel')) throw new Error('street duel challenge creation missing');
+          if (!game.includes('async function joinStreetDuel')) throw new Error('street duel acceptance missing');
+          if (!game.includes('street_duel_prize')) throw new Error('street duel payout missing');
+          if (!game.includes('if(action==="duel_join")')) throw new Error('street duel route missing');
+          if (!game.includes('const [_,action,id]=String(data).split(":")')) throw new Error('callback action parsing missing');
           if (!game.includes('if(action==="crate_open")')) throw new Error('container opening flow missing');
           if (!bot.includes('"📦 Контейнеры":"containers"')) throw new Error('container keyboard route missing');
           if (!game.includes('function withState')) throw new Error('transactional state guard missing');
