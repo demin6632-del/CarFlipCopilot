@@ -51,6 +51,12 @@ jobs:
           if (!game.includes('function buyPlate(state, id)')) throw new Error('plate buy helper missing');
           if (!game.includes('function sellPlate(state, id)')) throw new Error('plate sell helper missing');
           if (!game.includes('function containerText(state)')) throw new Error('container terminal missing');
+          if (!game.includes('CREATE TABLE IF NOT EXISTS autonomous_container_battles')) throw new Error('container battle storage missing');
+          if (!game.includes('async function joinContainerBattle')) throw new Error('container battle join missing');
+          if (!game.includes('async function startContainerBattle')) throw new Error('container battle start missing');
+          if (!game.includes('players.length<10')) throw new Error('container battle capacity guard missing');
+          if (!game.includes('container_battle_prize')) throw new Error('container battle payout missing');
+          if (!bot.includes('"⚔️ Сражения":"battle"')) throw new Error('container battle keyboard route missing');
           if (!game.includes('if(action==="crate_open")')) throw new Error('container opening flow missing');
           if (!bot.includes('"📦 Контейнеры":"containers"')) throw new Error('container keyboard route missing');
           if (!game.includes('function withState')) throw new Error('transactional state guard missing');
