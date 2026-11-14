@@ -67,14 +67,20 @@ let poolPromise = null;
 function db() {
   if (!process.env.DATABASE_URL) return null;
   if (!poolPromise) {
-    poolPromise = Promise.resolve(new Pool({
+    const pool = new Pool({
       connectionString: process.env.DATABASE_URL,
       ssl: { rejectUnauthorized:false },
       max: 5,
       connectionTimeoutMillis: 5000,
       query_timeout: 7000,
       statement_timeout: 7000
-    }));
+    });
+    // pg emits "error" on the pool when an idle client loses its connection.
+    // Without a listener Node treats that event as uncaught and may destabilize the bot.
+    pool.on("error", error => {
+      console.error("AUTONOMOUS GAME POOL ERROR:", error?.message || error);
+    });
+    poolPromise = Promise.resolve(pool);
   }
   return poolPromise;
 }
