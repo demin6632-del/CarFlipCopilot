@@ -35,3 +35,19 @@ assert.equal(prep.reason, "listed");
 assert.equal(state.player.balance, balance);
 
 console.log("PASS: listed vehicles cannot be sold, repaired, or prepared locally");
+
+const listedCar = { id: "car-1", marketplaceListingId: "listing-1" };
+for (const action of [
+  "pmrefresh", "pmbuy", "winstall", "wsell", "donor", "extract",
+  "diag", "fa", "pa", "global", "repair", "prep", "sell",
+  "negotiate", "reject", "accept", "rollback", "plate_refresh",
+  "platebuy", "platesell", "part_sell", "crate_open"
+]) {
+  assert.equal(game.isMarketplaceListingActionBlocked(action, listedCar), true, action + " must be blocked");
+}
+for (const action of ["pmsrc", "warehouse", "winfo", "parts", "system", "assembly", "part", "fasteners", "car", "contracts", "plates", "stats"]) {
+  assert.equal(game.isMarketplaceListingActionBlocked(action, listedCar), false, action + " is read-only");
+}
+assert.equal(game.isMarketplaceListingActionBlocked("repair", { id: "car-2" }), false);
+assert.equal(game.isMarketplaceListingActionBlocked("repair", null), false);
+console.log("PASS: every non-read-only vehicle action is blocked while listed");
