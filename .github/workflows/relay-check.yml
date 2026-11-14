@@ -61,7 +61,7 @@ jobs:
           if (!bot.includes('"🏆 Чемпионат":"championship"')) throw new Error('street duel championship keyboard route missing');
           if (!game.includes('async function streetDuelChampionshipText')) throw new Error('street duel championship query missing');
           if (!game.includes('if(action==="championship")')) throw new Error('street duel championship callback missing');
-          if (!game.includes(\"date_trunc('month',now() AT TIME ZONE 'Europe/Moscow')\") || !game.includes(\"interval '1 month'\") || !game.includes(\"AT TIME ZONE 'Europe/Moscow'\")) throw new Error('Moscow-local monthly season boundary missing');
+          if (!game.includes("date_trunc('month',now() AT TIME ZONE 'Europe/Moscow')") || !game.includes("interval '1 month'") || !game.includes("AT TIME ZONE 'Europe/Moscow'")) throw new Error('Moscow-local monthly season boundary missing');
           if (!game.includes('CREATE TABLE IF NOT EXISTS autonomous_street_duels')) throw new Error('street duel storage missing');
           if (!game.includes('async function createStreetDuel')) throw new Error('street duel challenge creation missing');
           if (!game.includes('async function joinStreetDuel')) throw new Error('street duel acceptance missing');
