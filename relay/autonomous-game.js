@@ -733,6 +733,8 @@ function dealText(state, c, deal) {
     "📈 Результат: "+fmt(profit),
     "📊 Спрос: "+deal.demand+"%",
     "⭐ Репутация учтена: "+deal.reputation,
+    ...(deal.event==="incident" ? ["⚠️ Риск сделки: "+(deal.eventText||"обнаружен дополнительный риск"),"💸 Снижение предложения: "+fmt(deal.eventPenalty||0)] : []),
+    ...(deal.event==="bonus" ? ["✨ Событие рынка: "+(deal.eventText||"спрос вырос"),"💰 Доплата: "+fmt(deal.eventBonus||0)] : []),
     "",
     profit>=0 ? "Предложение не фиксирует убыток." : "Предложение ниже себестоимости — продажа заблокирована."
   ].join("\n");
@@ -1354,6 +1356,9 @@ async function handleCallback(chat,data,firstName,sendFn,answerFn,callbackId) {
       if(event.type==="bonus") deal.amount+=event.bonus;
       deal.carId=c.id;
       deal.event=event.type;
+      deal.eventText=event.text||"";
+      deal.eventPenalty=Number(event.penalty)||0;
+      deal.eventBonus=Number(event.bonus)||0;
       deal.negotiations=0;
       state.pendingDeal=deal;
       return {text:dealText(state,c,deal),markup:dealKeyboard(c,deal)};
