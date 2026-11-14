@@ -228,6 +228,70 @@ async function expireMarketplaceListings(pool, { batchSize = 50 } = {}) {
   return { ok: true, expiredCount: expired.length, listingIds: expired };
 }
 
+
+const DEFAULT_BROWSE_LIMIT = 10;
+const MAX_BROWSE_LIMIT = 50;
+
+function normalizeBrowseOptions({ limit = DEFAULT_BROWSE_LIMIT, offset = 0, search = "" } = {}) {
+  if (!Number.isInteger(limit) || limit < 1 || limit > MAX_BROWSE_LIMIT) {
+    throw marketplaceError("INVALID_LIMIT", "Marketplace page size must be between 1 and 50");
+  }
+  if (!Number.isInteger(offset) || offset < 0 || offset > 1000000) {
+    throw marketplaceError("INVALID_OFFSET", "Marketplace offset must be between 0 and 1000000");
+  }
+  const term = String(search || "").trim().slice(0, 80);
+  return { limit, offset, search: term };
+}
+
+function publicListingRow(row) {
+  const snapshot = row.vehicle_snapshot && typeof row.vehicle_snapshot === "object"
+    ? row.vehicle_snapshot
+    : {};
+  return {
+    id: String(row.id),
+    sellerChatId: String(row.seller_chat_id),
+    askingPrice: Number(row.asking_price),
+    status: String(row.status),
+    createdAt: row.created_at,
+    expiresAt: row.expires_at,
+    vehicle: vehicleSnapshot(snapshot)
+  };
+}
+
+async function listActiveMarketplaceListings(pool, options = {}) {
+  const { limit, offset, search } = normalizeBrowseOptions(options);
+  const params = [];
+  let filter = "WHERE status='active' AND expires_at>now()";
+  if (search) {
+    params.push("%" + search.replace(/[\\%_]/g, "\\module.exports = {") + "%");
+    filter += " AND vehicle_snapshot->>'model' ILIKE $1 ESCAPE '\\\\'";
+  }
+  params.push(limit, offset);
+  const limitParam = "$" + (params.length - 1);
+  const offsetParam = "$" + params.length;
+  const result = await pool.query(
+    "SELECT id,seller_chat_id,asking_price,status,vehicle_snapshot,created_at,expires_at " +
+    "FROM autonomous_marketplace_listings " + filter +
+    " ORDER BY created_at DESC,id DESC LIMIT " + limitParam + " OFFSET " + offsetParam,
+    params
+  );
+  return (result.rows || []).map(publicListingRow);
+}
+
+async function listMarketplaceListingsForSeller(pool, sellerChatId, options = {}) {
+  if (sellerChatId == null || !String(sellerChatId).trim()) {
+    throw marketplaceError("INVALID_SELLER", "Seller account is required");
+  }
+  const { limit, offset } = normalizeBrowseOptions(options);
+  const result = await pool.query(
+    "SELECT id,seller_chat_id,asking_price,status,vehicle_snapshot,created_at,expires_at " +
+    "FROM autonomous_marketplace_listings WHERE seller_chat_id=$1 " +
+    "ORDER BY created_at DESC,id DESC LIMIT $2 OFFSET $3",
+    [String(sellerChatId), limit, offset]
+  );
+  return (result.rows || []).map(publicListingRow);
+}
+
 module.exports = {
   MAX_PRICE,
   MAX_EXPIRY_HOURS,
@@ -235,5 +299,8 @@ module.exports = {
   vehicleSnapshot,
   createMarketplaceListing,
   cancelMarketplaceListing,
-  expireMarketplaceListings
+  expireMarketplaceListings,
+  normalizeBrowseOptions,
+  listActiveMarketplaceListings,
+  listMarketplaceListingsForSeller
 };
