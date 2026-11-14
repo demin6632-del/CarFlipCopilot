@@ -58,7 +58,7 @@ const sample = {
   const detail = await getActiveMarketplaceListing(detailPool, sample.id);
   assert.equal(detail.id, sample.id);
   assert.equal(detail.vehicle.catalogId, "vesta_2019");
-  assert.match(captured.sql, /id=\\$1::uuid AND status='active' AND expires_at>now\\(\\)/);
+  assert.ok(captured.sql.includes("WHERE id=$1::uuid AND status='active' AND expires_at>now()"));
   assert.deepEqual(captured.params, [sample.id]);
   await assert.rejects(
     () => getActiveMarketplaceListing(detailPool, "not-a-uuid"),
