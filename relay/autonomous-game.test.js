@@ -531,7 +531,7 @@ test("full autonomous trading loop keeps economy consistent", () => {
 
 test("marketplace price input accepts only safe positive whole-ruble amounts", () => {
   assert.equal(game.parseMarketplacePrice("850000"), 850000);
-  assert.equal(game.parseMarketplacePrice(" 1 250 000 "), null);
+  assert.equal(game.parseMarketplacePrice(" 1 250 000 "), 1250000);
   assert.equal(game.parseMarketplacePrice("0"), null);
   assert.equal(game.parseMarketplacePrice("-500"), null);
   assert.equal(game.parseMarketplacePrice("12.5"), null);
