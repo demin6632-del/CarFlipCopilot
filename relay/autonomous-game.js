@@ -1,6 +1,7 @@
 const { Pool } = require("pg");
 const sandbox = require("./car-sandbox");
 const { syncVehiclePlateRegistry } = require("./vehicle-plate-registry");
+const { listActiveMarketplaceListings } = require("./player-marketplace-listings");
 
 const VERSION = 2;
 const START_BALANCE = 3000000;
@@ -1510,9 +1511,47 @@ async function handleText(chat,text,firstName,sendFn) {
   return true;
 }
 
+
+async function marketplaceBrowseScreen(chat, page, sendFn) {
+  const safePage = Number.isInteger(page) && page >= 0 && page <= 200000 ? page : 0;
+  const p = db();
+  if (!p) {
+    await sendFn(chat, "🌐 ОБЩИЙ РЫНОК\\n\\nСервис базы данных временно недоступен.", { reply_markup: menu() });
+    return true;
+  }
+  try {
+    const pool = await p;
+    const rows = await listActiveMarketplaceListings(pool, { limit: 5, offset: safePage * 5 });
+    const lines = rows.map((listing, index) => {
+      const car = listing.vehicle;
+      return (index + 1 + safePage * 5) + ". 🚘 " + car.model +
+        (car.year ? " · " + car.year : "") +
+        "\\n   🔢 " + (car.plate || "номер не указан") +
+        " · " + car.mileage.toLocaleString("ru-RU") + " км" +
+        "\\n   🛠 Состояние: " + car.condition + "/100" +
+        "\\n   💰 " + fmt(listing.askingPrice);
+    });
+    const text = "🌐 ОБЩИЙ РЫНОК AUTOFLIP\\n\\n" +
+      (rows.length ? lines.join("\\n\\n") : "Пока нет активных объявлений игроков.") +
+      "\\n\\nСтраница " + (safePage + 1) +
+      "\\nПокупка и безопасная передача автомобилей появятся на следующем этапе.";
+    const buttons = [];
+    if (safePage > 0) buttons.push({ text: "⬅️ Назад", callback_data: "ag:pmarket:" + (safePage - 1) });
+    if (rows.length === 5) buttons.push({ text: "Вперёд ➡️", callback_data: "ag:pmarket:" + (safePage + 1) });
+    buttons.push({ text: "🔄 Обновить", callback_data: "ag:pmarket:" + safePage });
+    buttons.push({ text: "⬅️ Главное меню", callback_data: "ag:home" });
+    await sendFn(chat, text, { reply_markup: { inline_keyboard: buttons.map(button => [button]) } });
+  } catch (error) {
+    console.log("PLAYER MARKETPLACE BROWSE ERROR:", error?.stack || error?.message || error);
+    await sendFn(chat, "⚠️ Общий рынок пока недоступен. Возможно, база объявлений ещё не установлена. Попробуй позже.", { reply_markup: menu() });
+  }
+  return true;
+}
+
 async function handleCallback(chat,data,firstName,sendFn,answerFn,callbackId) {
   if(!String(data).startsWith("ag:")) return false;
   const [_,action,id]=String(data).split(":");
+  if(action==="pmarket") return marketplaceBrowseScreen(chat, Math.max(0, Number(id)||0), sendFn);
   if(action==="duel"){ 
     const duel=await getOpenStreetDuel(),state=await load(chat,firstName);
     const shown=duel||await getStreetDuelForPlayer(chat);
