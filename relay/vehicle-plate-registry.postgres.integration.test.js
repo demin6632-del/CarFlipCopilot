@@ -94,6 +94,87 @@ async function main() {
 
     console.log("PostgreSQL application-helper integration: OK");
     await client.query("ROLLBACK");
+
+    const rollbackCheck = await pool.query(
+      "SELECT COUNT(*)::int AS remaining FROM vehicle_plate_registry " +
+      "WHERE owner_chat_id LIKE 'integration-%' OR plate_key='HIST0001'"
+    );
+    assert.equal(rollbackCheck.rows[0].remaining, 0, "test transaction leaves no registry rows behind");
+
+    await pool.query("CREATE SCHEMA registry_concurrency_test");
+    try {
+      await pool.query(`
+        CREATE TABLE registry_concurrency_test.vehicle_plate_registry (
+          plate text PRIMARY KEY,
+          plate_key text GENERATED ALWAYS AS (
+            upper(regexp_replace(btrim(plate), '[[:space:]]+', '', 'g'))
+          ) STORED,
+          vehicle_uid uuid UNIQUE,
+          owner_chat_id text,
+          issued_at timestamptz NOT NULL DEFAULT now(),
+          retired_at timestamptz,
+          source text NOT NULL DEFAULT 'application',
+          CHECK (length(btrim(plate)) > 0),
+          CHECK (retired_at IS NULL OR retired_at >= issued_at)
+        );
+        CREATE UNIQUE INDEX registry_concurrency_test_plate_key_uidx
+          ON registry_concurrency_test.vehicle_plate_registry(plate_key);
+      `);
+
+      const firstClient = await pool.connect();
+      const secondClient = await pool.connect();
+      try {
+        await firstClient.query("SET search_path TO registry_concurrency_test, public");
+        await secondClient.query("SET search_path TO registry_concurrency_test, public");
+        await firstClient.query("BEGIN");
+        await secondClient.query("BEGIN");
+
+        const firstState = {
+          meta: { vehiclePlatesIssued: [] },
+          garage: [{ id: "race-car-a", plate: "RACE0001" }],
+          market: []
+        };
+        await syncVehiclePlateRegistry(firstClient, "race-owner-a", firstState, () => "RACE0002");
+
+        const secondState = {
+          meta: { vehiclePlatesIssued: [] },
+          garage: [{ id: "race-car-b", plate: "RACE0001" }],
+          market: []
+        };
+        const fallbackPlates = ["RACE0001", "RACE0002"];
+        const secondReservation = syncVehiclePlateRegistry(
+          secondClient,
+          "race-owner-b",
+          secondState,
+          () => fallbackPlates.shift()
+        );
+
+        // The second INSERT is waiting on the same normalized unique key.
+        // Committing the first owner forces the second transaction to retry.
+        await firstClient.query("COMMIT");
+        await secondReservation;
+        await secondClient.query("COMMIT");
+
+        assert.equal(normalizePlate(firstState.garage[0].plate), "RACE0001");
+        assert.equal(normalizePlate(secondState.garage[0].plate), "RACE0002");
+        const concurrentRows = await firstClient.query(
+          "SELECT COUNT(*)::int AS total, COUNT(DISTINCT plate_key)::int AS unique_total " +
+          "FROM vehicle_plate_registry"
+        );
+        assert.equal(concurrentRows.rows[0].total, 2);
+        assert.equal(concurrentRows.rows[0].unique_total, 2);
+        console.log("PostgreSQL concurrent reservation integration: OK");
+      } catch (error) {
+        await firstClient.query("ROLLBACK").catch(() => {});
+        await secondClient.query("ROLLBACK").catch(() => {});
+        throw error;
+      } finally {
+        firstClient.release();
+        secondClient.release();
+      }
+    } finally {
+      await pool.query("DROP SCHEMA IF EXISTS registry_concurrency_test CASCADE");
+    }
   } catch (error) {
     await client.query("ROLLBACK").catch(() => {});
     throw error;
