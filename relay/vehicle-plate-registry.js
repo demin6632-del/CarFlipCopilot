@@ -90,18 +90,16 @@ async function syncVehiclePlateRegistry(client, ownerChatId, state, createCandid
         accepted = true;
       } else {
         const existing = await client.query(
-          "SELECT plate, vehicle_uid, retired_at FROM vehicle_plate_registry " +
+          "SELECT plate, vehicle_uid, owner_chat_id, retired_at FROM vehicle_plate_registry " +
           "WHERE vehicle_uid=$1::uuid LIMIT 1",
           [uid]
         );
         const row = existing.rows[0];
         if (row && !row.retired_at) {
+          if (String(row.owner_chat_id) !== String(ownerChatId)) {
+            throw new Error("Vehicle ownership conflict: explicit transfer is required");
+          }
           plate = row.plate;
-          await client.query(
-            "UPDATE vehicle_plate_registry SET owner_chat_id=$2 " +
-            "WHERE vehicle_uid=$1::uuid AND retired_at IS NULL",
-            [uid, String(ownerChatId)]
-          );
           accepted = true;
         }
       }
@@ -140,9 +138,22 @@ async function syncVehiclePlateRegistry(client, ownerChatId, state, createCandid
   return { assigned, regenerated };
 }
 
+async function transferVehicleOwner(client, vehicleUid, fromOwnerChatId, toOwnerChatId) {
+  if (!client || typeof client.query !== "function") throw new Error("A transaction client is required");
+  const result = await client.query(
+    "UPDATE vehicle_plate_registry SET owner_chat_id=$3 " +
+    "WHERE vehicle_uid=$1::uuid AND owner_chat_id=$2 AND retired_at IS NULL " +
+    "RETURNING plate",
+    [String(vehicleUid), String(fromOwnerChatId), String(toOwnerChatId)]
+  );
+  if (!result.rowCount) throw new Error("Vehicle transfer rejected: source owner does not match");
+  return result.rows[0];
+}
+
 module.exports = {
   normalizePlate,
   stableVehicleUid,
   activeVehicles,
-  syncVehiclePlateRegistry
+  syncVehiclePlateRegistry,
+  transferVehicleOwner
 };
