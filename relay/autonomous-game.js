@@ -19,10 +19,26 @@ const CAR_PHOTOS = {
 function carPhotoFor(car) {
   return CAR_PHOTOS[car?.catalogId] || null;
 }
+function normalizeCarModelName(value) {
+  return String(value||"").toLowerCase().replace(/ё/g,"е").replace(/\\s+/g," ").trim();
+}
+function carMatchesFromText(text) {
+  const body=normalizeCarModelName(text);
+  return CATALOG
+    .slice()
+    .sort((a,b)=>String(b.name).length-String(a.name).length)
+    .filter(car=>body.includes(normalizeCarModelName(car.name)));
+}
+function carPhotoEntriesFromText(text) {
+  const seen=new Set();
+  return carMatchesFromText(text).filter(car=>{
+    if(seen.has(car.id)||!CAR_PHOTOS[car.id]) return false;
+    seen.add(car.id);
+    return true;
+  }).map(car=>({car,url:CAR_PHOTOS[car.id]}));
+}
 function carPhotoFromText(text) {
-  const s=String(text||"").toLowerCase();
-  const found=CATALOG.find(c=>s.includes(String(c.name).toLowerCase()));
-  return found ? CAR_PHOTOS[found.id] : null;
+  return carPhotoEntriesFromText(text)[0]?.url || null;
 }
 function carPhotoFromState(state, text) {
   const fromText=carPhotoFromText(text);
@@ -1217,7 +1233,20 @@ async function send(sendFn,chat,text,markup) {
 async function screen(sendFn,chat,state,text,markup) {
   const keyboard=markup||menu();
   const body=String(text||"");
-  const photo=carPhotoFromState(state,body);
+  const photos=carPhotoEntriesFromText(body);
+  if(photos.length>1) {
+    try {
+      for(const item of photos) {
+        const label="🚘 "+item.car.name+" · "+item.car.year;
+        await sendFn(chat,label,{photo_url:item.url});
+      }
+      return await sendFn(chat,body,{reply_markup:keyboard});
+    } catch(e) {
+      console.log("CAR PHOTOS SEND ERROR:",e?.message||e);
+      return send(sendFn,chat,body,keyboard);
+    }
+  }
+  const photo=photos[0]?.url || carPhotoFromState(state,body);
   if(photo) {
     if(body.length<=1024) {
       try { return await sendFn(chat,body,{photo_url:photo,reply_markup:keyboard}); } catch(e) {
@@ -1383,14 +1412,14 @@ async function handleCallback(chat,data,firstName,sendFn,answerFn,callbackId) {
   if(action==="duel"){ 
     const duel=await getOpenStreetDuel(),state=await load(chat,firstName);
     const shown=duel||await getStreetDuelForPlayer(chat);
-    await sendFn(chat,streetDuelText(shown,chat),{reply_markup:streetDuelKeyboard(shown,chat,state)});return true;
+    await screen(sendFn,chat,state,streetDuelText(shown,chat),streetDuelKeyboard(shown,chat,state));return true;
   }
   if(action==="duel_ai"){
     const result=await createStreetDuelAI(chat,firstName,callbackId),state=await load(chat,firstName);
     const openDuel=await getOpenStreetDuel();
     const messages={no_profile:"Сначала открой игру командой /start.",no_car:"В гараже нет автомобиля для гонки. Сначала купи машину.",money:"Для дуэли с ИИ нужно 50 000 ₽.",duplicate:"Эта дуэль уже обработана. Открой раздел дуэлей ещё раз."};
     const text=result.ok?streetDuelText(result.duel,chat):"⚠️ "+(messages[result.reason]||"Не удалось начать дуэль с ИИ.");
-    await sendFn(chat,text,{reply_markup:streetDuelKeyboard(openDuel,chat,state)});return true;
+    await screen(sendFn,chat,state,text,streetDuelKeyboard(openDuel,chat,state));return true;
   }
   if(action==="duel_create"){
     const result=await createStreetDuel(chat,firstName,id),duel=result.duel||await getOpenStreetDuel(),state=await load(chat,firstName);
@@ -1407,7 +1436,7 @@ async function handleCallback(chat,data,firstName,sendFn,answerFn,callbackId) {
     const result=await joinStreetDuel(chat,firstName,id),state=await load(chat,firstName);
     const duel=result.duel||await getOpenStreetDuel()||await getStreetDuelForPlayer(chat);
     const messages={closed:"Этот вызов уже завершён.",self:"Нельзя принять собственный вызов.",no_profile:"Сначала открой игру командой /start.",no_car:"В гараже нет автомобиля для гонки.",money:"Недостаточно денег для ставки 50 000 ₽."};
-    await sendFn(chat,result.ok?streetDuelText(result.duel,chat):"⚠️ "+(messages[result.reason]||"Не удалось принять вызов."),{reply_markup:streetDuelKeyboard(duel,chat,state)});return true;
+    await screen(sendFn,chat,state,result.ok?streetDuelText(result.duel,chat):"⚠️ "+(messages[result.reason]||"Не удалось принять вызов."),streetDuelKeyboard(duel,chat,state));return true;
   }
   if(action==="battle"||action==="battle_results"){
     const battle=action==="battle_results"?await containerBattleForPlayer(chat):await getContainerBattle();
