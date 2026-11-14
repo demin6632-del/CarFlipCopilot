@@ -90,12 +90,29 @@ async function run() {
     assert.equal(openBattle.rowCount, 1);
     const battleGuestInitial = await game.load(battleGuestChat, "Battle Guest");
     const battleGuestBalance = battleGuestInitial.player.balance;
-    await game.handleCallback(
-      battleGuestChat, "ag:battle_join:" + openBattle.rows[0].id, "Battle Guest", send, answer,
-      "battle-join-" + suffix
-    );
+    const joinCallback = "battle-join-" + suffix;
+    await Promise.all([
+      game.handleCallback(
+        battleGuestChat, "ag:battle_join:" + openBattle.rows[0].id, "Battle Guest", send, answer, joinCallback
+      ),
+      game.handleCallback(
+        battleGuestChat, "ag:battle_join:" + openBattle.rows[0].id, "Battle Guest", send, answer, joinCallback
+      )
+    ]);
     let battleGuestState = await game.load(battleGuestChat, "Battle Guest");
     assert.equal(battleGuestState.player.balance, battleGuestBalance - 100000);
+    assert.equal(
+      battleGuestState.transactions.filter(x => x.kind === "container_battle_entry").length,
+      1,
+      "concurrent duplicate room-join callbacks must charge only once"
+    );
+    ledgerRows = await pool.query(
+      "SELECT kind,amount FROM autonomous_economy_ledger WHERE chat_id=$1",
+      [battleGuestChat]
+    );
+    assert.equal(ledgerRows.rowCount, 1);
+    assert.equal(ledgerRows.rows[0].kind, "container_battle_entry");
+    assert.equal(Number(ledgerRows.rows[0].amount), -100000);
     ledgerRows = await pool.query(
       "SELECT transaction_id FROM autonomous_economy_ledger WHERE chat_id=$1",
       [battleGuestChat]
