@@ -263,8 +263,8 @@ async function listActiveMarketplaceListings(pool, options = {}) {
   const params = [];
   let filter = "WHERE status='active' AND expires_at>now()";
   if (search) {
-    params.push("%" + search.replace(/[\\%_]/g, "\\module.exports = {") + "%");
-    filter += " AND vehicle_snapshot->>'model' ILIKE $1 ESCAPE '\\\\'";
+    params.push("%" + search + "%");
+    filter += " AND vehicle_snapshot->>'model' ILIKE $1";
   }
   params.push(limit, offset);
   const limitParam = "$" + (params.length - 1);
