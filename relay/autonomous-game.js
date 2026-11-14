@@ -814,6 +814,7 @@ async function createContainerBattle(chat,name) {
   const client=await pool.connect();
   try{
     await client.query("BEGIN");
+    await client.query("SELECT pg_advisory_xact_lock(834721905)");
     const active=await client.query("SELECT id FROM autonomous_container_battles WHERE status='open' ORDER BY created_at DESC LIMIT 1 FOR UPDATE");
     if(active.rowCount){await client.query("ROLLBACK");return {ok:false,reason:"exists",battle:await getContainerBattle()};}
     const profile=await client.query("SELECT state FROM autonomous_game_state WHERE chat_id=$1 FOR UPDATE",[String(chat)]);
