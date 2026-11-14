@@ -89,6 +89,18 @@ async function init() {
       ON autonomous_container_battles(status,created_at DESC);
     CREATE UNIQUE INDEX IF NOT EXISTS autonomous_container_battles_one_open_idx
       ON autonomous_container_battles(status) WHERE status='open';
+    CREATE TABLE IF NOT EXISTS autonomous_street_duels (
+      id bigserial PRIMARY KEY, status text NOT NULL DEFAULT 'open',
+      challenger_chat_id text NOT NULL, challenger_name text NOT NULL,
+      challenger_car jsonb NOT NULL, challenger_power integer NOT NULL,
+      opponent_chat_id text, opponent_name text, opponent_car jsonb,
+      opponent_power integer, stake bigint NOT NULL DEFAULT 50000,
+      result jsonb, created_at timestamptz NOT NULL DEFAULT now(), finished_at timestamptz
+    );
+    CREATE INDEX IF NOT EXISTS autonomous_street_duels_status_idx
+      ON autonomous_street_duels(status,created_at DESC);
+    CREATE UNIQUE INDEX IF NOT EXISTS autonomous_street_duels_one_open_idx
+      ON autonomous_street_duels(status) WHERE status='open';
   `);
   return true;
 }
@@ -423,7 +435,8 @@ function menu() {
     [{text:"📅 Сегодня",callback_data:"ag:day"},{text:"📋 Контракты",callback_data:"ag:contracts"}],
     [{text:"🔢 Номера",callback_data:"ag:plates"},{text:"📊 Статистика",callback_data:"ag:stats"}],
     [{text:"🏦 Банк",callback_data:"ag:finance"},{text:"🏆 Рейтинг игроков",callback_data:"ag:leaderboard"}],
-    [{text:"📦 Контейнеры",callback_data:"ag:containers"}]
+    [{text:"📦 Контейнеры",callback_data:"ag:containers"}],
+    [{text:"🏁 Уличные дуэли",callback_data:"ag:duel"}]
   ]};
 }
 function marketKeyboard(state) {
@@ -889,6 +902,105 @@ async function startContainerBattle(chat,battleId) {
   }catch(e){await client.query("ROLLBACK").catch(()=>{});throw e;}finally{client.release();}
 }
 
+
+const STREET_DUEL_STAKE=50000;
+const DUEL_BASE_POWER={vesta_2019:106,focus_2017:125,octavia_2018:150,camry_2015:181,mazda6_2017:150,a4_2016:170,x1_2015:192,qashqai_2018:144};
+function streetDuelPower(sourceCar){
+  const car=clone(sourceCar);sandbox.buildCar(car);
+  const parts=car.sandbox.parts.filter(p=>p.installed);
+  const average=system=>{const a=parts.filter(p=>p.system===system);return a.length?a.reduce((n,p)=>n+Number(p.condition||0),0)/a.length:70;};
+  const condition=Math.max(50,Math.min(100,Number(car.condition)||75));
+  const mileage=Math.max(0,Number(car.mileage)||0);
+  const tune=car.sandbox.flags?.ecuTune?1.08:1;
+  const integrity=0.72+condition/360+average("engine")/1200+average("transmission")/1600+average("wheels")/2200;
+  const mileageFactor=Math.max(0.88,1-Math.max(0,mileage-50000)/2500000);
+  return Math.max(35,Math.round((DUEL_BASE_POWER[car.catalogId]||140)*integrity*mileageFactor*tune));
+}
+async function getOpenStreetDuel(){
+  const p=db();if(!p)return null;const pool=await p;
+  const r=await pool.query("SELECT * FROM autonomous_street_duels WHERE status='open' ORDER BY created_at DESC LIMIT 1");
+  return r.rows[0]||null;
+}
+async function getStreetDuelForPlayer(chat){
+  const p=db();if(!p)return null;const pool=await p;
+  const r=await pool.query("SELECT * FROM autonomous_street_duels WHERE challenger_chat_id=$1 OR opponent_chat_id=$1 ORDER BY created_at DESC LIMIT 1",[String(chat)]);
+  return r.rows[0]||null;
+}
+function streetDuelText(duel,chat){
+  if(!duel)return "🏁 УЛИЧНЫЕ ДУЭЛИ\n\nПока нет открытых вызовов. Создай вызов из своего гаража и дождись соперника.";
+  if(duel.status==="open"){
+    const own=String(duel.challenger_chat_id)===String(chat);
+    return ["🏁 УЛИЧНЫЙ ВЫЗОВ №"+duel.id,"","👤 Вызов: "+duel.challenger_name,"🚘 Автомобиль: "+duel.challenger_car.model,"⚡ Мощность: "+duel.challenger_power+" ед.","💰 Ставка: "+fmt(duel.stake),"","⏳ "+(own?"Ожидаем соперника. Взнос уже списан.":"Прими вызов своим лучшим автомобилем.")].join("\n");
+  }
+  const r=duel.result||{};
+  return ["🏁 РЕЗУЛЬТАТ ДУЭЛИ №"+duel.id,"","🚘 "+(duel.challenger_name||"Игрок 1")+": "+(duel.challenger_car?.model||"—")+" · "+(duel.challenger_power||0)+" ед.","🚘 "+(duel.opponent_name||"Игрок 2")+": "+(duel.opponent_car?.model||"—")+" · "+(duel.opponent_power||0)+" ед.","","🏆 Победитель: "+(r.winnerName||"Ничья"),"⚡ Разница мощности: "+(r.powerDifference||0)+" ед.","💰 Выплата: "+fmt(r.payout||0),"🏦 Комиссия: "+fmt(r.fee||0)].join("\n");
+}
+function streetDuelKeyboard(duel,chat,state){
+  if(duel?.status==="open")return {inline_keyboard:[
+    ...(String(duel.challenger_chat_id)!==String(chat)?[[{text:"🏁 Принять вызов · "+fmt(duel.stake),callback_data:"ag:duel_join:"+duel.id}]]:[]),
+    [{text:"🔄 Обновить",callback_data:"ag:duel"}],[{text:"⬅️ Главное меню",callback_data:"ag:home"}]
+  ]};
+  const rows=(state?.garage||[]).map(c=>[{text:"🚘 Вызвать: "+c.model+" · "+fmt(STREET_DUEL_STAKE),callback_data:"ag:duel_create:"+c.id}]);
+  return {inline_keyboard:[...rows,[{text:"🔄 Обновить",callback_data:"ag:duel"}],[{text:"⬅️ Главное меню",callback_data:"ag:home"}]]};
+}
+async function createStreetDuel(chat,name,carId){
+  const p=db();if(!p)throw new Error("DATABASE_URL не настроен");const pool=await p;const client=await pool.connect();
+  try{
+    await client.query("BEGIN");await client.query("SELECT pg_advisory_xact_lock(834721906)");
+    const active=await client.query("SELECT id FROM autonomous_street_duels WHERE status='open' ORDER BY created_at DESC LIMIT 1 FOR UPDATE");
+    if(active.rowCount){await client.query("ROLLBACK");return {ok:false,reason:"exists",duel:await getOpenStreetDuel()};}
+    const pr=await client.query("SELECT state FROM autonomous_game_state WHERE chat_id=$1 FOR UPDATE",[String(chat)]);
+    if(!pr.rowCount){await client.query("ROLLBACK");return {ok:false,reason:"no_profile"};}
+    const state=pr.rows[0].state,car=(state.garage||[]).find(x=>String(x.id)===String(carId));
+    if(!car){await client.query("ROLLBACK");return {ok:false,reason:"car"};}
+    if(Number(state.player?.balance||0)<STREET_DUEL_STAKE){await client.query("ROLLBACK");return {ok:false,reason:"money"};}
+    const power=streetDuelPower(car);
+    addTx(state,"street_duel_entry",-STREET_DUEL_STAKE,"Взнос в уличную дуэль");
+    const r=await client.query("INSERT INTO autonomous_street_duels(status,challenger_chat_id,challenger_name,challenger_car,challenger_power,stake) VALUES('open',$1,$2,$3::jsonb,$4,$5) RETURNING *",[String(chat),String(name||"Перекуп"),JSON.stringify(car),power,STREET_DUEL_STAKE]);
+    state.transactions[0].description="Взнос в уличную дуэль №"+r.rows[0].id;
+    await client.query("UPDATE autonomous_game_state SET state=$2::jsonb,updated_at=now() WHERE chat_id=$1",[String(chat),JSON.stringify(state)]);
+    await client.query("COMMIT");return {ok:true,duel:r.rows[0]};
+  }catch(e){await client.query("ROLLBACK").catch(()=>{});throw e;}finally{client.release();}
+}
+async function joinStreetDuel(chat,name,duelId){
+  const p=db();if(!p)throw new Error("DATABASE_URL не настроен");const pool=await p;const client=await pool.connect();
+  try{
+    await client.query("BEGIN");
+    const dr=await client.query("SELECT * FROM autonomous_street_duels WHERE id=$1 AND status='open' FOR UPDATE",[Number(duelId)]);
+    if(!dr.rowCount){await client.query("ROLLBACK");return {ok:false,reason:"closed"};}
+    const duel=dr.rows[0];
+    if(String(duel.challenger_chat_id)===String(chat)){await client.query("ROLLBACK");return {ok:false,reason:"self"};}
+    const ids=[String(duel.challenger_chat_id),String(chat)].sort();
+    const pr=await client.query("SELECT chat_id,state FROM autonomous_game_state WHERE chat_id=ANY($1::text[]) ORDER BY chat_id FOR UPDATE",[ids]);
+    const states=new Map(pr.rows.map(x=>[String(x.chat_id),x.state]));
+    const challenger=states.get(String(duel.challenger_chat_id)),opponent=states.get(String(chat));
+    if(!challenger||!opponent){await client.query("ROLLBACK");return {ok:false,reason:"no_profile"};}
+    if(!Array.isArray(opponent.garage)||!opponent.garage.length){await client.query("ROLLBACK");return {ok:false,reason:"no_car"};}
+    if(Number(opponent.player?.balance||0)<Number(duel.stake)){await client.query("ROLLBACK");return {ok:false,reason:"money"};}
+    const opponentCar=opponent.garage.slice().sort((a,b)=>streetDuelPower(b)-streetDuelPower(a))[0];
+    const opponentPower=streetDuelPower(opponentCar);
+    addTx(opponent,"street_duel_entry",-Number(duel.stake),"Взнос в уличную дуэль №"+duel.id);
+    const challengerPower=Number(duel.challenger_power)||streetDuelPower(duel.challenger_car);
+    const challengerRoll=challengerPower*(0.96+Math.random()*0.08),opponentRoll=opponentPower*(0.96+Math.random()*0.08);
+    const draw=Math.abs(challengerRoll-opponentRoll)<0.75;
+    const winnerChat=draw?null:(challengerRoll>opponentRoll?String(duel.challenger_chat_id):String(chat));
+    const pot=Number(duel.stake)*2,fee=draw?0:Math.round(pot*0.05),payout=draw?Number(duel.stake):pot-fee;
+    let winnerName="Ничья";
+    if(draw){
+      addTx(challenger,"street_duel_refund",Number(duel.stake),"Возврат ставки за ничью в дуэли №"+duel.id);
+      addTx(opponent,"street_duel_refund",Number(duel.stake),"Возврат ставки за ничью в дуэли №"+duel.id);
+    }else if(winnerChat===String(duel.challenger_chat_id)){
+      winnerName=duel.challenger_name;addTx(challenger,"street_duel_prize",payout,"Победа в уличной дуэли №"+duel.id);
+    }else{
+      winnerName=String(name||"Соперник");addTx(opponent,"street_duel_prize",payout,"Победа в уличной дуэли №"+duel.id);
+    }
+    await client.query("UPDATE autonomous_game_state SET state=$2::jsonb,updated_at=now() WHERE chat_id=$1",[String(duel.challenger_chat_id),JSON.stringify(challenger)]);
+    await client.query("UPDATE autonomous_game_state SET state=$2::jsonb,updated_at=now() WHERE chat_id=$1",[String(chat),JSON.stringify(opponent)]);
+    const result={winnerChat,winnerName,payout,fee,powerDifference:Math.round(Math.abs(challengerRoll-opponentRoll)),challengerRoll:Math.round(challengerRoll),opponentRoll:Math.round(opponentRoll),draw};
+    const upd=await client.query("UPDATE autonomous_street_duels SET status='finished',opponent_chat_id=$2,opponent_name=$3,opponent_car=$4::jsonb,opponent_power=$5,result=$6::jsonb,finished_at=now() WHERE id=$1 RETURNING *",[duel.id,String(chat),String(name||"Соперник"),JSON.stringify(opponentCar),opponentPower,JSON.stringify(result)]);
+    await client.query("COMMIT");return {ok:true,duel:upd.rows[0],result};
+  }catch(e){await client.query("ROLLBACK").catch(()=>{});throw e;}finally{client.release();}
+}
 function containerText(state) {
   const parts=Array.isArray(state.player.containerParts)?state.player.containerParts:[];
   return ["📦 КОНТЕЙНЕРНЫЙ ТЕРМИНАЛ","","Открывай контейнеры с запчастями и находками.","Каждый контейнер содержит случайную награду: деньги, детали или редкий приз.","","💰 Баланс: "+fmt(state.player.balance),"🧩 Деталей на складе: "+parts.length,...(parts.length?["","СКЛАД ДЕТАЛЕЙ",...parts.slice(0,8).map((p,i)=>(i+1)+". "+p.name+" · "+p.condition+"% · оценка "+fmt(p.value))]:[])].join("\n");
@@ -1145,6 +1257,24 @@ async function handleText(chat,text,firstName,sendFn) {
 }
 
 async function handleCallback(chat,data,firstName,sendFn,answerFn,callbackId) {
+  if(!String(data).startsWith("ag:")) return false;
+  const [_,action,id]=String(data).split(":");
+  if(action==="duel"){ 
+    const duel=await getOpenStreetDuel(),state=await load(chat,firstName);
+    const shown=duel||await getStreetDuelForPlayer(chat);
+    await sendFn(chat,streetDuelText(shown,chat),{reply_markup:streetDuelKeyboard(shown,chat,state)});return true;
+  }
+  if(action==="duel_create"){
+    const result=await createStreetDuel(chat,firstName,id),duel=result.duel||await getOpenStreetDuel(),state=await load(chat,firstName);
+    const messages={exists:"Уже есть открытый вызов. Дождись его завершения.",no_profile:"Сначала открой игру командой /start.",car:"Эта машина уже не в гараже.",money:"Для вызова нужно 50 000 ₽."};
+    await sendFn(chat,result.ok?"🏁 Вызов создан! 50 000 ₽ списаны и зарезервированы.":"⚠️ "+(messages[result.reason]||"Не удалось создать вызов."),{reply_markup:streetDuelKeyboard(duel,chat,state)});return true;
+  }
+  if(action==="duel_join"){
+    const result=await joinStreetDuel(chat,firstName,id),state=await load(chat,firstName);
+    const duel=result.duel||await getOpenStreetDuel()||await getStreetDuelForPlayer(chat);
+    const messages={closed:"Этот вызов уже завершён.",self:"Нельзя принять собственный вызов.",no_profile:"Сначала открой игру командой /start.",no_car:"В гараже нет автомобиля для гонки.",money:"Недостаточно денег для ставки 50 000 ₽."};
+    await sendFn(chat,result.ok?streetDuelText(result.duel,chat):"⚠️ "+(messages[result.reason]||"Не удалось принять вызов."),{reply_markup:streetDuelKeyboard(duel,chat,state)});return true;
+  }
   if(action==="battle"||action==="battle_results"){
     const battle=action==="battle_results"?await containerBattleForPlayer(chat):await getContainerBattle();
     await sendFn(chat,battleText(battle,chat),{reply_markup:battleKeyboard(battle,chat)});
@@ -1175,9 +1305,7 @@ async function handleCallback(chat,data,firstName,sendFn,answerFn,callbackId) {
     return true;
   }
 
-  if(!String(data).startsWith("ag:")) return false;
   try { await answerFn?.(); } catch {}
-  const [_,action,id]=String(data).split(":");
   if(action==="home"){await open(chat,firstName,sendFn);return true;}
   if(action==="leaderboard"){
     try {
@@ -1644,4 +1772,4 @@ async function handleCallback(chat,data,firstName,sendFn,answerFn,callbackId) {
   return true;
 }
 
-module.exports={init,load,save,open,handleText,handleCallback,leaderboardText,CATALOG,CAR_PHOTOS,BUYER_TYPES,newState,refreshMarket,createListing,addTx,scoreListing,bestDeal,recommendation,addProgress,updateContracts,buyerOffer,buyerOfferDetails,buyerProfile,negotiation,dealRisk,runDiagnostic,vehicleCost,purchaseListing,repairVehicle,prepareVehicle,buyPlate,sellPlate,acceptPendingSale,parsePurchaseOfferInput,negotiatePurchase};
+module.exports={init,load,save,open,handleText,handleCallback,leaderboardText,CATALOG,CAR_PHOTOS,BUYER_TYPES,newState,refreshMarket,createListing,addTx,scoreListing,bestDeal,recommendation,addProgress,updateContracts,buyerOffer,buyerOfferDetails,buyerProfile,negotiation,dealRisk,runDiagnostic,vehicleCost,purchaseListing,repairVehicle,prepareVehicle,buyPlate,sellPlate,acceptPendingSale,parsePurchaseOfferInput,negotiatePurchase,streetDuelPower,STREET_DUEL_STAKE};
