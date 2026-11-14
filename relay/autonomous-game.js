@@ -1644,8 +1644,8 @@ async function marketplaceSellScreen(chat, firstName, sendFn) {
 }
 
 function parseMarketplacePrice(value) {
-  const raw = String(value || "").trim().replace(/[ \\u00a0]/g, "");
-  if (!/^\\d{1,13}$/.test(raw)) return null;
+  const raw = String(value || "").trim().replace(/\s/g, "");
+  if (!/^\d{1,13}$/.test(raw)) return null;
   const amount = Number(raw);
   return Number.isSafeInteger(amount) && amount > 0 && amount <= 1000000000000 ? amount : null;
 }
