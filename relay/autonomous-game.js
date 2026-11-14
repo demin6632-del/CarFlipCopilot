@@ -372,13 +372,24 @@ async function load(chat, firstName) {
     refreshPlates(state);
     return state;
   }
-  const state=newState(chat,firstName);
-  await pool.query(
-    "INSERT INTO autonomous_game_state(chat_id,version,state) VALUES($1,$2,$3::jsonb) ON CONFLICT(chat_id) DO NOTHING",
-    [String(chat),VERSION,JSON.stringify(state)]
-  );
-  const again=await pool.query("SELECT state FROM autonomous_game_state WHERE chat_id=$1",[String(chat)]);
-  return again.rows[0].state;
+  const initialState=newState(chat,firstName);
+  const client=await pool.connect();
+  try {
+    await client.query("BEGIN");
+    await client.query(
+      "INSERT INTO autonomous_game_state(chat_id,version,state) VALUES($1,$2,$3::jsonb) ON CONFLICT(chat_id) DO NOTHING",
+      [String(chat),VERSION,JSON.stringify(initialState)]
+    );
+    const current=await client.query("SELECT state FROM autonomous_game_state WHERE chat_id=$1 FOR UPDATE",[String(chat)]);
+    const state=current.rows[0].state;
+    await syncVehiclePlateRegistry(client,String(chat),state,createUniqueVehiclePlate);
+    await client.query("UPDATE autonomous_game_state SET version=$2,state=$3::jsonb,updated_at=now() WHERE chat_id=$1",[String(chat),VERSION,JSON.stringify(state)]);
+    await client.query("COMMIT");
+    return state;
+  } catch(e) {
+    await client.query("ROLLBACK").catch(()=>{});
+    throw e;
+  } finally { client.release(); }
 }
 async function save(chat,state) {
   const p=db(); if(!p) throw new Error("DATABASE_URL не настроен");
