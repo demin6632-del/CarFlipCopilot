@@ -840,6 +840,7 @@ async function createContainerBattle(chat,name) {
     state.transactions=Array.isArray(state.transactions)?state.transactions:[];
     state.transactions.unshift({time:Date.now(),kind:"container_battle_entry",amount:-100000,balance:state.player.balance,description:"Взнос в контейнерную битву",profit:0});
     state.transactions=state.transactions.slice(0,80);
+    if(callbackId){state.processedCallbacks.push(String(callbackId));state.processedCallbacks=state.processedCallbacks.slice(-80);}
     await client.query("UPDATE autonomous_game_state SET state=$2::jsonb,updated_at=now() WHERE chat_id=$1",[String(chat),JSON.stringify(state)]);
     const r=await client.query("INSERT INTO autonomous_container_battles(status,owner_chat_id,entry_fee,players) VALUES('open',$1,100000,$2::jsonb) RETURNING id,status,owner_chat_id,entry_fee,players,results,created_at",[String(chat),JSON.stringify([{chatId:String(chat),name:String(name||"Перекуп")}])]);
     await client.query("COMMIT");return {ok:true,battle:r.rows[0]};
@@ -1025,13 +1026,15 @@ async function joinStreetDuel(chat,name,duelId){
     await client.query("COMMIT");return {ok:true,duel:upd.rows[0],result};
   }catch(e){await client.query("ROLLBACK").catch(()=>{});throw e;}finally{client.release();}
 }
-async function createStreetDuelAI(chat,name){
+async function createStreetDuelAI(chat,name,callbackId){
   const p=db();if(!p)throw new Error("DATABASE_URL не настроен");const pool=await p;const client=await pool.connect();
   try{
     await client.query("BEGIN");
     const pr=await client.query("SELECT state FROM autonomous_game_state WHERE chat_id=$1 FOR UPDATE",[String(chat)]);
     if(!pr.rowCount){await client.query("ROLLBACK");return {ok:false,reason:"no_profile"};}
     const state=pr.rows[0].state;
+    state.processedCallbacks=Array.isArray(state.processedCallbacks)?state.processedCallbacks:[];
+    if(callbackId&&state.processedCallbacks.includes(String(callbackId))){await client.query("ROLLBACK");return {ok:false,reason:"duplicate"};}
     if(!Array.isArray(state.garage)||!state.garage.length){await client.query("ROLLBACK");return {ok:false,reason:"no_car"};}
     if(Number(state.player?.balance||0)<STREET_DUEL_STAKE){await client.query("ROLLBACK");return {ok:false,reason:"money"};}
     const playerCar=state.garage.slice().sort((a,b)=>streetDuelPower(b)-streetDuelPower(a))[0];
@@ -1382,9 +1385,9 @@ async function handleCallback(chat,data,firstName,sendFn,answerFn,callbackId) {
     await sendFn(chat,streetDuelText(shown,chat),{reply_markup:streetDuelKeyboard(shown,chat,state)});return true;
   }
   if(action==="duel_ai"){
-    const result=await createStreetDuelAI(chat,firstName),state=await load(chat,firstName);
+    const result=await createStreetDuelAI(chat,firstName,callbackId),state=await load(chat,firstName);
     const openDuel=await getOpenStreetDuel();
-    const messages={no_profile:"Сначала открой игру командой /start.",no_car:"В гараже нет автомобиля для гонки. Сначала купи машину.",money:"Для дуэли с ИИ нужно 50 000 ₽."};
+    const messages={no_profile:"Сначала открой игру командой /start.",no_car:"В гараже нет автомобиля для гонки. Сначала купи машину.",money:"Для дуэли с ИИ нужно 50 000 ₽.",duplicate:"Эта дуэль уже обработана. Открой раздел дуэлей ещё раз."};
     const text=result.ok?streetDuelText(result.duel,chat):"⚠️ "+(messages[result.reason]||"Не удалось начать дуэль с ИИ.");
     await sendFn(chat,text,{reply_markup:streetDuelKeyboard(openDuel,chat,state)});return true;
   }
