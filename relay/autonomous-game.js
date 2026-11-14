@@ -1039,7 +1039,8 @@ async function createStreetDuelAI(chat,name,callbackId){
     if(Number(state.player?.balance||0)<STREET_DUEL_STAKE){await client.query("ROLLBACK");return {ok:false,reason:"money"};}
     const playerCar=state.garage.slice().sort((a,b)=>streetDuelPower(b)-streetDuelPower(a))[0];
     const playerPower=streetDuelPower(playerCar);
-    const base=CATALOG.slice().sort((a,b)=>Math.abs((DUEL_BASE_POWER[a.id]||140)-playerPower)-Math.abs((DUEL_BASE_POWER[b.id]||140)-playerPower))[0];
+    const eligibleAiCars=CATALOG.filter(car=>car.id!==playerCar.catalogId);
+    const base=eligibleAiCars.sort((a,b)=>Math.abs((DUEL_BASE_POWER[a.id]||140)-playerPower)-Math.abs((DUEL_BASE_POWER[b.id]||140)-playerPower))[0];
     const opponentCar={
       id:"ai_"+Date.now(),catalogId:base.id,model:base.name,year:base.year,
       mileage:50000+Math.floor(Math.random()*130000),condition:82+Math.floor(Math.random()*19),
