@@ -412,7 +412,7 @@ async function run() {
     );
     assert.equal(
       ledgerRows.rowCount,
-      genericState.transactions.filter(x => x.kind === "container_open" || x.kind === "container_cash" || x.kind === "container_jackpot").length
+      afterDistinctCallbacks.transactions.filter(x => x.kind === "container_open" || x.kind === "container_cash" || x.kind === "container_jackpot").length
     );
 
     const legacyState = await game.load(ledgerChat, "Ledger Tester");
