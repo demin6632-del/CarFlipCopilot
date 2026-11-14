@@ -56,8 +56,9 @@ async function syncVehiclePlateRegistry(client, ownerChatId, state, createCandid
   if (!state.meta) state.meta = {};
   if (!Array.isArray(state.meta.vehiclePlatesIssued)) state.meta.vehiclePlatesIssued = [];
 
-  const historical = new Set(state.meta.vehiclePlatesIssued.map(normalizePlate).filter(Boolean));
   const active = activeVehicles(state);
+  const activePlateKeys = new Set(active.map(vehicle => normalizePlate(vehicle.plate)).filter(Boolean));
+  const historical = new Set(state.meta.vehiclePlatesIssued.map(normalizePlate).filter(key => key && !activePlateKeys.has(key)));
   const localSeen = new Set();
   let assigned = 0;
   let regenerated = 0;
@@ -88,11 +89,11 @@ async function syncVehiclePlateRegistry(client, ownerChatId, state, createCandid
       } else {
         const existing = await client.query(
           "SELECT plate, vehicle_uid, retired_at FROM vehicle_plate_registry " +
-          "WHERE plate_key=$1 OR vehicle_uid=$2::uuid LIMIT 1",
-          [normalizePlate(plate), uid]
+          "WHERE vehicle_uid=$1::uuid LIMIT 1",
+          [uid]
         );
         const row = existing.rows[0];
-        if (row && row.vehicle_uid === uid && !row.retired_at) {
+        if (row && !row.retired_at) {
           plate = row.plate;
           await client.query(
             "UPDATE vehicle_plate_registry SET owner_chat_id=$2 " +
