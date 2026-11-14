@@ -103,6 +103,23 @@ async function test(name, fn) {
       assert.equal("marketplaceListingId" in state.rows[0].state.garage[0], false);
     });
 
+    await test("expired listings atomically unlock the seller's vehicle in PostgreSQL", async () => {
+      const created = await marketplace.createMarketplaceListing(pool, {
+        sellerChatId: seller, vehicleId: sellerState.garage[0].id, askingPrice: 980000
+      });
+      listingIds.push(created.listing.id);
+      await pool.query(
+        "UPDATE autonomous_marketplace_listings SET expires_at=now()-interval '1 minute' WHERE id=$1::uuid",
+        [created.listing.id]
+      );
+      const result = await marketplace.expireMarketplaceListings(pool, { batchSize: 5 });
+      assert.ok(result.listingIds.includes(created.listing.id));
+      const listing = await pool.query("SELECT status FROM autonomous_marketplace_listings WHERE id=$1::uuid", [created.listing.id]);
+      const state = await pool.query("SELECT state FROM autonomous_game_state WHERE chat_id=$1", [seller]);
+      assert.equal(listing.rows[0].status, "expired");
+      assert.equal("marketplaceListingId" in state.rows[0].state.garage[0], false);
+    });
+
     await test("a copied vehicle UID owned by another account is rejected", async () => {
       const copiedState = {
         garage: [{
