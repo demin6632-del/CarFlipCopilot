@@ -248,7 +248,7 @@ function dealRisk(state, car) {
 function newState(chat, firstName) {
   const state = {
     version:VERSION,
-    player:{name:String(firstName||"Перекуп"),level:1,xp:0,respect:0,balance:START_BALANCE,garageCapacity:GARAGE_CAPACITY,debt:0,loanDueDay:0},
+    player:{name:String(firstName||"Перекуп"),level:1,xp:0,respect:0,balance:START_BALANCE,garageCapacity:GARAGE_CAPACITY,debt:0,loanDueDay:0,containerParts:[]},
     garage:[],
     market:[],
     transactions:[],
@@ -408,7 +408,8 @@ function menu() {
     [{text:"🚗 Рынок",callback_data:"ag:market"},{text:"🏠 Гараж",callback_data:"ag:garage"}],
     [{text:"📅 Сегодня",callback_data:"ag:day"},{text:"📋 Контракты",callback_data:"ag:contracts"}],
     [{text:"🔢 Номера",callback_data:"ag:plates"},{text:"📊 Статистика",callback_data:"ag:stats"}],
-    [{text:"🏦 Банк",callback_data:"ag:finance"},{text:"🏆 Рейтинг игроков",callback_data:"ag:leaderboard"}]
+    [{text:"🏦 Банк",callback_data:"ag:finance"},{text:"🏆 Рейтинг игроков",callback_data:"ag:leaderboard"}],
+    [{text:"📦 Контейнеры",callback_data:"ag:containers"}]
   ]};
 }
 function marketKeyboard(state) {
@@ -758,6 +759,21 @@ function addProgress(state, profit) {
   }
   return { gainedXp, levelUps };
 }
+function containerText(state) {
+  const parts=Array.isArray(state.player.containerParts)?state.player.containerParts:[];
+  return ["📦 КОНТЕЙНЕРНЫЙ ТЕРМИНАЛ","","Открывай контейнеры с запчастями и находками.","Каждый контейнер содержит случайную награду: деньги, детали или редкий приз.","","💰 Баланс: "+fmt(state.player.balance),"🧩 Деталей на складе: "+parts.length,...(parts.length?["","СКЛАД ДЕТАЛЕЙ",...parts.slice(0,8).map((p,i)=>(i+1)+". "+p.name+" · "+p.condition+"% · оценка "+fmt(p.value))]:[])].join("\n");
+}
+function containerKeyboard(state) {
+  const parts=Array.isArray(state.player.containerParts)?state.player.containerParts:[];
+  return {inline_keyboard:[
+    [{text:"📦 Стандартный · 150 000 ₽",callback_data:"ag:crate_open:standard"}],
+    [{text:"🏎 Спортивный · 400 000 ₽",callback_data:"ag:crate_open:sport"}],
+    [{text:"💎 Элитный · 900 000 ₽",callback_data:"ag:crate_open:elite"}],
+    ...parts.slice(0,8).map(p=>[{text:"💰 Продать "+p.name+" · "+fmt(Math.max(1000,Math.round((Number(p.value)||0)*(Number(p.condition)||50)/100/1000)*1000)),callback_data:"ag:part_sell:"+p.id}]),
+    [{text:"⬅️ Главное меню",callback_data:"ag:home"}]
+  ]};
+}
+
 function statsText(state) {
   const tx=state.transactions;
   const income=tx.filter(x=>x.amount>0).reduce((s,x)=>s+x.amount,0);
@@ -1014,7 +1030,7 @@ async function handleCallback(chat,data,firstName,sendFn,answerFn,callbackId) {
     return true;
   }
   const run=await withState(chat,firstName,state=>{
-    const advancesTurn = new Set(["refresh","diagnose","diagnose_deep","offer","buy","repair","prep","sell","negotiate","reject","accept","plate_refresh","platebuy","platesell","pmrefresh","pmbuy","borrow","repay","rollback"]).has(action);
+    const advancesTurn = new Set(["refresh","diagnose","diagnose_deep","offer","buy","repair","prep","sell","negotiate","reject","accept","plate_refresh","platebuy","platesell","pmrefresh","pmbuy","borrow","repay","rollback","crate_open","part_sell"]).has(action);
     if(advancesTurn) state.meta.turn=(Number(state.meta.turn)||0)+1;
     if(callbackId) {
       state.processedCallbacks.push(String(callbackId));
@@ -1030,6 +1046,7 @@ async function handleCallback(chat,data,firstName,sendFn,answerFn,callbackId) {
     }
     if(action==="market") return {text:"🚗 РЫНОК\n\nВыбирай лот для полного осмотра.",markup:marketKeyboard(state)};
     if(action==="finance") return {text:financeText(state),markup:financeKeyboard(state)};
+    if(action==="containers") return {text:containerText(state),markup:containerKeyboard(state)};
     if(action==="borrow"){
       const amount=Number(id)||0, debt=Math.max(0,Number(state.player.debt)||0);
       if(![500000,1000000,3000000,5000000,10000000,25000000,50000000].includes(amount) || debt+amount>50000000)
@@ -1419,6 +1436,42 @@ async function handleCallback(chat,data,firstName,sendFn,answerFn,callbackId) {
       const result=sellPlate(state,id);
       if(!result.ok)return {text:"⚠️ Номер уже продан.",markup:{inline_keyboard:[[{text:"🔢 Номера",callback_data:"ag:plates"}]]}};
       return {text:"💰 НОМЕР ПРОДАН\n\n"+result.plate.plate+"\n💵 Получено: "+fmt(result.offer)+"\n📈 Прибыль: "+fmt(result.profit),markup:{inline_keyboard:[[{text:"🔢 Номера",callback_data:"ag:plates"}],[{text:"⬅️ Меню",callback_data:"ag:home"}]]}};
+    }
+    if(action==="part_sell"){
+      const parts=Array.isArray(state.player.containerParts)?state.player.containerParts:[];
+      const index=parts.findIndex(x=>String(x.id)===String(id));
+      if(index<0)return {text:"⚠️ Деталь уже отсутствует на складе.",markup:containerKeyboard(state)};
+      const part=parts[index];
+      const revenue=Math.max(1000,Math.round((Number(part.value)||0)*(Number(part.condition)||50)/100/1000)*1000);
+      parts.splice(index,1); addTx(state,"container_part_sale",revenue,"Продажа контейнерной детали: "+part.name);
+      return {text:"💰 ДЕТАЛЬ ПРОДАНА\n\n"+part.name+"\nСостояние: "+part.condition+"%\nПолучено: "+fmt(revenue),markup:containerKeyboard(state)};
+    }
+    if(action==="crate_open"){
+      const crates={standard:{name:"Стандартный",price:150000},sport:{name:"Спортивный",price:400000},elite:{name:"Элитный",price:900000}};
+      const crate=crates[id];
+      if(!crate)return {text:"⚠️ Контейнер не найден.",markup:containerKeyboard(state)};
+      if(Number(state.player.balance)<crate.price)return {text:"❌ Недостаточно денег.\nНужно: "+fmt(crate.price)+"\nБаланс: "+fmt(state.player.balance),markup:containerKeyboard(state)};
+      addTx(state,"container_open",-crate.price,"Открытие контейнера: "+crate.name);
+      const roll=rng(state), names=["Турбина","Спортивный блок двигателя","Комплект подвески","Тормозная система","Карбоновые элементы","Коробка передач"];
+      if(roll<0.38){
+        const reward=Math.round(crate.price*(0.35+rng(state)*0.85)/1000)*1000;
+        addTx(state,"container_cash",reward,"Денежная находка из контейнера");
+        return {text:"📦 КОНТЕЙНЕР ОТКРЫТ\n\n💵 Внутри наличные: "+fmt(reward)+"\nСтоимость контейнера: "+fmt(crate.price)+"\nРезультат: "+fmt(reward-crate.price),markup:containerKeyboard(state)};
+      }
+      if(roll<0.88){
+        const part={id:"loot_"+Date.now().toString(36)+"_"+Math.floor(rng(state)*1e6).toString(36),name:names[Math.floor(rng(state)*names.length)],condition:Math.round(55+rng(state)*44),quality:Math.round(45+rng(state)*54),value:Math.round(crate.price*(0.65+rng(state)*1.1)/1000)*1000};
+        state.player.containerParts=Array.isArray(state.player.containerParts)?state.player.containerParts:[];
+        state.player.containerParts.unshift(part); state.player.containerParts=state.player.containerParts.slice(0,40);
+        return {text:"📦 КОНТЕЙНЕР ОТКРЫТ\n\n🧩 Найдена деталь: "+part.name+"\nСостояние: "+part.condition+"% · качество: "+part.quality+"%\nОценка рынка: "+fmt(part.value)+"\n\nДеталь отправлена на склад. Её можно продать или сохранить для будущих проектов.",markup:containerKeyboard(state)};
+      }
+      if(roll<0.97){
+        const reward=Math.round(crate.price*(1.25+rng(state)*1.6)/1000)*1000;
+        addTx(state,"container_cash",reward,"Редкая находка из контейнера");
+        return {text:"✨ РЕДКАЯ НАХОДКА!\n\nВ контейнере обнаружен ценный лот.\n💰 Получено: "+fmt(reward)+"\nЧистый результат: "+fmt(reward-crate.price),markup:containerKeyboard(state)};
+      }
+      const jackpot=Math.round(crate.price*(3+rng(state)*3)/1000)*1000;
+      addTx(state,"container_jackpot",jackpot,"Главный приз контейнера");
+      return {text:"🏆 ДЖЕКПОТ КОНТЕЙНЕРА!\n\n💰 Главный приз: "+fmt(jackpot)+"\nЧистый результат: "+fmt(jackpot-crate.price),markup:containerKeyboard(state)};
     }
     if(action==="stats")return {text:statsText(state),markup:menu()};
     return {text:mainText(state),markup:menu()};
