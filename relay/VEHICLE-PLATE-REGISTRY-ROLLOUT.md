@@ -21,10 +21,17 @@ player data.
    `vehicle_uid`. This reserves them without pretending they identify a current
    vehicle.
 
+## Helper implementation status
+
+- `vehicle-plate-registry.js` now contains an isolated transactional reservation helper.
+- `vehicle-plate-registry.test.js` covers normalization, stable IDs, repeat reconciliation, foreign collisions, retired numbers, and local duplicates.
+- The helper is deliberately **not called by the live game yet**. It requires the registry table and a PostgreSQL-backed integration test before it can be enabled.
+
 ## Required application integration (not implemented yet)
 
-- Add a stable UUID to every vehicle object. For legacy cars, derive a repeatable
-  UUID from the owner ID and the existing vehicle ID, then persist it in JSONB.
+- Add a stable UUID to every vehicle object. The helper derives a repeatable
+  UUID from the owner ID and existing vehicle ID for legacy cars, then persists
+  it in JSONB during reconciliation.
 - Reconcile every current garage and market vehicle while holding the existing
   `withState()` database transaction. Do not reserve a plate in a separate
   transaction from the state save.
