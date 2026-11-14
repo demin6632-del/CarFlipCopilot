@@ -17,6 +17,7 @@ async function run() {
   const suffix = String(Date.now());
   const battleChat = "economy-battle-" + suffix;
   const aiChat = "economy-ai-" + suffix;
+  const streetChat = "economy-street-" + suffix;
   const send = async () => true;
   const answer = async () => true;
 
@@ -52,6 +53,49 @@ async function run() {
       battleState.transactions.filter(x => x.kind === "container_battle_entry").length,
       1
     );
+
+    const streetInitial = await game.load(streetChat, "Street Tester");
+    const streetCar = { ...streetInitial.market[0], status: "owned" };
+    streetInitial.market = streetInitial.market.filter(x => x.id !== streetCar.id);
+    streetInitial.garage.push(streetCar);
+    await game.save(streetChat, streetInitial);
+    const streetBalance = streetInitial.player.balance;
+    const streetCallback = "street-duel-callback-" + suffix;
+
+    await game.handleCallback(
+      streetChat, "ag:duel_create:" + streetCar.id, "Street Tester", send, answer, streetCallback
+    );
+    let streetState = await game.load(streetChat, "Street Tester");
+    assert.ok(streetState.processedCallbacks.includes(streetCallback));
+    assert.equal(streetState.player.balance, streetBalance - 50000);
+    assert.equal(
+      streetState.transactions.filter(x =>
+        x.kind === "street_duel_entry" && x.description.startsWith("Взнос в уличную дуэль №")
+      ).length,
+      1
+    );
+
+    // Simulate a completed challenge before Telegram retries the same callback.
+    await pool.query(
+      "UPDATE autonomous_street_duels SET status='finished',finished_at=now() WHERE challenger_chat_id=$1 AND status='open'",
+      [streetChat]
+    );
+    await game.handleCallback(
+      streetChat, "ag:duel_create:" + streetCar.id, "Street Tester", send, answer, streetCallback
+    );
+    streetState = await game.load(streetChat, "Street Tester");
+    assert.equal(streetState.player.balance, streetBalance - 50000);
+    assert.equal(
+      streetState.transactions.filter(x =>
+        x.kind === "street_duel_entry" && x.description.startsWith("Взнос в уличную дуэль №")
+      ).length,
+      1
+    );
+    const streetDuelCount = await pool.query(
+      "SELECT COUNT(*)::integer AS count FROM autonomous_street_duels WHERE challenger_chat_id=$1",
+      [streetChat]
+    );
+    assert.equal(streetDuelCount.rows[0].count, 1);
 
     const aiInitial = await game.load(aiChat, "AI Tester");
     const car = { ...aiInitial.market[0], status: "owned" };
@@ -95,9 +139,9 @@ async function run() {
 
     console.log("Autonomous game economy idempotency integration: OK");
   } finally {
-    await pool.query("DELETE FROM autonomous_game_state WHERE chat_id = ANY($1::text[])", [[battleChat, aiChat]]).catch(() => {});
+    await pool.query("DELETE FROM autonomous_game_state WHERE chat_id = ANY($1::text[])", [[battleChat, aiChat, streetChat]]).catch(() => {});
     await pool.query("DELETE FROM autonomous_container_battles WHERE owner_chat_id=$1", [battleChat]).catch(() => {});
-    await pool.query("DELETE FROM autonomous_street_duels WHERE challenger_chat_id=$1", [aiChat]).catch(() => {});
+    await pool.query("DELETE FROM autonomous_street_duels WHERE challenger_chat_id = ANY($1::text[])", [[aiChat, streetChat]]).catch(() => {});
     await pool.end();
   }
 }
