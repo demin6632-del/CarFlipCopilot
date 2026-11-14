@@ -65,7 +65,9 @@ jobs:
             const client = new Client({ connectionString: process.env.TEST_DATABASE_URL });
             try {
               await client.connect();
-              await client.query(fs.readFileSync("vehicle-plate-registry.sql", "utf8"));
+              const schema = fs.readFileSync("vehicle-plate-registry.sql", "utf8");
+              await client.query(schema);
+              await client.query(schema); // migrations must be safely repeatable
               await client.query(fs.readFileSync("vehicle-plate-registry.integration.sql", "utf8"));
               console.log("PostgreSQL plate registry schema integration: OK");
             } finally {
