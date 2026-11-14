@@ -30,7 +30,7 @@ player data.
 - The helper is now wired into every audited transactional write to `autonomous_game_state`, including `load()` (existing and new profiles), `save()`, the normal `withState()` path, container-battle transactions, and street-duel transactions.
 - Registry synchronization and JSONB state persistence share the same PostgreSQL transaction. A failure rolls both back.
 - Active vehicles removed from a player's garage/market are retired in the registry. Explicit transfers must update registry ownership first, then reconcile both player states in the same transaction.
-- GitHub Actions now passes the schema and application-helper integration tests on a disposable PostgreSQL 16 service. This is not a production migration: the code must not be deployed until the schema is installed through an approved rollout.
+- GitHub Actions now passes the schema and application-helper integration tests on a disposable PostgreSQL 16 service, including the backfill script's read-only dry run. This is not a production migration: the code must not be deployed until the schema is installed through an approved rollout.
 
 ## Application integration audit
 
@@ -95,6 +95,20 @@ must be repeated immediately before rollout because live game data can change.
    interruption. Verify every profile and active vehicle is registered.
 8. Deploy the application only after the schema and backfill are ready. Resume
    bot writes and verify the running Render commit before reporting completion.
+
+## Rollback plan
+
+- Keep the bot in maintenance mode from the pre-migration backup through the
+  post-deploy smoke tests. Do not reopen player writes until the new code and
+  registry have been verified together.
+- If schema creation, backfill, deployment, or smoke tests fail before writes
+  resume, keep the bot paused, restore the verified pre-migration database
+  backup, redeploy the previously recorded Render commit, verify it, and only
+  then resume the bot.
+- Do not drop the registry or delete retired rows as a rollback shortcut.
+- If player writes have already resumed, do not restore an old database snapshot
+  because that would discard player progress. Keep the registry and use a
+  forward fix while preserving all assigned and retired plate records.
 
 ## Important existing-code findings
 
