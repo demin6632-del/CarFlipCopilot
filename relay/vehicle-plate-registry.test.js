@@ -91,6 +91,7 @@ async function test(name, fn) {
 
   await test("retired historical plates are never reissued", async () => {
     const client = new FakeTransactionClient();
+    client.byPlate.set("А123ВС77", { plate: "А123ВС 77", vehicle_uid: null, retired_at: true });
     const state = {
       meta: { vehiclePlatesIssued: ["А123ВС 77"] },
       garage: [{ id: "car-3", plate: "А123ВС 77" }],
