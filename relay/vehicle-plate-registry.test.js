@@ -124,6 +124,13 @@ async function test(name, fn) {
     const transfer = await registry.transferVehicleOwner(client, uid, "old-owner", "new-owner");
     assert.equal(transfer.plate, "А123ВС 77");
     assert.equal(client.byUid.get(uid).owner_chat_id, "new-owner");
+    const oldOwnerState = { meta: { vehiclePlatesIssued: ["А123ВС 77"] }, garage: [], market: [] };
+    const oldSync = await registry.syncVehiclePlateRegistry(client, "old-owner", oldOwnerState, () => "В456ОР 77");
+    assert.equal(oldSync.retired, 0, "old owner reconciliation must not retire a transferred vehicle");
+    const newOwnerState = { meta: { vehiclePlatesIssued: [] }, garage: [{ id: "transfer-car", vehicleUid: uid, plate: "А123ВС 77" }], market: [] };
+    const newSync = await registry.syncVehiclePlateRegistry(client, "new-owner", newOwnerState, () => "Г789СТ 77");
+    assert.equal(newSync.regenerated, 0);
+    assert.equal(newOwnerState.garage[0].plate, "А123ВС 77");
     await assert.rejects(() => registry.transferVehicleOwner(client, uid, "old-owner", "third-owner"));
   });
 
