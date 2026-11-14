@@ -136,12 +136,12 @@ async function init() {
     CREATE INDEX IF NOT EXISTS autonomous_economy_ledger_chat_time_idx
       ON autonomous_economy_ledger(chat_id, occurred_at DESC);
     CREATE OR REPLACE FUNCTION reject_autonomous_economy_ledger_mutation()
-    RETURNS trigger LANGUAGE plpgsql AS $
+    RETURNS trigger LANGUAGE plpgsql AS $func$
     BEGIN
       RAISE EXCEPTION 'autonomous_economy_ledger is append-only';
     END;
-    $;
-    DO $
+    $func$;
+    DO $do$
     BEGIN
       IF NOT EXISTS (
         SELECT 1 FROM pg_trigger
@@ -153,7 +153,7 @@ async function init() {
         FOR EACH ROW EXECUTE FUNCTION reject_autonomous_economy_ledger_mutation();
       END IF;
     END;
-    $;
+    $do$;
   `);
   return true;
 }
