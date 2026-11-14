@@ -1,0 +1,109 @@
+"use strict";
+
+const assert = require("node:assert/strict");
+const registry = require("./vehicle-plate-registry");
+
+class FakeTransactionClient {
+  constructor() { this.byPlate = new Map(); this.byUid = new Map(); }
+  async query(sql, params = []) {
+    if (sql.includes("INSERT INTO vehicle_plate_registry")) {
+      const plate = String(params[0]);
+      const key = registry.normalizePlate(plate);
+      if (sql.includes("'legacy-history'")) {
+        if (!this.byPlate.has(key)) this.byPlate.set(key, { plate, vehicle_uid: null, retired_at: true });
+        return { rowCount: 1, rows: [] };
+      }
+      const uid = String(params[1]);
+      if (this.byPlate.has(key) || this.byUid.has(uid)) return { rowCount: 0, rows: [] };
+      const row = { plate, vehicle_uid: uid, owner_chat_id: String(params[2]), retired_at: null };
+      this.byPlate.set(key, row);
+      this.byUid.set(uid, row);
+      return { rowCount: 1, rows: [{ plate }] };
+    }
+    if (sql.includes("SELECT plate, vehicle_uid, retired_at")) {
+      const row = this.byUid.get(String(params[0]));
+      return { rowCount: row ? 1 : 0, rows: row ? [row] : [] };
+    }
+    if (sql.includes("UPDATE vehicle_plate_registry")) {
+      const row = this.byUid.get(String(params[0]));
+      if (row) row.owner_chat_id = String(params[1]);
+      return { rowCount: row ? 1 : 0, rows: [] };
+    }
+    throw new Error("Unexpected SQL in fake client: " + sql);
+  }
+}
+
+async function test(name, fn) {
+  await fn();
+  console.log("PASS:", name);
+}
+
+(async () => {
+  await test("plate normalization ignores case and whitespace", () => {
+    assert.equal(registry.normalizePlate("а123 вс 77"), "А123ВС77");
+  });
+
+  await test("vehicle UUID is stable for legacy local IDs", () => {
+    const a = registry.stableVehicleUid("player-1", { id: "car_1_1" });
+    const b = registry.stableVehicleUid("player-1", { id: "car_1_1" });
+    const c = registry.stableVehicleUid("player-2", { id: "car_1_1" });
+    assert.equal(a, b);
+    assert.notEqual(a, c);
+    assert.match(a, /^[0-9a-f]{8}-[0-9a-f]{4}-5[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
+  });
+
+  await test("active legacy plates are not incorrectly imported as retired history", async () => {
+    const client = new FakeTransactionClient();
+    const state = {
+      meta: { vehiclePlatesIssued: ["А123ВС 77"] },
+      garage: [{ id: "owned-1", plate: "А123ВС 77" }],
+      market: []
+    };
+    const result = await registry.syncVehiclePlateRegistry(client, "player-1", state, () => "В456ОР 77");
+    assert.equal(result.assigned, 1);
+    assert.equal(result.regenerated, 0);
+    assert.equal(state.garage[0].plate, "А123ВС 77");
+    assert.equal(client.byPlate.get("А123ВС77").retired_at, null);
+    assert.ok(state.garage[0].vehicleUid);
+  });
+
+  await test("second reconciliation preserves the same vehicle plate and UID", async () => {
+    const client = new FakeTransactionClient();
+    const state = { meta: { vehiclePlatesIssued: [] }, garage: [{ id: "car-1", plate: "А123ВС 77" }], market: [] };
+    await registry.syncVehiclePlateRegistry(client, "player-1", state, () => "В456ОР 77");
+    const uid = state.garage[0].vehicleUid;
+    const again = await registry.syncVehiclePlateRegistry(client, "player-1", state, () => "Г789СТ 77");
+    assert.equal(state.garage[0].vehicleUid, uid);
+    assert.equal(state.garage[0].plate, "А123ВС 77");
+    assert.equal(again.regenerated, 0);
+  });
+
+  await test("globally occupied legacy plate is replaced by a newly reserved candidate", async () => {
+    const client = new FakeTransactionClient();
+    client.byPlate.set("А123ВС77", { plate: "А123ВС 77", vehicle_uid: "00000000-0000-5000-8000-000000000001", retired_at: null });
+    client.byUid.set("00000000-0000-5000-8000-000000000001", client.byPlate.get("А123ВС77"));
+    const state = { meta: { vehiclePlatesIssued: [] }, garage: [{ id: "car-2", plate: "А123ВС 77" }], market: [] };
+    const result = await registry.syncVehiclePlateRegistry(client, "player-2", state, () => "В456ОР 77");
+    assert.equal(state.garage[0].plate, "В456ОР 77");
+    assert.equal(result.regenerated, 1);
+    assert.equal(client.byPlate.get("А123ВС77").vehicle_uid, "00000000-0000-5000-8000-000000000001");
+  });
+
+  await test("retired historical plates are never reissued", async () => {
+    const client = new FakeTransactionClient();
+    const state = {
+      meta: { vehiclePlatesIssued: ["А123ВС 77"] },
+      garage: [{ id: "car-3", plate: "А123ВС 77" }],
+      market: []
+    };
+    const result = await registry.syncVehiclePlateRegistry(client, "player-3", state, () => "В456ОР 77");
+    assert.equal(result.regenerated, 1);
+    assert.equal(state.garage[0].plate, "В456ОР 77");
+    assert.ok(client.byPlate.get("А123ВС77").retired_at);
+  });
+
+  console.log("Vehicle plate registry tests: OK");
+})().catch(error => {
+  console.error(error);
+  process.exitCode = 1;
+});
