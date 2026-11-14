@@ -1275,6 +1275,7 @@ function sellPlate(state, id) {
 function repairVehicle(state, id) {
   const c=state.garage.find(x=>x.id===id);
   if(!c)return {ok:false,reason:"missing"};
+  if(c.marketplaceListingId)return {ok:false,reason:"listed"};
   if((c.damage||0)<=0 && (c.condition||0)>=100)return {ok:false,reason:"restored"};
   const remaining=Math.max(1,Number(c.damage)||1);
   const cost=Math.round(Math.min(c.repairCost,Math.max(12000,c.repairCost*(remaining/7))));
@@ -1289,6 +1290,7 @@ function repairVehicle(state, id) {
 function prepareVehicle(state, id) {
   const c=state.garage.find(x=>x.id===id);
   if(!c)return {ok:false,reason:"missing"};
+  if(c.marketplaceListingId)return {ok:false,reason:"listed"};
   const cost=Math.round(18000+Math.max(0,c.damage)*2500);
   if(state.player.balance<cost)return {ok:false,reason:"no_money",cost};
   c.extraSpent=(c.extraSpent||0)+cost;
@@ -1301,6 +1303,7 @@ function prepareVehicle(state, id) {
 function acceptPendingSale(state, id) {
   const c=state.garage.find(x=>x.id===id);
   if(!c)return {ok:false,reason:"missing"};
+  if(c.marketplaceListingId)return {ok:false,reason:"listed"};
   if(!state.pendingDeal || state.pendingDeal.carId!==id)return {ok:false,reason:"stale"};
   const buyerName=state.pendingDeal.buyerType||"Покупатель";
   const offer=Number(state.pendingDeal.amount)||0;
@@ -1903,6 +1906,7 @@ async function handleCallback(chat,data,firstName,sendFn,answerFn,callbackId) {
     if(action==="repair"){
       const result=repairVehicle(state,id);
       if(!result.ok){
+        if(result.reason==="listed") return {text:"🔒 Сначала отмени объявление на общем рынке.",markup:carKeyboard(c)};
         if(result.reason==="restored") return {text:"🛠 Машина уже восстановлена. Дополнительный ремонт не нужен.",markup:carKeyboard(c)};
         if(result.reason==="no_money") return {text:"❌ Не хватает денег на ремонт.",markup:carKeyboard(c)};
         return {text:"⚠️ Машина уже не в гараже.",markup:garageKeyboard(state)};
@@ -1912,12 +1916,14 @@ async function handleCallback(chat,data,firstName,sendFn,answerFn,callbackId) {
     if(action==="prep"){
       const result=prepareVehicle(state,id);
       if(!result.ok){
+        if(result.reason==="listed") return {text:"🔒 Сначала отмени объявление на общем рынке.",markup:carKeyboard(c)};
         if(result.reason==="no_money") return {text:"❌ Не хватает денег на подготовку.",markup:carKeyboard(c)};
         return {text:"⚠️ Машина уже не в гараже.",markup:garageKeyboard(state)};
       }
       return {text:"✨ ПОДГОТОВКА ЗАВЕРШЕНА\n\n"+carText(result.car),markup:carKeyboard(result.car)};
     }
     if(action==="sell"){
+      if(c.marketplaceListingId) return {text:"🔒 Автомобиль выставлен на общий рынок. Сначала отмени объявление, затем сможешь продавать его обычным способом.",markup:carKeyboard(c)};
       if(state.pendingDeal) return {text:"🤝 Сначала заверши текущие переговоры.",markup:dealKeyboard(c,state.pendingDeal)};
       const deal=buyerOfferDetails(state,c);
       const event=dealRisk(state,c);
@@ -1947,6 +1953,7 @@ async function handleCallback(chat,data,firstName,sendFn,answerFn,callbackId) {
     if(action==="accept"){
       const result=acceptPendingSale(state,id);
       if(!result.ok){
+        if(result.reason==="listed") return {text:"🔒 Автомобиль выставлен на общий рынок. Сначала отмени объявление.",markup:carKeyboard(c)};
         if(result.reason==="missing") return {text:"⚠️ Машина уже не в гараже.",markup:garageKeyboard(state)};
         if(result.reason==="stale") return {text:"⚠️ Предложение устарело. Нажми «Продать» заново.",markup:carKeyboard(c)};
         return {text:"🛑 ПРОДАЖА ЗАБЛОКИРОВАНА\n\nПредложение ниже себестоимости.\nМашина осталась в гараже.",markup:carKeyboard(c)};
