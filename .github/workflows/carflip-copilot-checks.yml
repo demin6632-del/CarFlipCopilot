@@ -67,7 +67,8 @@ jobs:
               await client.connect();
               await client.query(fs.readFileSync("vehicle-plate-registry.sql", "utf8"));
               await client.query(fs.readFileSync("vehicle-plate-registry.integration.sql", "utf8"));
-              console.log("PostgreSQL plate registry integration: OK");
+              await client.query(fs.readFileSync("vehicle-plate-registry.postgres.integration.test.js", "utf8").toString());
+              console.log("PostgreSQL plate registry schema and helper integration: OK");
             } finally {
               await client.end();
             }
