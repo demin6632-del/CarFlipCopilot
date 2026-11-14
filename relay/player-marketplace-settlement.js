@@ -72,10 +72,6 @@ async function purchaseMarketplaceListing(pool, input) {
     if (String(listing.seller_chat_id) !== sellerChatId) {
       throw settlementError("LISTING_CHANGED", "Listing seller changed; retry from the marketplace");
     }
-    if (listing.status !== "active" || new Date(listing.expires_at).getTime() <= Date.now()) {
-      throw settlementError("LISTING_NOT_ACTIVE", "This listing is no longer available");
-    }
-
     const receipt = await client.query(
       "INSERT INTO autonomous_processed_callbacks(chat_id,callback_id) VALUES($1,$2) " +
       "ON CONFLICT DO NOTHING RETURNING callback_id",
@@ -84,6 +80,9 @@ async function purchaseMarketplaceListing(pool, input) {
     if (!receipt.rowCount) {
       await client.query("ROLLBACK");
       return { ok: false, duplicate: true };
+    }
+    if (listing.status !== "active" || new Date(listing.expires_at).getTime() <= Date.now()) {
+      throw settlementError("LISTING_NOT_ACTIVE", "This listing is no longer available");
     }
 
     const buyer = states.get(buyerChatId);
@@ -101,6 +100,9 @@ async function purchaseMarketplaceListing(pool, input) {
     }
     const buyerBalance = safeMoney(buyer.player.balance);
     const sellerBalance = safeMoney(seller.player.balance);
+    if (!Number.isSafeInteger(sellerBalance + price)) {
+      throw settlementError("BALANCE_OVERFLOW", "Seller balance would exceed the safe accounting range");
+    }
     const capacity = Number.isInteger(buyer.player.garageCapacity) && buyer.player.garageCapacity > 0
       ? buyer.player.garageCapacity : 3;
     if (buyerBalance < price) throw settlementError("INSUFFICIENT_FUNDS", "Not enough funds to buy this vehicle");
