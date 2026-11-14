@@ -1,5 +1,6 @@
 const { Pool } = require("pg");
 const sandbox = require("./car-sandbox");
+const { syncVehiclePlateRegistry } = require("./vehicle-plate-registry");
 
 const VERSION = 2;
 const START_BALANCE = 3000000;
@@ -382,10 +383,20 @@ async function load(chat, firstName) {
 async function save(chat,state) {
   const p=db(); if(!p) throw new Error("DATABASE_URL не настроен");
   const pool=await p;
-  await pool.query(
-    "UPDATE autonomous_game_state SET version=$2,state=$3::jsonb,updated_at=now() WHERE chat_id=$1",
-    [String(chat),VERSION,JSON.stringify(state)]
-  );
+  const client=await pool.connect();
+  try {
+    await client.query("BEGIN");
+    await client.query("SELECT chat_id FROM autonomous_game_state WHERE chat_id=$1 FOR UPDATE",[String(chat)]);
+    await syncVehiclePlateRegistry(client,String(chat),state,createUniqueVehiclePlate);
+    await client.query(
+      "UPDATE autonomous_game_state SET version=$2,state=$3::jsonb,updated_at=now() WHERE chat_id=$1",
+      [String(chat),VERSION,JSON.stringify(state)]
+    );
+    await client.query("COMMIT");
+  } catch(e) {
+    await client.query("ROLLBACK").catch(()=>{});
+    throw e;
+  } finally { client.release(); }
 }
 async function withState(chat, firstName, mutate, callbackId) {
   const p=db(); if(!p) throw new Error("DATABASE_URL не настроен");
@@ -408,6 +419,7 @@ async function withState(chat, firstName, mutate, callbackId) {
       return {state,result:{duplicate:true}};
     }
     const result=await mutate(state);
+    await syncVehiclePlateRegistry(client,String(chat),state,createUniqueVehiclePlate);
     await client.query("UPDATE autonomous_game_state SET version=$2,state=$3::jsonb,updated_at=now() WHERE chat_id=$1",[String(chat),VERSION,JSON.stringify(state)]);
     await client.query("COMMIT");
     return {state,result};
@@ -901,6 +913,7 @@ async function createContainerBattle(chat,name) {
     state.transactions.unshift({time:Date.now(),kind:"container_battle_entry",amount:-100000,balance:state.player.balance,description:"Взнос в контейнерную битву",profit:0});
     state.transactions=state.transactions.slice(0,80);
     if(callbackId){state.processedCallbacks.push(String(callbackId));state.processedCallbacks=state.processedCallbacks.slice(-80);}
+    await syncVehiclePlateRegistry(client,String(chat),state,createUniqueVehiclePlate);
     await client.query("UPDATE autonomous_game_state SET state=$2::jsonb,updated_at=now() WHERE chat_id=$1",[String(chat),JSON.stringify(state)]);
     const r=await client.query("INSERT INTO autonomous_container_battles(status,owner_chat_id,entry_fee,players) VALUES('open',$1,100000,$2::jsonb) RETURNING id,status,owner_chat_id,entry_fee,players,results,created_at",[String(chat),JSON.stringify([{chatId:String(chat),name:String(name||"Перекуп")}])]);
     await client.query("COMMIT");return {ok:true,battle:r.rows[0]};
@@ -927,6 +940,7 @@ async function joinContainerBattle(chat,name,battleId) {
     state.transactions=Array.isArray(state.transactions)?state.transactions:[];
     state.transactions.unshift({time:Date.now(),kind:"container_battle_entry",amount:-Number(battle.entry_fee),balance:state.player.balance,description:"Взнос в контейнерную битву #"+battle.id,profit:0});
     state.transactions=state.transactions.slice(0,80);
+    await syncVehiclePlateRegistry(client,String(chat),state,createUniqueVehiclePlate);
     await client.query("UPDATE autonomous_game_state SET state=$2::jsonb,updated_at=now() WHERE chat_id=$1",[String(chat),JSON.stringify(state)]);
     players.push({chatId:String(chat),name:String(name||"Перекуп")});
     const upd=await client.query("UPDATE autonomous_container_battles SET players=$2::jsonb WHERE id=$1 RETURNING id,status,owner_chat_id,entry_fee,players,results,created_at",[battle.id,JSON.stringify(players)]);
@@ -957,6 +971,7 @@ async function startContainerBattle(chat,battleId) {
       state.transactions=Array.isArray(state.transactions)?state.transactions:[];
       state.transactions.unshift({time:Date.now(),kind:"container_battle_prize",amount:result.reward,balance:state.player.balance,description:"Награда за "+result.rank+" место в битве #"+battle.id,profit:0});
       state.transactions=state.transactions.slice(0,80);
+      await syncVehiclePlateRegistry(client,String(result.chatId),state,createUniqueVehiclePlate);
       await client.query("UPDATE autonomous_game_state SET state=$2::jsonb,updated_at=now() WHERE chat_id=$1",[String(result.chatId),JSON.stringify(state)]);
       paid+=result.reward;
     }
@@ -1026,6 +1041,7 @@ async function createStreetDuel(chat,name,carId){
     addTx(state,"street_duel_entry",-STREET_DUEL_STAKE,"Взнос в уличную дуэль");
     const r=await client.query("INSERT INTO autonomous_street_duels(status,challenger_chat_id,challenger_name,challenger_car,challenger_power,stake) VALUES('open',$1,$2,$3::jsonb,$4,$5) RETURNING *",[String(chat),String(name||"Перекуп"),JSON.stringify(car),power,STREET_DUEL_STAKE]);
     state.transactions[0].description="Взнос в уличную дуэль №"+r.rows[0].id;
+    await syncVehiclePlateRegistry(client,String(chat),state,createUniqueVehiclePlate);
     await client.query("UPDATE autonomous_game_state SET state=$2::jsonb,updated_at=now() WHERE chat_id=$1",[String(chat),JSON.stringify(state)]);
     await client.query("COMMIT");return {ok:true,duel:r.rows[0]};
   }catch(e){await client.query("ROLLBACK").catch(()=>{});throw e;}finally{client.release();}
@@ -1043,6 +1059,7 @@ async function cancelStreetDuel(chat,duelId){
     if(!pr.rowCount){await client.query("ROLLBACK");return {ok:false,reason:"no_profile"};}
     const state=pr.rows[0].state;
     addTx(state,"street_duel_refund",Number(duel.stake),"Возврат ставки за отмену дуэли №"+duel.id);
+    await syncVehiclePlateRegistry(client,String(chat),state,createUniqueVehiclePlate);
     await client.query("UPDATE autonomous_game_state SET state=$2::jsonb,updated_at=now() WHERE chat_id=$1",[String(chat),JSON.stringify(state)]);
     const upd=await client.query("UPDATE autonomous_street_duels SET status='cancelled',result=$2::jsonb,finished_at=now() WHERE id=$1 RETURNING *",[duel.id,JSON.stringify({winnerName:"Вызов отменён",payout:Number(duel.stake),fee:0})]);
     await client.query("COMMIT");return {ok:true,duel:upd.rows[0]};
@@ -1081,6 +1098,8 @@ async function joinStreetDuel(chat,name,duelId){
     }else{
       winnerName=String(name||"Соперник");addTx(opponent,"street_duel_prize",payout,"Победа в уличной дуэли №"+duel.id);
     }
+    await syncVehiclePlateRegistry(client,String(duel.challenger_chat_id),challenger,createUniqueVehiclePlate);
+    await syncVehiclePlateRegistry(client,String(chat),opponent,createUniqueVehiclePlate);
     await client.query("UPDATE autonomous_game_state SET state=$2::jsonb,updated_at=now() WHERE chat_id=$1",[String(duel.challenger_chat_id),JSON.stringify(challenger)]);
     await client.query("UPDATE autonomous_game_state SET state=$2::jsonb,updated_at=now() WHERE chat_id=$1",[String(chat),JSON.stringify(opponent)]);
     const result={winnerChat,winnerName,payout,fee,powerDifference:Math.abs(Number(duel.challenger_power||0)-Number(opponentPower||0)),challengerRoll:Math.round(challengerRoll),opponentRoll:Math.round(opponentRoll),draw};
@@ -1130,6 +1149,7 @@ async function createStreetDuelAI(chat,name,callbackId){
       "INSERT INTO autonomous_street_duels(status,challenger_chat_id,challenger_name,challenger_car,challenger_power,opponent_name,opponent_car,opponent_power,stake,result,finished_at) VALUES('finished',$1,$2,$3::jsonb,$4,'AUTOFLIP ИИ',$5::jsonb,$6,$7,$8::jsonb,now()) RETURNING *",
       [String(chat),String(name||"Перекуп"),JSON.stringify(playerCar),playerPower,JSON.stringify(opponentCar),opponentPower,STREET_DUEL_STAKE,JSON.stringify(result)]
     );
+    await syncVehiclePlateRegistry(client,String(chat),state,createUniqueVehiclePlate);
     await client.query("UPDATE autonomous_game_state SET state=$2::jsonb,updated_at=now() WHERE chat_id=$1",[String(chat),JSON.stringify(state)]);
     await client.query("COMMIT");
     return {ok:true,duel:duel.rows[0],result};
