@@ -14,7 +14,7 @@ BEGIN
 
   -- Case/whitespace variants must collide through the normalized unique key.
   INSERT INTO vehicle_plate_registry(plate, vehicle_uid, owner_chat_id, source)
-  VALUES (lower(v_plate), gen_random_uuid(), 'registry-test-owner-b', 'integration-test')
+  VALUES (lower(substr(v_plate, 1, 3) || ' ' || substr(v_plate, 4)), gen_random_uuid(), 'registry-test-owner-b', 'integration-test')
   ON CONFLICT DO NOTHING;
   GET DIAGNOSTICS v_inserted = ROW_COUNT;
   IF v_inserted <> 0 THEN
