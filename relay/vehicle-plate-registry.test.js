@@ -24,6 +24,18 @@ class FakeTransactionClient {
       const row = this.byUid.get(String(params[0]));
       return { rowCount: row ? 1 : 0, rows: row ? [row] : [] };
     }
+    if (sql.includes("NOT (vehicle_uid = ANY")) {
+      const owner = String(params[0]);
+      const active = new Set(params[1].map(String));
+      const retired = [];
+      for (const row of this.byUid.values()) {
+        if (row.owner_chat_id === owner && !row.retired_at && !active.has(String(row.vehicle_uid))) {
+          row.retired_at = true;
+          retired.push({ plate: row.plate });
+        }
+      }
+      return { rowCount: retired.length, rows: retired };
+    }
     if (sql.includes("UPDATE vehicle_plate_registry") && sql.includes("RETURNING plate")) {
       const row = this.byUid.get(String(params[0]));
       if (!row || row.owner_chat_id !== String(params[1]) || row.retired_at) return { rowCount: 0, rows: [] };
@@ -126,6 +138,20 @@ async function test(name, fn) {
     assert.equal(result.assigned, 2);
     assert.equal(result.regenerated, 1);
     assert.equal(registry.normalizePlate(state.garage[0].plate) === registry.normalizePlate(state.market[0].plate), false);
+  });
+
+  await test("vehicle removed from active state is retired and its plate stays reserved", async () => {
+    const client = new FakeTransactionClient();
+    const state = { meta: { vehiclePlatesIssued: [] }, garage: [{ id: "sold-car", plate: "А123ВС 77" }], market: [] };
+    await registry.syncVehiclePlateRegistry(client, "seller", state, () => "В456ОР 77");
+    const uid = state.garage[0].vehicleUid;
+    state.garage = [];
+    const result = await registry.syncVehiclePlateRegistry(client, "seller", state, () => "Г789СТ 77");
+    assert.equal(result.retired, 1);
+    assert.ok(client.byUid.get(uid).retired_at);
+    const buyer = { meta: { vehiclePlatesIssued: [] }, garage: [{ id: "new-car", plate: "А123ВС 77" }], market: [] };
+    await registry.syncVehiclePlateRegistry(client, "buyer", buyer, () => "Г789СТ 77");
+    assert.equal(buyer.garage[0].plate, "Г789СТ 77");
   });
 
   await test("retired historical plates are never reissued", async () => {
