@@ -63,7 +63,6 @@ jobs:
           node player-marketplace-expiry-worker.test.js
           node player-marketplace-browse.test.js
           node player-marketplace-settlement.test.js
-          node player-marketplace-settlement.postgres.integration.test.js
           node - <<'NODE'
           const fs = require("node:fs");
           const { Client } = require("pg");
@@ -80,6 +79,7 @@ jobs:
             }
           })().catch(error => { console.error(error); process.exitCode = 1; });
           NODE
+          node player-marketplace-settlement.postgres.integration.test.js
           node player-marketplace-listings.postgres.integration.test.js
       - name: Game dashboard routing guard
         run: |
