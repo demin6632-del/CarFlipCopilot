@@ -25,3 +25,54 @@ jobs:
       - run: node --check game-economy.js
       - run: node --check autonomous-game.js
       - run: npm test
+
+  postgres-integration:
+    name: PostgreSQL plate registry integration
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: autoflip_test
+          POSTGRES_USER: autoflip_test
+          POSTGRES_PASSWORD: autoflip_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U autoflip_test -d autoflip_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    defaults:
+      run:
+        working-directory: relay
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Install PostgreSQL client dependency
+        run: npm install --ignore-scripts --no-audit --no-fund
+      - name: Apply schema and run rollback-only integration test
+        env:
+          TEST_DATABASE_URL: postgres://autoflip_test:autoflip_test@127.0.0.1:5432/autoflip_test
+        run: |
+          node <<'NODE'
+          const fs = require("node:fs");
+          const { Client } = require("pg");
+
+          (async () => {
+            const client = new Client({ connectionString: process.env.TEST_DATABASE_URL });
+            try {
+              await client.connect();
+              await client.query(fs.readFileSync("vehicle-plate-registry.sql", "utf8"));
+              await client.query(fs.readFileSync("vehicle-plate-registry.integration.sql", "utf8"));
+              console.log("PostgreSQL plate registry integration: OK");
+            } finally {
+              await client.end();
+            }
+          })().catch((error) => {
+            console.error(error);
+            process.exitCode = 1;
+          });
+          NODE
