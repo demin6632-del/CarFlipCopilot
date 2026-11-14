@@ -87,6 +87,8 @@ async function init() {
     );
     CREATE INDEX IF NOT EXISTS autonomous_container_battles_status_idx
       ON autonomous_container_battles(status,created_at DESC);
+    CREATE UNIQUE INDEX IF NOT EXISTS autonomous_container_battles_one_open_idx
+      ON autonomous_container_battles(status) WHERE status='open';
   `);
   return true;
 }
@@ -814,6 +816,15 @@ async function createContainerBattle(chat,name) {
     await client.query("BEGIN");
     const active=await client.query("SELECT id FROM autonomous_container_battles WHERE status='open' ORDER BY created_at DESC LIMIT 1 FOR UPDATE");
     if(active.rowCount){await client.query("ROLLBACK");return {ok:false,reason:"exists",battle:await getContainerBattle()};}
+    const profile=await client.query("SELECT state FROM autonomous_game_state WHERE chat_id=$1 FOR UPDATE",[String(chat)]);
+    if(!profile.rowCount){await client.query("ROLLBACK");return {ok:false,reason:"no_profile"};}
+    const state=profile.rows[0].state;
+    if(Number(state.player?.balance||0)<100000){await client.query("ROLLBACK");return {ok:false,reason:"money"};}
+    state.player.balance-=100000;
+    state.transactions=Array.isArray(state.transactions)?state.transactions:[];
+    state.transactions.unshift({time:Date.now(),kind:"container_battle_entry",amount:-100000,balance:state.player.balance,description:"Взнос в контейнерную битву",profit:0});
+    state.transactions=state.transactions.slice(0,80);
+    await client.query("UPDATE autonomous_game_state SET state=$2::jsonb,updated_at=now() WHERE chat_id=$1",[String(chat),JSON.stringify(state)]);
     const r=await client.query("INSERT INTO autonomous_container_battles(status,owner_chat_id,entry_fee,players) VALUES('open',$1,100000,$2::jsonb) RETURNING id,status,owner_chat_id,entry_fee,players,results,created_at",[String(chat),JSON.stringify([{chatId:String(chat),name:String(name||"Перекуп")}])]);
     await client.query("COMMIT");return {ok:true,battle:r.rows[0]};
   }catch(e){await client.query("ROLLBACK").catch(()=>{});throw e;}finally{client.release();}
@@ -858,7 +869,7 @@ async function startContainerBattle(chat,battleId) {
     if(players.length<2){await client.query("ROLLBACK");return {ok:false,reason:"few"};}
     const poolMoney=players.length*Number(battle.entry_fee), payout=Math.floor(poolMoney*.9);
     const ranked=players.map(x=>({...x,score:Math.random()})).sort((a,b)=>b.score-a.score);
-    const results=ranked.map((x,i)=>({...x,rank:i+1,reward:i===0?Math.floor(payout*.55):i===1?Math.floor(payout*.30):i===2?Math.floor(payout*.15/Math.max(1,Math.min(players.length-2,3))):0}));
+    const results=ranked.map((x,i)=>({...x,rank:i+1,reward:i===0?Math.floor(payout*(players.length===2?.65:.55)):i===1?Math.floor(payout*(players.length===2?.35:.30)):i===2?Math.floor(payout*.15):0}));
     let paid=0;
     for(const result of results){
       if(!result.reward)continue;
