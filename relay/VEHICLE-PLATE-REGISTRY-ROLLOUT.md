@@ -81,7 +81,7 @@ must be repeated immediately before rollout because live game data can change.
 3. Keep the disposable CI tests passing for fresh and repeated schema creation,
    normalized collisions, concurrent allocation, vehicle ownership transfer,
    vehicle retirement, legacy-history import, and transaction rollback.
-4. Add application integration and tests on a feature branch.
+4. Review and approve the application integration and test coverage on this feature branch.
 5. Back up production and verify the migration against a fresh production
    snapshot before any production change.
 6. Apply to production only after the user explicitly approves the rollout.
