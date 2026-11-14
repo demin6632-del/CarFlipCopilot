@@ -134,8 +134,19 @@ async function syncVehiclePlateRegistry(client, ownerChatId, state, createCandid
     assigned++;
   }
 
+  // Vehicles removed from this player's active garage/market are retired.
+  // A transfer must update owner_chat_id first in the same transaction; after
+  // that, the old owner's reconciliation cannot retire the transferred row.
+  const activeUids = active.map(vehicle => String(vehicle.vehicleUid));
+  const retiredResult = await client.query(
+    "UPDATE vehicle_plate_registry SET retired_at=now() " +
+    "WHERE owner_chat_id=$1 AND retired_at IS NULL AND vehicle_uid IS NOT NULL " +
+    "AND NOT (vehicle_uid = ANY($2::uuid[])) RETURNING plate",
+    [String(ownerChatId), activeUids]
+  );
+
   state.meta.vehiclePlatesIssued = [...historicalValues];
-  return { assigned, regenerated };
+  return { assigned, regenerated, retired: retiredResult.rowCount || 0 };
 }
 
 async function transferVehicleOwner(client, vehicleUid, fromOwnerChatId, toOwnerChatId) {
