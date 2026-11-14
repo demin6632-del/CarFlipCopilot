@@ -1032,7 +1032,7 @@ async function handleCallback(chat,data,firstName,sendFn,answerFn,callbackId) {
       const amount=Number(id)||0, debt=Math.max(0,Number(state.player.debt)||0);
       if(![500000,1000000,3000000,5000000,10000000,25000000,50000000].includes(amount) || debt+amount>50000000)
         return {text:"⚠️ Сумма недоступна. Максимальный долг — 50 000 000 ₽.",markup:financeKeyboard(state)};
-      if(debt>0 && Number(state.meta.day)<Number(state.player.loanDueDay||0))
+      if(debt>0)
         return {text:"⚠️ Сначала погаси текущий кредит.",markup:financeKeyboard(state)};
       state.player.debt=debt+Math.round(amount*1.15);
       state.player.loanDueDay=(Number(state.meta.day)||1)+30;
