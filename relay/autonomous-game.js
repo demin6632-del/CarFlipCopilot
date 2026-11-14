@@ -436,6 +436,7 @@ function menu() {
     [{text:"🔢 Номера",callback_data:"ag:plates"},{text:"📊 Статистика",callback_data:"ag:stats"}],
     [{text:"🏦 Банк",callback_data:"ag:finance"},{text:"🏆 Рейтинг игроков",callback_data:"ag:leaderboard"}],
     [{text:"📦 Контейнеры",callback_data:"ag:containers"}],
+    [{text:"⚔️ Сражения",callback_data:"ag:battle"}],
     [{text:"🏁 Уличные дуэли",callback_data:"ag:duel"}]
   ]};
 }
