@@ -485,12 +485,12 @@ function marketKeyboard(state) {
     const left=car.expiresAtTurn?Math.max(0,car.expiresAtTurn-turn):0, tag=car.limited?"🔥 ":"";
     const margin=car.targetSale-car.buyPrice-car.repairCost;
     const signal=margin>150000?"💎":margin>50000?"🟢":margin>0?"🟡":"🔴";
-    return [{text:tag+(i+1)+". "+signal+" "+car.model+" · "+fmt(car.buyPrice)+(car.expiresAtTurn?" · ⏳"+left:""),callback_data:"ag:inspect:"+car.id}];
+    return [{text:tag+(i+1)+". "+signal+" "+car.model+" · "+(car.plate||"без номера")+" · "+fmt(car.buyPrice)+(car.expiresAtTurn?" · ⏳"+left:""),callback_data:"ag:inspect:"+car.id}];
   }),[{text:"🔄 Обновить рынок",callback_data:"ag:refresh"}],[{text:"⬅️ Меню",callback_data:"ag:home"}]]};
 }
 function garageKeyboard(state) {
   return {inline_keyboard:[
-    ...state.garage.map((c,i)=>[{text:"🚘 "+(i+1)+". "+c.model,callback_data:"ag:car:"+c.id}]),
+    ...state.garage.map((c,i)=>[{text:"🚘 "+(i+1)+". "+c.model+" · "+(c.plate||"без номера"),callback_data:"ag:car:"+c.id}]),
     [{text:"🚗 Рынок",callback_data:"ag:market"},{text:"⬅️ Меню",callback_data:"ag:home"}]
   ]};
 }
@@ -997,7 +997,8 @@ async function createStreetDuel(chat,name,carId){
     if(active.rowCount){await client.query("ROLLBACK");return {ok:false,reason:"exists",duel:await getOpenStreetDuel()};}
     const pr=await client.query("SELECT state FROM autonomous_game_state WHERE chat_id=$1 FOR UPDATE",[String(chat)]);
     if(!pr.rowCount){await client.query("ROLLBACK");return {ok:false,reason:"no_profile"};}
-    const state=pr.rows[0].state,car=(state.garage||[]).find(x=>String(x.id)===String(carId));
+    const state=pr.rows[0].state;ensureVehiclePlates(state);
+    const car=(state.garage||[]).find(x=>String(x.id)===String(carId));
     if(!car){await client.query("ROLLBACK");return {ok:false,reason:"car"};}
     if(Number(state.player?.balance||0)<STREET_DUEL_STAKE){await client.query("ROLLBACK");return {ok:false,reason:"money"};}
     const power=streetDuelPower(car);
@@ -1039,6 +1040,7 @@ async function joinStreetDuel(chat,name,duelId){
     const states=new Map(pr.rows.map(x=>[String(x.chat_id),x.state]));
     const challenger=states.get(String(duel.challenger_chat_id)),opponent=states.get(String(chat));
     if(!challenger||!opponent){await client.query("ROLLBACK");return {ok:false,reason:"no_profile"};}
+    ensureVehiclePlates(challenger);ensureVehiclePlates(opponent);
     if(!Array.isArray(opponent.garage)||!opponent.garage.length){await client.query("ROLLBACK");return {ok:false,reason:"no_car"};}
     if(Number(opponent.player?.balance||0)<Number(duel.stake)){await client.query("ROLLBACK");return {ok:false,reason:"money"};}
     const opponentCar=opponent.garage.slice().sort((a,b)=>streetDuelPower(b)-streetDuelPower(a))[0];
