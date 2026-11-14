@@ -421,11 +421,15 @@ async function run() {
 
     console.log("Autonomous game economy idempotency and ledger integration: OK");
   } finally {
-    await pool.query("DELETE FROM autonomous_economy_ledger WHERE chat_id = ANY($1::text[])", [[battleChat, battleGuestChat, aiChat, streetChat, cancelChat, challengeChat, opponentChat, ledgerChat, genericChat, buyChat]]).catch(() => {});
-    await pool.query("DELETE FROM autonomous_processed_callbacks WHERE chat_id = ANY($1::text[])", [[battleChat, battleGuestChat, aiChat, streetChat, cancelChat, challengeChat, opponentChat, ledgerChat, genericChat, buyChat]]).catch(() => {});
-    await pool.query("DELETE FROM autonomous_game_state WHERE chat_id = ANY($1::text[])", [[battleChat, aiChat, streetChat, ledgerChat, genericChat, buyChat]]).catch(() => {});
-    await pool.query("DELETE FROM autonomous_container_battles WHERE owner_chat_id=$1", [battleChat]).catch(() => {});
-    await pool.query("DELETE FROM autonomous_street_duels WHERE challenger_chat_id = ANY($1::text[])", [[aiChat, streetChat, cancelChat, challengeChat]]).catch(() => {});
+    const testChats = [battleChat, battleGuestChat, aiChat, streetChat, cancelChat, challengeChat, opponentChat, ledgerChat, genericChat, buyChat];
+    // Ledger rows are deliberately immutable; the CI PostgreSQL service is disposable.
+    await pool.query("DELETE FROM autonomous_processed_callbacks WHERE chat_id = ANY($1::text[])", [testChats]).catch(() => {});
+    await pool.query("DELETE FROM autonomous_game_state WHERE chat_id = ANY($1::text[])", [testChats]).catch(() => {});
+    await pool.query("DELETE FROM autonomous_container_battles WHERE owner_chat_id = ANY($1::text[])", [[battleChat]]).catch(() => {});
+    await pool.query(
+      "DELETE FROM autonomous_street_duels WHERE challenger_chat_id = ANY($1::text[]) OR opponent_chat_id = ANY($1::text[])",
+      [[aiChat, streetChat, cancelChat, challengeChat, opponentChat]]
+    ).catch(() => {});
     await pool.end();
   }
 }
