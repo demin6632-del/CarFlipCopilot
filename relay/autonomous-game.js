@@ -146,7 +146,7 @@ function createListing(state) {
   state.meta.listingSeq = listingSeq;
   const id = "car_"+String(state.meta.turn||0)+"_"+listingSeq;
   return {
-    id, model:base.name, catalogId:base.id, year:base.year, mileage,
+    id, model:base.name, catalogId:base.id, year:base.year, plate:createUniqueVehiclePlate(state), mileage,
     buyPrice:Math.max(50000,buy), marketPrice:Math.round(market),
     repairCost:Math.round(base.repair*(0.65+rng(state)*0.7)),
     targetSale:Math.round(base.sale*(0.93+rng(state)*0.12)),
@@ -167,6 +167,26 @@ function plateCode(state) {
   const nums = String(100 + Math.floor(rng(state)*900));
   const region = String(1 + Math.floor(rng(state)*199)).padStart(2,"0");
   return letters[Math.floor(rng(state)*letters.length)] + nums + letters[Math.floor(rng(state)*letters.length)] + letters[Math.floor(rng(state)*letters.length)] + " " + region;
+}
+function createUniqueVehiclePlate(state) {
+  const used=new Set([...(state.garage||[]),...(state.market||[])].map(car=>car.plate).filter(Boolean));
+  let plate;
+  do { plate=plateCode(state); } while(used.has(plate));
+  return plate;
+}
+function ensureVehiclePlates(state) {
+  if(!state||!state.meta) return;
+  state.garage=Array.isArray(state.garage)?state.garage:[];
+  state.market=Array.isArray(state.market)?state.market:[];
+  const used=new Set();
+  for(const car of [...state.garage,...state.market]) {
+    if(!car.plate||used.has(car.plate)) {
+      let plate;
+      do { plate=plateCode(state); } while(used.has(plate));
+      car.plate=plate;
+    }
+    used.add(car.plate);
+  }
 }
 function createPlateListing(state) {
   const quality = 55 + Math.floor(rng(state)*46);
@@ -326,6 +346,7 @@ async function load(chat, firstName) {
     state.processedCallbacks=Array.isArray(state.processedCallbacks)?state.processedCallbacks:[];
     state.pendingDeal=state.pendingDeal||null;
     state.pendingPurchase=state.pendingPurchase||null;
+    ensureVehiclePlates(state);
     refreshPlates(state);
     return state;
   }
@@ -360,6 +381,7 @@ async function withState(chat, firstName, mutate, callbackId) {
     }
     state.processedCallbacks=Array.isArray(state.processedCallbacks)?state.processedCallbacks:[];
     state.meta=state.meta||{seed:seedFor(chat),turn:0,createdAt:Date.now(),day:1,plateCycle:0};
+    ensureVehiclePlates(state);
     if(callbackId && state.processedCallbacks.includes(String(callbackId))) {
       await client.query("ROLLBACK");
       return {state,result:{duplicate:true}};
@@ -511,7 +533,7 @@ function revealRiskText(c) {
 function inspectText(c,state) {
   const margin=c.targetSale-c.buyPrice-c.repairCost, gap=c.marketPrice-c.buyPrice;
   const low=Math.max(0,Math.round(margin*.55/1000)*1000), high=Math.max(0,Math.round(margin*1.05/1000)*1000);
-  return ["🔎 ОСМОТР ЛОТА","","🚘 "+c.model+" · "+c.year,"🛣 "+c.mileage.toLocaleString("ru-RU")+" км · состояние "+c.condition+"%",
+  return ["🔎 ОСМОТР ЛОТА","","🚘 "+c.model+" · "+c.year,"🔢 Госномер: "+(c.plate||"не назначен"),"🛣 "+c.mileage.toLocaleString("ru-RU")+" км · состояние "+c.condition+"%",
     "⚠️ Повреждений: "+c.damage+" · риск "+Math.round(c.risk*100)+"%","💵 Цена продавца: "+fmt(c.buyPrice),
     "📊 Средняя цена рынка: "+fmt(c.marketPrice),"🔧 Оценка ремонта: "+fmt(c.repairCost),
     "🎯 Ориентир продажи: "+fmt(c.targetSale),"📈 Разница с рынком: "+fmt(gap),
@@ -747,6 +769,7 @@ function carText(c) {
   const margin=c.targetSale-cost;
   return [
     "🚘 "+c.model,
+    "🔢 Госномер: "+(c.plate||"не назначен"),
     "",
     "💵 Себестоимость: "+fmt(cost),
     "🔧 Ремонт: "+fmt(c.repairSpent||0),
@@ -949,11 +972,11 @@ function streetDuelText(duel,chat){
   if(!duel)return "🏁 УЛИЧНЫЕ ДУЭЛИ\n\nПока нет открытых вызовов. Создай вызов из своего гаража и дождись соперника.";
   if(duel.status==="open"){
     const own=String(duel.challenger_chat_id)===String(chat);
-    return ["🏁 УЛИЧНЫЙ ВЫЗОВ №"+duel.id,"","👤 Вызов: "+duel.challenger_name,"🚘 Автомобиль: "+duel.challenger_car.model,"⚡ Мощность: "+duel.challenger_power+" ед.","💰 Ставка: "+fmt(duel.stake),"","⏳ "+(own?"Ожидаем соперника. Взнос уже списан.":"Прими вызов своим лучшим автомобилем.")].join("\n");
+    return ["🏁 УЛИЧНЫЙ ВЫЗОВ №"+duel.id,"","👤 Вызов: "+duel.challenger_name,"🚘 Автомобиль: "+duel.challenger_car.model,"🔢 Госномер: "+(duel.challenger_car?.plate||"не указан"),"⚡ Мощность: "+duel.challenger_power+" ед.","💰 Ставка: "+fmt(duel.stake),"","⏳ "+(own?"Ожидаем соперника. Взнос уже списан.":"Прими вызов своим лучшим автомобилем.")].join("\n");
   }
   if(duel.status==="cancelled")return "🏁 ВЫЗОВ №"+duel.id+" ОТМЕНЁН\n\nСтавка 50 000 ₽ возвращена создателю.";
   const r=duel.result||{};
-  return ["🏁 РЕЗУЛЬТАТ ДУЭЛИ №"+duel.id,"","🚘 "+(duel.challenger_name||"Игрок 1")+": "+(duel.challenger_car?.model||"—")+" · "+(duel.challenger_power||0)+" ед.","🚘 "+(duel.opponent_name||"Игрок 2")+": "+(duel.opponent_car?.model||"—")+" · "+(duel.opponent_power||0)+" ед.","","🏆 Победитель: "+(r.winnerName||"Ничья"),"⚡ Разница мощности: "+(r.powerDifference||0)+" ед.","💰 Выплата: "+fmt(r.payout||0),"🏦 Комиссия: "+fmt(r.fee||0)].join("\n");
+  return ["🏁 РЕЗУЛЬТАТ ДУЭЛИ №"+duel.id,"","🚘 "+(duel.challenger_name||"Игрок 1")+": "+(duel.challenger_car?.model||"—")+" · "+(duel.challenger_power||0)+" ед.","🔢 Госномер: "+(duel.challenger_car?.plate||"не указан"),"🚘 "+(duel.opponent_name||"Игрок 2")+": "+(duel.opponent_car?.model||"—")+" · "+(duel.opponent_power||0)+" ед.","🔢 Госномер: "+(duel.opponent_car?.plate||"не указан"),"","🏆 Победитель: "+(r.winnerName||"Ничья"),"⚡ Разница мощности: "+(r.powerDifference||0)+" ед.","💰 Выплата: "+fmt(r.payout||0),"🏦 Комиссия: "+fmt(r.fee||0)].join("\n");
 }
 function streetDuelKeyboard(duel,chat,state){
   const aiRow=(state?.garage||[]).length?[[{text:"🤖 Сразиться с ИИ · "+fmt(STREET_DUEL_STAKE),callback_data:"ag:duel_ai"}]]:[];
@@ -1049,6 +1072,7 @@ async function createStreetDuelAI(chat,name,callbackId){
     const pr=await client.query("SELECT state FROM autonomous_game_state WHERE chat_id=$1 FOR UPDATE",[String(chat)]);
     if(!pr.rowCount){await client.query("ROLLBACK");return {ok:false,reason:"no_profile"};}
     const state=pr.rows[0].state;
+    ensureVehiclePlates(state);
     state.processedCallbacks=Array.isArray(state.processedCallbacks)?state.processedCallbacks:[];
     if(callbackId&&state.processedCallbacks.includes(String(callbackId))){await client.query("ROLLBACK");return {ok:false,reason:"duplicate"};}
     if(!Array.isArray(state.garage)||!state.garage.length){await client.query("ROLLBACK");return {ok:false,reason:"no_car"};}
@@ -1059,6 +1083,7 @@ async function createStreetDuelAI(chat,name,callbackId){
     const base=eligibleAiCars.sort((a,b)=>Math.abs((DUEL_BASE_POWER[a.id]||140)-playerPower)-Math.abs((DUEL_BASE_POWER[b.id]||140)-playerPower))[0];
     const opponentCar={
       id:"ai_"+Date.now(),catalogId:base.id,model:base.name,year:base.year,
+      plate:createUniqueVehiclePlate(state),
       mileage:50000+Math.floor(Math.random()*130000),condition:82+Math.floor(Math.random()*19),
       status:"ai",aiOpponent:true
     };
