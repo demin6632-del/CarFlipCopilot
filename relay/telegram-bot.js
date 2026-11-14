@@ -46,14 +46,18 @@ process.on("uncaughtException",e=>console.log("UNCAUGHT EXCEPTION:",e?.stack||e?
 function pollStateDb(){
   if(!process.env.DATABASE_URL)return null;
   if(!pollStatePoolPromise){
-    pollStatePoolPromise=Promise.resolve(new Pool({
+    const pool=new Pool({
       connectionString:process.env.DATABASE_URL,
       ssl:{rejectUnauthorized:false},
       max:2,
       connectionTimeoutMillis:5000,
       query_timeout:7000,
       statement_timeout:7000
-    }));
+    });
+    pool.on("error",error=>{
+      console.error("TELEGRAM POLL STATE POOL ERROR:",error?.message||error);
+    });
+    pollStatePoolPromise=Promise.resolve(pool);
   }
   return pollStatePoolPromise;
 }
@@ -172,6 +176,12 @@ async function registerBotCommands(){
       return true;
     }catch(e){
       console.log("COMMANDS REGISTER ERROR attempt="+attempt+":",e.message);
+      // Telegram rate limits can specify a long retry_after window. Rapid retries
+      // cannot help and only create more failed API requests during startup.
+      if(/Too Many Requests|retry after/i.test(String(e?.message||e))){
+        console.log("COMMANDS REGISTER DEFERRED: Telegram rate limit; bot polling will continue.");
+        return false;
+      }
       if(attempt<5)await new Promise(r=>setTimeout(r,attempt*1000));
     }
   }
