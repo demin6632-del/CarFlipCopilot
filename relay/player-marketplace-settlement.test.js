@@ -190,12 +190,25 @@ async function test(name, fn) {
     pool.registry.owner_chat_id = "30003";
     await assert.rejects(
       () => purchaseMarketplaceListing(pool, { buyerChatId: BUYER, listingId: LISTING, callbackId: CALLBACK }),
-      error => error.code === "Vehicle transfer rejected: source owner does not match"
+      error => error.message === "Vehicle transfer rejected: source owner does not match"
     );
     assert.equal(pool.states.get(BUYER).player.balance, 2000000);
     assert.equal(pool.states.get(SELLER).player.balance, 500000);
     assert.equal(pool.listing.status, "active");
     assert.equal(pool.ledger.length, 0);
+  });
+
+  await test("full buyer garage blocks purchase without charging either player", async () => {
+    const pool = new FakePool();
+    pool.states.get(BUYER).garage = [{ id: "a" }, { id: "b" }, { id: "c" }];
+    await assert.rejects(
+      () => purchaseMarketplaceListing(pool, { buyerChatId: BUYER, listingId: LISTING, callbackId: CALLBACK }),
+      error => error.code === "GARAGE_FULL"
+    );
+    assert.equal(pool.states.get(BUYER).player.balance, 2000000);
+    assert.equal(pool.states.get(SELLER).player.balance, 500000);
+    assert.equal(pool.registry.owner_chat_id, SELLER);
+    assert.equal(pool.listing.status, "active");
   });
 
   await test("expired listing cannot be purchased", async () => {
