@@ -277,6 +277,17 @@ async function listActiveMarketplaceListings(pool, options = {}) {
   return (result.rows || []).map(publicListingRow);
 }
 
+async function getActiveMarketplaceListing(pool, listingId) {
+  const id = String(listingId || "");
+  if (!UUID_RE.test(id)) throw marketplaceError("INVALID_LISTING_ID", "Marketplace listing ID is invalid");
+  const result = await pool.query(
+    "SELECT id,seller_chat_id,asking_price,status,vehicle_snapshot,created_at,expires_at " +
+    "FROM autonomous_marketplace_listings WHERE id=$1::uuid AND status='active' AND expires_at>now()",
+    [id]
+  );
+  return result.rowCount ? publicListingRow(result.rows[0]) : null;
+}
+
 async function listMarketplaceListingsForSeller(pool, sellerChatId, options = {}) {
   if (sellerChatId == null || !String(sellerChatId).trim()) {
     throw marketplaceError("INVALID_SELLER", "Seller account is required");
@@ -301,5 +312,6 @@ module.exports = {
   expireMarketplaceListings,
   normalizeBrowseOptions,
   listActiveMarketplaceListings,
+  getActiveMarketplaceListing,
   listMarketplaceListingsForSeller
 };
