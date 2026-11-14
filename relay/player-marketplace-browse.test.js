@@ -3,11 +3,12 @@
 const assert = require("node:assert/strict");
 const {
   listActiveMarketplaceListings,
+  getActiveMarketplaceListing,
   listMarketplaceListingsForSeller
 } = require("./player-marketplace-listings");
 
 const sample = {
-  id: "listing-1",
+  id: "123e4567-e89b-42d3-a456-426614174000",
   seller_chat_id: "seller-7",
   asking_price: "850000",
   status: "active",
@@ -47,6 +48,24 @@ const sample = {
   await listActiveMarketplaceListings(pool, { search: "Vesta", limit: 5, offset: 10 });
   assert.match(captured.sql, /vehicle_snapshot->>'model' ILIKE \$1/);
   assert.deepEqual(captured.params, ["%Vesta%", 5, 10]);
+
+  const detailPool = {
+    async query(sql, params) {
+      captured = { sql, params };
+      return { rowCount: 1, rows: [sample] };
+    }
+  };
+  const detail = await getActiveMarketplaceListing(detailPool, sample.id);
+  assert.equal(detail.id, sample.id);
+  assert.equal(detail.vehicle.catalogId, "vesta_2019");
+  assert.match(captured.sql, /id=\\$1::uuid AND status='active' AND expires_at>now\\(\\)/);
+  assert.deepEqual(captured.params, [sample.id]);
+  await assert.rejects(
+    () => getActiveMarketplaceListing(detailPool, "not-a-uuid"),
+    error => error.code === "INVALID_LISTING_ID"
+  );
+  const unavailablePool = { async query() { return { rowCount: 0, rows: [] }; } };
+  assert.equal(await getActiveMarketplaceListing(unavailablePool, sample.id), null);
 
   await listMarketplaceListingsForSeller(pool, "seller-7", { limit: 20, offset: 40 });
   assert.match(captured.sql, /WHERE seller_chat_id=\$1/);
