@@ -24,6 +24,7 @@ async function run() {
 
   try {
     await game.init();
+    await game.init(); // schema and append-only trigger creation must be idempotent
 
     const battleInitial = await game.load(battleChat, "Battle Tester");
     const battleBalance = battleInitial.player.balance;
@@ -188,6 +189,14 @@ async function run() {
       [ledgerChat]
     );
     assert.equal(backfill.rowCount, 1);
+    await assert.rejects(
+      pool.query("UPDATE autonomous_economy_ledger SET amount=0 WHERE chat_id=$1", [ledgerChat]),
+      /append-only/
+    );
+    await assert.rejects(
+      pool.query("DELETE FROM autonomous_economy_ledger WHERE chat_id=$1", [ledgerChat]),
+      /append-only/
+    );
 
     console.log("Autonomous game economy idempotency and ledger integration: OK");
   } finally {
