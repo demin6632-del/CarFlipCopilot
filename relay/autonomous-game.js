@@ -229,9 +229,9 @@ function negotiation(state, car, deal) {
   return {accepted:true,left:false,amount:deal.amount+raise,text:"Покупатель немного поднял цену после торга."};
 }
 function dealRisk(state, car) {
-  const risk = Math.max(0, Math.min(0.8, car.risk - car.condition / 1000));
+  const risk = Math.max(0, Math.min(0.8, car.risk - car.condition / 1000 + (car.mileageRolledBack ? Number(car.odometerRisk||0.24) : 0)));
   const roll = rng(state);
-  if (roll < risk * 0.18) {
+  if (car.mileageRolledBack && roll < risk * 0.30) {\n    const penalty=Math.round((45000+rng(state)*95000)/1000)*1000;\n    return {type:"incident",penalty,text:"Покупатель проверил историю и обнаружил несоответствие пробега."};\n  }\n  if (roll < risk * 0.18) {
     const penalty = Math.round((9000 + rng(state) * 36000) / 1000) * 1000;
     return {type:"incident", penalty, text:"Покупатель заметил дополнительный дефект."};
   }
@@ -244,7 +244,7 @@ function dealRisk(state, car) {
 function newState(chat, firstName) {
   const state = {
     version:VERSION,
-    player:{name:String(firstName||"Перекуп"),level:1,xp:0,respect:0,balance:START_BALANCE,garageCapacity:GARAGE_CAPACITY},
+    player:{name:String(firstName||"Перекуп"),level:1,xp:0,respect:0,balance:START_BALANCE,garageCapacity:GARAGE_CAPACITY,debt:0,loanDueDay:0},
     garage:[],
     market:[],
     transactions:[],
@@ -370,6 +370,25 @@ function recommendation(state) {
   return {title:"Лучший ход",text:"Этот лот даёт наиболее сильное сочетание маржи, спроса и риска.",car,roi};
 }
 
+function financeText(state) {
+  const p=state.player, debt=Math.max(0,Number(p.debt)||0);
+  return ["🏦 БАНК И КРЕДИТЫ","",
+    "💰 Свободные средства: "+fmt(p.balance),
+    "💳 Текущий долг: "+fmt(debt),
+    debt>0 ? "📅 Погасить до: день "+(p.loanDueDay||"—") : "✅ Активных кредитов нет.",
+    "",
+    "Кредитный лимит — до 50 000 000 ₽. Комиссия за пользование — 15% от суммы, срок — 30 игровых дней. Досрочное погашение доступно."
+  ].join("\n");
+}
+function financeKeyboard(state) {
+  const debt=Math.max(0,Number(state.player.debt)||0), free=Math.max(0,50000000-debt);
+  const amounts=[500000,1000000,3000000,5000000,10000000,25000000,50000000].filter(x=>x<=free);
+  return {inline_keyboard:[
+    ...amounts.map(x=>[{text:"💳 Взять "+fmt(x),callback_data:"ag:borrow:"+x}]),
+    ...(debt>0?[[{text:"💸 Погасить весь долг · "+fmt(debt),callback_data:"ag:repay"}]]:[]),
+    [{text:"⬅️ Меню",callback_data:"ag:home"}]
+  ]};
+}
 function mainText(state) {
   const p=state.player, event=state.meta.marketEvent||{title:"Спокойный рынок",text:"Стабильный спрос."};
   const deals=state.transactions.filter(x=>x.kind==="sale").length;
@@ -385,7 +404,7 @@ function menu() {
     [{text:"🚗 Рынок",callback_data:"ag:market"},{text:"🏠 Гараж",callback_data:"ag:garage"}],
     [{text:"📅 Сегодня",callback_data:"ag:day"},{text:"📋 Контракты",callback_data:"ag:contracts"}],
     [{text:"🔢 Номера",callback_data:"ag:plates"},{text:"📊 Статистика",callback_data:"ag:stats"}],
-    [{text:"🏆 Рейтинг игроков",callback_data:"ag:leaderboard"}]
+    [{text:"🏦 Банк",callback_data:"ag:finance"},{text:"🏆 Рейтинг игроков",callback_data:"ag:leaderboard"}]
   ]};
 }
 function marketKeyboard(state) {
@@ -447,7 +466,7 @@ function inspectText(c,state) {
     "📊 Средняя цена рынка: "+fmt(c.marketPrice),"🔧 Оценка ремонта: "+fmt(c.repairCost),
     "🎯 Ориентир продажи: "+fmt(c.targetSale),"📈 Разница с рынком: "+fmt(gap),
     "💰 Расчётная прибыль: "+fmt(margin),"🎲 Реалистичный диапазон: "+fmt(low)+" — "+fmt(high),
-    "📊 Спрос: "+Math.round((c.currentDemand??c.demand)*100)+"%",revealRiskText(c),hiddenDefectLabel(c),
+    "📊 Спрос: "+Math.round((c.currentDemand??c.demand)*100)+"%","🛣 Пробег: "+c.mileage.toLocaleString("ru-RU")+" км",c.mileageRolledBack?"⚠️ История пробега изменена.":"📋 История пробега: без вмешательств.",revealRiskText(c),hiddenDefectLabel(c),
     c.limited?"🔥 Срочный лот — времени мало.":"📦 Обычный лот.",
     c.expiresAtTurn?"⏳ До ухода с рынка: "+Math.max(0,c.expiresAtTurn-(Number(state.meta.turn)||0))+" ход.":""].join("\n");
 }
@@ -684,6 +703,7 @@ function carText(c) {
     "✨ Подготовка: "+fmt(c.extraSpent||0),
     "🔎 Диагностика: "+fmt(c.diagnosticsSpent||0),
     "🎯 Ориентир продажи: "+fmt(c.targetSale),
+    "🛣 Пробег: "+Number(c.mileage||0).toLocaleString("ru-RU")+" км"+(c.mileageRolledBack?" · ⚠️ изменён":" · оригинальный"),
     "📈 Результат до продажи: "+fmt(margin)
   ].join("\n");
 }
@@ -691,6 +711,7 @@ function carKeyboard(c) {
   return {inline_keyboard:[
     [{text:"🔧 Ремонт",callback_data:"ag:repair:"+c.id},{text:"✨ Подготовить",callback_data:"ag:prep:"+c.id}],
     [{text:"💰 Продать",callback_data:"ag:sell:"+c.id}],
+    ...(!c.mileageRolledBack && Number(c.mileage)>30000 ? [[{text:"🌀 Корректировать пробег · 25 000 ₽",callback_data:"ag:rollback:"+c.id}]] : []),
     [{text:"🔎 Диагностика",callback_data:"ag:diag:"+c.id+"|1"},{text:"🧩 Детали автомобиля",callback_data:"ag:parts:"+c.id}],
     [{text:"📦 Склад деталей",callback_data:"ag:warehouse:"+c.id},{text:"🛒 Рынок деталей",callback_data:"ag:pmrefresh:"+c.id}],
     [{text:"⬅️ Гараж",callback_data:"ag:garage"}]
@@ -1002,6 +1023,40 @@ async function handleCallback(chat,data,firstName,sendFn,answerFn,callbackId) {
       return {text:mainText(state)+note+pressure,markup:marketKeyboard(state)};
     }
     if(action==="market") return {text:"🚗 РЫНОК\n\nВыбирай лот для полного осмотра.",markup:marketKeyboard(state)};
+    if(action==="finance") return {text:financeText(state),markup:financeKeyboard(state)};
+    if(action==="borrow"){
+      const amount=Number(id)||0, debt=Math.max(0,Number(state.player.debt)||0);
+      if(![500000,1000000,3000000,5000000,10000000,25000000,50000000].includes(amount) || debt+amount>50000000)
+        return {text:"⚠️ Сумма недоступна. Максимальный долг — 50 000 000 ₽.",markup:financeKeyboard(state)};
+      if(debt>0 && Number(state.meta.day)<Number(state.player.loanDueDay||0))
+        return {text:"⚠️ Сначала погаси текущий кредит.",markup:financeKeyboard(state)};
+      state.player.debt=debt+Math.round(amount*1.15);
+      state.player.loanDueDay=(Number(state.meta.day)||1)+30;
+      addTx(state,"loan",amount,"Кредит банка");
+      return {text:"✅ КРЕДИТ ОДОБРЕН\n\nПолучено: "+fmt(amount)+"\nК возврату: "+fmt(state.player.debt)+"\nСрок: до дня "+state.player.loanDueDay+"\nКомиссия 15% включена в долг.",markup:financeKeyboard(state)};
+    }
+    if(action==="repay"){
+      const debt=Math.max(0,Number(state.player.debt)||0);
+      if(!debt)return {text:"✅ Долгов нет.",markup:financeKeyboard(state)};
+      if(Number(state.player.balance)<debt)return {text:"❌ Недостаточно средств для полного погашения.\nДолг: "+fmt(debt)+"\nБаланс: "+fmt(state.player.balance),markup:financeKeyboard(state)};
+      addTx(state,"loan_repay",-debt,"Полное погашение кредита");
+      state.player.debt=0;state.player.loanDueDay=0;
+      return {text:"✅ КРЕДИТ ПОГАШЕН\n\nДолг закрыт полностью.",markup:financeKeyboard(state)};
+    }
+    if(action==="rollback"){
+      const car=state.garage.find(x=>String(x.id)===String(id));
+      if(!car)return {text:"⚠️ Машина уже не в гараже.",markup:garageKeyboard(state)};
+      if(car.mileageRolledBack)return {text:"⚠️ Пробег уже корректировался.",markup:carKeyboard(car)};
+      const original=Math.max(0,Number(car.mileage)||0), cost=25000;
+      if(original<30000)return {text:"⚠️ На таком пробеге корректировка недоступна.",markup:carKeyboard(car)};
+      if(Number(state.player.balance)<cost)return {text:"❌ Недостаточно денег. Нужно "+fmt(cost)+".",markup:carKeyboard(car)};
+      const reduction=Math.min(original-10000,Math.round(original*(0.18+0.12*rng(state))/1000)*1000);
+      addTx(state,"mileage_rollback",-cost,"Корректировка одометра: "+car.model);
+      car.originalMileage=original;car.mileage=Math.max(10000,original-reduction);
+      car.mileageRolledBack=true;car.odometerRisk=0.24;
+      car.targetSale=Math.round(car.targetSale*1.08);
+      return {text:"🌀 ОДОМЕТР ИЗМЕНЁН\n\n"+car.model+"\nБыло: "+original.toLocaleString("ru-RU")+" км\nСтало: "+car.mileage.toLocaleString("ru-RU")+" км\nРасход: "+fmt(cost)+"\nПотенциальная цена продажи выросла на 8%.\n\n⚠️ Покупатель может проверить историю и снизить предложение.",markup:carKeyboard(car)};
+    }
     if(action==="garage") return {text:state.garage.length?("🏠 ГАРАЖ\n\n"+state.garage.map((c,i)=>(i+1)+". "+c.model+" · "+fmt(vehicleCost(c))).join("\n")):"🏠 ГАРАЖ\n\nПока пусто.",markup:garageKeyboard(state)};
     if(action==="day"){
       const event=state.meta.marketEvent||{title:"Спокойный рынок",text:"Стабильный спрос."};
