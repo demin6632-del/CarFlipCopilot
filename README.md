@@ -1,43 +1,21 @@
-# 🚗 CarFlipCopilot
+# 🚗 CarFlipCopilot — Симулятор Перекупа V2
 
-Android companion for «Симулятор Перекупа 💸».
+Самостоятельная Telegram-игра про покупку, диагностику, ремонт и перепродажу автомобилей. Игра не подключается к оригинальному боту @m0dsbeamngbot и не изменяет его.
 
-## Текущая цель
-CarFlipCopilot анализирует всю игровую ситуацию в реальном времени и показывает одно понятное действие: **что сделать прямо сейчас и почему это выгодно**.
+## Игровые системы
+- Стартовый капитал: 3 000 000 ₽; гараж: 3 автомобиля.
+- Авторынок с меняющимся спросом, конкуренцией и ограниченным временем лотов.
+- Осмотр, диагностика, торг с продавцом, покупка и перепродажа.
+- Гараж, ремонт, предпродажная подготовка и переговоры с покупателями.
+- Детальная модель автомобиля: системы, узлы, детали, крепёж, совместимость, склад и рынок запчастей.
+- Номерной рынок, контракты, опыт, уровни, репутация и статистика.
+- Сохранение отдельного игрового профиля каждого Telegram-пользователя в PostgreSQL.
+- Общий рейтинг игроков по игровому капиталу.
 
-## Уже реализовано
-- MediaProjection: явный захват экрана после подтверждения Android.
-- Локальный OCR через Google ML Kit.
-- Плавающая панель поверх Telegram.
-- Распознавание цены, мощности, состояния и игровых событий.
-- Анализ новостей и промокодов.
-- Анализ аукционов и номерных знаков.
-- Сравнение продажи автомобиля с ремонтом и улучшениями по ожидаемому финансовому результату.
-- Память фактических результатов для последующей корректировки прогнозов.
-- Защита OCR от накопления очереди кадров.
-- Приложение не нажимает кнопки Telegram автоматически.
+## Запуск
+- Render service: `carflip-copilot-telegram`
+- Start command: `npm run start:telegram`
+- Required environment: `TELEGRAM_BOT_TOKEN`, `DATABASE_URL`.
+- Optional AI integrations are not required for core gameplay.
 
-## Сборка
-CI rebuild check.
-
-
-## Telegram-only game bridge
-
-The Telegram version uses a server-side MTProto user session to communicate with `@m0dsbeamngbot`. The CarFlipCopilot bot remains the user interface.
-
-Required server secrets:
-- `TELEGRAM_BOT_TOKEN` — token of the CarFlipCopilot bot from @BotFather.
-- `TELEGRAM_API_ID` and `TELEGRAM_API_HASH` — Telegram API credentials for the user session.
-- `RELAY_URL` and `COPILOT_TOKEN` — relay connection.
-- `OPENAI_API_KEY` — optional for AI analysis/advice.
-- `BRIDGE_PUBLIC_URL` — public HTTPS URL of the Telegram bridge service.
-- `GAME_BOT_USERNAME=m0dsbeamngbot`.
-
-After deployment:
-1. Open the CarFlipCopilot bot in Telegram.
-2. Press **🔗 Подключить игру**.
-3. Open **🎮 Подключить игру**.
-4. Complete Telegram QR authorization in the official Telegram client.
-5. Return to CarFlipCopilot and use **/bridge**, **📊 Состояние**, and **🧠 Что делать сейчас**.
-
-Never send Telegram login codes, 2FA passwords, bot tokens, API hashes, or session strings through the chat.
+Never publish Telegram bot tokens, database connection strings, API hashes, or session strings.
