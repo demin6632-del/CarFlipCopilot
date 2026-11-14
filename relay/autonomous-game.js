@@ -75,6 +75,18 @@ async function init() {
     );
     CREATE INDEX IF NOT EXISTS autonomous_game_state_updated_idx
       ON autonomous_game_state(updated_at DESC);
+    CREATE TABLE IF NOT EXISTS autonomous_container_battles (
+      id bigserial PRIMARY KEY,
+      status text NOT NULL DEFAULT 'open',
+      owner_chat_id text NOT NULL,
+      entry_fee bigint NOT NULL DEFAULT 100000,
+      players jsonb NOT NULL DEFAULT '[]'::jsonb,
+      results jsonb NOT NULL DEFAULT '[]'::jsonb,
+      created_at timestamptz NOT NULL DEFAULT now(),
+      finished_at timestamptz
+    );
+    CREATE INDEX IF NOT EXISTS autonomous_container_battles_status_idx
+      ON autonomous_container_battles(status,created_at DESC);
   `);
   return true;
 }
@@ -759,6 +771,112 @@ function addProgress(state, profit) {
   }
   return { gainedXp, levelUps };
 }
+async function getContainerBattle() {
+  const p=db(); if(!p) throw new Error("DATABASE_URL не настроен");
+  const pool=await p;
+  const r=await pool.query("SELECT id,status,owner_chat_id,entry_fee,players,results,created_at FROM autonomous_container_battles WHERE status='open' ORDER BY created_at DESC LIMIT 1");
+  return r.rows[0]||null;
+}
+async function containerBattleForPlayer(chat) {
+  const p=db(); if(!p) throw new Error("DATABASE_URL не настроен");
+  const pool=await p;
+  const r=await pool.query("SELECT id,status,owner_chat_id,entry_fee,players,results,created_at,finished_at FROM autonomous_container_battles WHERE players @> $1::jsonb ORDER BY created_at DESC LIMIT 1",[JSON.stringify([{chatId:String(chat)}])]);
+  return r.rows[0]||null;
+}
+function battleText(battle,chat) {
+  if(!battle)return "📦 КОНТЕЙНЕРНЫЕ СРАЖЕНИЯ\n\nОткрытых комнат пока нет. Создай комнату и пригласи других игроков.\n\nВзнос: 100 000 ₽ · до 10 участников.";
+  const players=Array.isArray(battle.players)?battle.players:[];
+  const results=Array.isArray(battle.results)?battle.results:[];
+  const mine=players.find(x=>String(x.chatId)===String(chat));
+  if(battle.status==="finished"){
+    const rows=results.slice().sort((a,b)=>a.rank-b.rank).map(x=>x.rank+". "+x.name+" — "+fmt(x.reward));
+    return ["🏁 РЕЗУЛЬТАТЫ КОНТЕЙНЕРНОЙ БИТВЫ #"+battle.id,"","Участников: "+players.length,"Твой результат: "+(results.find(x=>String(x.chatId)===String(chat))?.rank||"—")+" место","",""+rows.join("\n"),"","Награды уже зачислены на игровые счета."].join("\n");
+  }
+  return ["📦 КОНТЕЙНЕРНАЯ БИТВА #"+battle.id,"","Статус: набор участников","Взнос: "+fmt(battle.entry_fee),"Участников: "+players.length+"/10","",...players.map((x,i)=>(i+1)+". "+x.name+(String(x.chatId)===String(chat)?" · ты":"")),"",mine?"Ты уже в комнате. Ожидай начала битвы.":"Вступай в комнату, чтобы принять участие."].join("\n");
+}
+function battleKeyboard(battle,chat) {
+  if(!battle)return {inline_keyboard:[[{text:"➕ Создать комнату · 100 000 ₽",callback_data:"ag:battle_create"}],[{text:"⬅️ Контейнеры",callback_data:"ag:containers"}]]};
+  if(battle.status==="finished")return {inline_keyboard:[[{text:"📦 Контейнеры",callback_data:"ag:containers"}],[{text:"⬅️ Главное меню",callback_data:"ag:home"}]]};
+  const players=Array.isArray(battle.players)?battle.players:[];
+  const mine=players.some(x=>String(x.chatId)===String(chat));
+  return {inline_keyboard:[
+    ...(!mine&&players.length<10?[[{text:"⚔️ Вступить · "+fmt(battle.entry_fee),callback_data:"ag:battle_join:"+battle.id}]]:[]),
+    [{text:"🔄 Обновить комнату",callback_data:"ag:battle"}],
+    ...(String(battle.owner_chat_id)===String(chat)&&players.length>=2?[[{text:"🏁 Начать битву",callback_data:"ag:battle_start:"+battle.id}]]:[]),
+    [{text:"📦 Контейнеры",callback_data:"ag:containers"}]
+  ]};
+}
+async function createContainerBattle(chat,name) {
+  const p=db(); if(!p) throw new Error("DATABASE_URL не настроен");
+  const pool=await p;
+  const client=await pool.connect();
+  try{
+    await client.query("BEGIN");
+    const active=await client.query("SELECT id FROM autonomous_container_battles WHERE status='open' ORDER BY created_at DESC LIMIT 1 FOR UPDATE");
+    if(active.rowCount){await client.query("ROLLBACK");return {ok:false,reason:"exists",battle:await getContainerBattle()};}
+    const r=await client.query("INSERT INTO autonomous_container_battles(status,owner_chat_id,entry_fee,players) VALUES('open',$1,100000,$2::jsonb) RETURNING id,status,owner_chat_id,entry_fee,players,results,created_at",[String(chat),JSON.stringify([{chatId:String(chat),name:String(name||"Перекуп")}])]);
+    await client.query("COMMIT");return {ok:true,battle:r.rows[0]};
+  }catch(e){await client.query("ROLLBACK").catch(()=>{});throw e;}finally{client.release();}
+}
+async function joinContainerBattle(chat,name,battleId) {
+  const p=db(); if(!p) throw new Error("DATABASE_URL не настроен");
+  const pool=await p;
+  const client=await pool.connect();
+  try{
+    await client.query("BEGIN");
+    const r=await client.query("SELECT * FROM autonomous_container_battles WHERE id=$1 AND status='open' FOR UPDATE",[Number(battleId)]);
+    if(!r.rowCount){await client.query("ROLLBACK");return {ok:false,reason:"closed"};}
+    const battle=r.rows[0], players=Array.isArray(battle.players)?battle.players:[];
+    if(players.some(x=>String(x.chatId)===String(chat))){await client.query("ROLLBACK");return {ok:false,reason:"joined",battle};}
+    if(players.length>=10){await client.query("ROLLBACK");return {ok:false,reason:"full"};}
+    const active=await client.query("SELECT id FROM autonomous_container_battles WHERE status='open' AND players @> $1::jsonb LIMIT 1",[JSON.stringify([{chatId:String(chat)}])]);
+    if(active.rowCount){await client.query("ROLLBACK");return {ok:false,reason:"other_room"};}
+    const charge=await client.query("SELECT state FROM autonomous_game_state WHERE chat_id=$1 FOR UPDATE",[String(chat)]);
+    if(!charge.rowCount){await client.query("ROLLBACK");return {ok:false,reason:"no_profile"};}
+    const state=charge.rows[0].state;
+    if(Number(state.player?.balance||0)<Number(battle.entry_fee)){await client.query("ROLLBACK");return {ok:false,reason:"money"};}
+    state.player.balance-=Number(battle.entry_fee);
+    state.transactions=Array.isArray(state.transactions)?state.transactions:[];
+    state.transactions.unshift({time:Date.now(),kind:"container_battle_entry",amount:-Number(battle.entry_fee),balance:state.player.balance,description:"Взнос в контейнерную битву #"+battle.id,profit:0});
+    state.transactions=state.transactions.slice(0,80);
+    await client.query("UPDATE autonomous_game_state SET state=$2::jsonb,updated_at=now() WHERE chat_id=$1",[String(chat),JSON.stringify(state)]);
+    players.push({chatId:String(chat),name:String(name||"Перекуп")});
+    const upd=await client.query("UPDATE autonomous_container_battles SET players=$2::jsonb WHERE id=$1 RETURNING id,status,owner_chat_id,entry_fee,players,results,created_at",[battle.id,JSON.stringify(players)]);
+    await client.query("COMMIT");return {ok:true,battle:upd.rows[0]};
+  }catch(e){await client.query("ROLLBACK").catch(()=>{});throw e;}finally{client.release();}
+}
+async function startContainerBattle(chat,battleId) {
+  const p=db(); if(!p) throw new Error("DATABASE_URL не настроен");
+  const pool=await p;
+  const client=await pool.connect();
+  try{
+    await client.query("BEGIN");
+    const r=await client.query("SELECT * FROM autonomous_container_battles WHERE id=$1 AND status='open' FOR UPDATE",[Number(battleId)]);
+    if(!r.rowCount){await client.query("ROLLBACK");return {ok:false,reason:"closed"};}
+    const battle=r.rows[0], players=Array.isArray(battle.players)?battle.players:[];
+    if(String(battle.owner_chat_id)!==String(chat)){await client.query("ROLLBACK");return {ok:false,reason:"owner"};}
+    if(players.length<2){await client.query("ROLLBACK");return {ok:false,reason:"few"};}
+    const poolMoney=players.length*Number(battle.entry_fee), payout=Math.floor(poolMoney*.9);
+    const ranked=players.map(x=>({...x,score:Math.random()})).sort((a,b)=>b.score-a.score);
+    const results=ranked.map((x,i)=>({...x,rank:i+1,reward:i===0?Math.floor(payout*.55):i===1?Math.floor(payout*.30):i===2?Math.floor(payout*.15/Math.max(1,Math.min(players.length-2,3))):0}));
+    let paid=0;
+    for(const result of results){
+      if(!result.reward)continue;
+      const stateRow=await client.query("SELECT state FROM autonomous_game_state WHERE chat_id=$1 FOR UPDATE",[String(result.chatId)]);
+      if(!stateRow.rowCount)continue;
+      const state=stateRow.rows[0].state;
+      state.player.balance=Number(state.player.balance||0)+result.reward;
+      state.transactions=Array.isArray(state.transactions)?state.transactions:[];
+      state.transactions.unshift({time:Date.now(),kind:"container_battle_prize",amount:result.reward,balance:state.player.balance,description:"Награда за "+result.rank+" место в битве #"+battle.id,profit:0});
+      state.transactions=state.transactions.slice(0,80);
+      await client.query("UPDATE autonomous_game_state SET state=$2::jsonb,updated_at=now() WHERE chat_id=$1",[String(result.chatId),JSON.stringify(state)]);
+      paid+=result.reward;
+    }
+    const upd=await client.query("UPDATE autonomous_container_battles SET status='finished',results=$2::jsonb,finished_at=now() WHERE id=$1 RETURNING id,status,owner_chat_id,entry_fee,players,results,created_at,finished_at",[battle.id,JSON.stringify(results)]);
+    await client.query("COMMIT");return {ok:true,battle:upd.rows[0],paid};
+  }catch(e){await client.query("ROLLBACK").catch(()=>{});throw e;}finally{client.release();}
+}
+
 function containerText(state) {
   const parts=Array.isArray(state.player.containerParts)?state.player.containerParts:[];
   return ["📦 КОНТЕЙНЕРНЫЙ ТЕРМИНАЛ","","Открывай контейнеры с запчастями и находками.","Каждый контейнер содержит случайную награду: деньги, детали или редкий приз.","","💰 Баланс: "+fmt(state.player.balance),"🧩 Деталей на складе: "+parts.length,...(parts.length?["","СКЛАД ДЕТАЛЕЙ",...parts.slice(0,8).map((p,i)=>(i+1)+". "+p.name+" · "+p.condition+"% · оценка "+fmt(p.value))]:[])].join("\n");
@@ -1015,6 +1133,36 @@ async function handleText(chat,text,firstName,sendFn) {
 }
 
 async function handleCallback(chat,data,firstName,sendFn,answerFn,callbackId) {
+  if(action==="battle"||action==="battle_results"){
+    const battle=action==="battle_results"?await containerBattleForPlayer(chat):await getContainerBattle();
+    await sendFn(chat,battleText(battle,chat),{reply_markup:battleKeyboard(battle,chat)});
+    return true;
+  }
+  if(action==="battle_create"){
+    const result=await createContainerBattle(chat,firstName);
+    const battle=result.battle||await getContainerBattle();
+    await sendFn(chat,result.ok?"✅ Комната создана. Приглашай других игроков!": "⚠️ Уже есть открытая комната. Можно присоединиться к ней.",{reply_markup:battleKeyboard(battle,chat)});
+    return true;
+  }
+  if(action==="battle_join"){
+    const result=await joinContainerBattle(chat,firstName,id);
+    const battle=result.battle||await getContainerBattle();
+    const messages={closed:"Комната уже закрыта.",joined:"Ты уже участник этой комнаты.",full:"В комнате уже 10 участников.",other_room:"Ты уже записан в другую открытую битву.",no_profile:"Сначала открой игру командой /start.",money:"Недостаточно денег для взноса."};
+    await sendFn(chat,result.ok?"⚔️ Ты вступил в битву! Взнос 100 000 ₽ списан.": "⚠️ "+(messages[result.reason]||"Не удалось вступить."),{reply_markup:battleKeyboard(battle,chat)});
+    return true;
+  }
+  if(action==="battle_start"){
+    const result=await startContainerBattle(chat,id);
+    if(!result.ok){
+      const msg={closed:"Комната уже закрыта.",owner:"Начать битву может только создатель комнаты.",few:"Нужно минимум 2 участника."};
+      const battle=await getContainerBattle();
+      await sendFn(chat,"⚠️ "+(msg[result.reason]||"Не удалось начать битву."),{reply_markup:battleKeyboard(battle,chat)});
+      return true;
+    }
+    await sendFn(chat,battleText(result.battle,chat),{reply_markup:battleKeyboard(result.battle,chat)});
+    return true;
+  }
+
   if(!String(data).startsWith("ag:")) return false;
   try { await answerFn?.(); } catch {}
   const [_,action,id]=String(data).split(":");
