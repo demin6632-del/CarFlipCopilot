@@ -437,7 +437,8 @@ function menu() {
     [{text:"🏦 Банк",callback_data:"ag:finance"},{text:"🏆 Рейтинг игроков",callback_data:"ag:leaderboard"}],
     [{text:"📦 Контейнеры",callback_data:"ag:containers"}],
     [{text:"⚔️ Сражения",callback_data:"ag:battle"}],
-    [{text:"🏁 Уличные дуэли",callback_data:"ag:duel"}]
+    [{text:"🏁 Уличные дуэли",callback_data:"ag:duel"}],
+    [{text:"🏆 Чемпионат",callback_data:"ag:championship"}]
   ]};
 }
 function marketKeyboard(state) {
@@ -1225,6 +1226,56 @@ async function leaderboardText(chat) {
   lines.push("Всего игроков: "+rows.length);
   return "🏆 РЕЙТИНГ ИГРОКОВ\\n\\n"+lines.join("\\n");
 }
+
+async function streetDuelChampionshipText(chat){
+  const p=db();
+  if(!p)return "🏆 ЧЕМПИОНАТ AUTOFLIP\\n\\nБаза данных пока недоступна.";
+  const pool=await p;
+  const result=await pool.query(`
+    WITH finished AS (
+      SELECT *, result->>'winnerChat' AS winner_chat,
+        COALESCE((result->>'draw')::boolean,false) AS is_draw,
+        COALESCE((result->>'payout')::numeric,0) AS payout_amount
+      FROM autonomous_street_duels
+      WHERE status='finished' AND finished_at>=date_trunc('month',now())
+    ),
+    participants AS (
+      SELECT challenger_chat_id AS chat_id,challenger_name AS name,is_draw,
+        (winner_chat=challenger_chat_id) AS won,
+        (NOT is_draw AND winner_chat IS DISTINCT FROM challenger_chat_id) AS lost,
+        CASE WHEN is_draw THEN 0 WHEN winner_chat=challenger_chat_id THEN payout_amount-stake ELSE -stake END AS net
+      FROM finished
+      UNION ALL
+      SELECT opponent_chat_id AS chat_id,opponent_name AS name,is_draw,
+        (winner_chat=opponent_chat_id) AS won,
+        (NOT is_draw AND winner_chat IS DISTINCT FROM opponent_chat_id) AS lost,
+        CASE WHEN is_draw THEN 0 WHEN winner_chat=opponent_chat_id THEN payout_amount-stake ELSE -stake END AS net
+      FROM finished WHERE opponent_chat_id IS NOT NULL
+    ),
+    ranked AS (
+      SELECT chat_id,MAX(name) AS name,COUNT(*)::integer AS duels,
+        SUM(won::integer)::integer AS wins,SUM(lost::integer)::integer AS losses,
+        SUM(is_draw::integer)::integer AS draws,SUM(net)::bigint AS net_profit,
+        ROW_NUMBER() OVER(ORDER BY SUM(won::integer) DESC,SUM(net) DESC,COUNT(*) DESC,MAX(name)) AS place
+      FROM participants GROUP BY chat_id
+    )
+    SELECT * FROM ranked ORDER BY place
+  `);
+  const rows=result.rows||[];
+  const month=new Intl.DateTimeFormat("ru-RU",{month:"long",year:"numeric",timeZone:"Europe/Moscow"}).format(new Date());
+  if(!rows.length)return "🏆 ЧЕМПИОНАТ AUTOFLIP\\nСезон: "+month+"\\n\\nПока в этом месяце не было дуэлей. Создай вызов и начни борьбу за первое место!";
+  const lines=rows.slice(0,10).map(r=>
+    (r.place<=3?["🥇","🥈","🥉"][Number(r.place)-1]:String(r.place)+".")+" "+String(r.name||"Перекуп").slice(0,22)+
+    "\\n   🏁 "+r.wins+" побед · "+r.losses+" поражений · "+r.draws+" ничьих"+
+    "\\n   📈 "+(Number(r.net_profit)>=0?"+":"")+fmt(r.net_profit)
+  );
+  const own=rows.find(r=>String(r.chat_id)===String(chat));
+  lines.push("");
+  if(own)lines.push("Твоя позиция: №"+own.place+" · "+own.wins+" побед · "+(Number(own.net_profit)>=0?"+":"")+fmt(own.net_profit));
+  else lines.push("Ты ещё не участвовал в дуэлях этого сезона.");
+  lines.push("Участников сезона: "+rows.length);
+  return "🏆 ЧЕМПИОНАТ AUTOFLIP\\nСезон: "+month+"\\n\\n"+lines.join("\\n");
+}
 async function handleText(chat,text,firstName,sendFn) {
   const raw=String(text||"").trim();
   if(raw!=="/perekup" && raw!=="🎮 Автономная игра" && raw!=="🚗 Симулятор Перекупа"){
@@ -1334,6 +1385,16 @@ async function handleCallback(chat,data,firstName,sendFn,answerFn,callbackId) {
 
   try { await answerFn?.(); } catch {}
   if(action==="home"){await open(chat,firstName,sendFn);return true;}
+  if(action==="championship"){
+    try {
+      const text=await streetDuelChampionshipText(chat);
+      await sendFn(chat,text,{reply_markup:menu()});
+    } catch(e) {
+      console.log("CHAMPIONSHIP ERROR:",e?.stack||e?.message||e);
+      await sendFn(chat,"⚠️ Не удалось загрузить чемпионат. Попробуй ещё раз.",{reply_markup:menu()});
+    }
+    return true;
+  }
   if(action==="leaderboard"){
     try {
       const text=await leaderboardText(chat);
