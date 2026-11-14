@@ -35,9 +35,13 @@ jobs:
           const bot = fs.readFileSync('relay/telegram-bot.js','utf8');
           const game = fs.readFileSync('relay/autonomous-game.js','utf8');
           if (!bot.includes('const autonomousGame = require("./autonomous-game");')) throw new Error('autonomous game module is not wired');
-          for (const route of ['text==="/start"','text==="/perekup"','text==="/game"','data.startsWith("ag:")']) {
+          for (const route of ['command==="/start"','command==="/perekup"','command==="/game"','data.startsWith("ag:")']) {
             if (!bot.includes(route)) throw new Error('missing autonomous route: '+route);
           }
+          if (!bot.includes('command==="/start"||command==="/game"||command==="/perekup"')) throw new Error('start commands are not routed to the game');
+          if (!bot.includes('"🏦 Банк":"finance"')) throw new Error('bank reply-keyboard route missing');
+          if (!game.includes('if(action==="borrow")')) throw new Error('bank loan action missing');
+          if (!game.includes('if(action==="rollback")')) throw new Error('odometer action missing');
           if (!bot.includes('autonomousGame.init()')) throw new Error('autonomous game init missing');
           if (!bot.includes('q.id')) throw new Error('callback id is not passed for idempotency');
           if (!game.includes('function purchaseListing(state, id)')) throw new Error('purchase flow helper missing');
