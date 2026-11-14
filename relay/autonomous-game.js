@@ -384,7 +384,8 @@ function menu() {
   return {inline_keyboard:[
     [{text:"🚗 Рынок",callback_data:"ag:market"},{text:"🏠 Гараж",callback_data:"ag:garage"}],
     [{text:"📅 Сегодня",callback_data:"ag:day"},{text:"📋 Контракты",callback_data:"ag:contracts"}],
-    [{text:"🔢 Номера",callback_data:"ag:plates"},{text:"📊 Статистика",callback_data:"ag:stats"}]
+    [{text:"🔢 Номера",callback_data:"ag:plates"},{text:"📊 Статистика",callback_data:"ag:stats"}],
+    [{text:"🏆 Рейтинг игроков",callback_data:"ag:leaderboard"}]
   ]};
 }
 function marketKeyboard(state) {
@@ -882,6 +883,42 @@ async function open(chat, firstName, sendFn) {
   const state=await load(chat,firstName);
   return screen(sendFn,chat,state,mainText(state),menu());
 }
+
+async function leaderboardText(chat) {
+  const p=db();
+  if(!p) return "🏆 РЕЙТИНГ ИГРОКОВ\\n\\nБаза данных пока недоступна.";
+  const pool=await p;
+  const result=await pool.query(`
+    WITH ranked AS (
+      SELECT
+        gs.chat_id,
+        COALESCE(NULLIF(gs.state->'player'->>'name',''),'Перекуп') AS name,
+        COALESCE(NULLIF(gs.state->'player'->>'level','')::integer,1) AS level,
+        COALESCE(NULLIF(gs.state->'player'->>'balance','')::numeric,0) AS balance,
+        COALESCE(NULLIF(gs.state->'player'->>'respect','')::integer,0) AS respect,
+        (SELECT COUNT(*) FROM jsonb_array_elements(COALESCE(gs.state->'transactions','[]'::jsonb)) tx WHERE tx->>'kind'='sale') AS sales,
+        COALESCE((SELECT SUM(COALESCE(NULLIF(tx->>'profit','')::numeric,0)) FROM jsonb_array_elements(COALESCE(gs.state->'transactions','[]'::jsonb)) tx WHERE tx->>'kind'='sale'),0) AS profit
+      FROM autonomous_game_state gs
+      WHERE gs.state ? 'player'
+    )
+    SELECT *, ROW_NUMBER() OVER (ORDER BY balance DESC, level DESC, respect DESC) AS place
+    FROM ranked
+    ORDER BY balance DESC, level DESC, respect DESC
+  `);
+  const rows=result.rows||[];
+  if(!rows.length) return "🏆 РЕЙТИНГ ИГРОКОВ\\n\\nПока никто не начал карьеру.";
+  const top=rows.slice(0,10);
+  const lines=top.map((r,i)=>
+    (i+1)+". "+String(r.name||"Перекуп").slice(0,24)+" · ур. "+r.level+
+    "\\n   💰 "+fmt(r.balance)+" · 🤝 "+r.sales+" продаж · ⭐ "+r.respect
+  );
+  const own=rows.find(r=>String(r.chat_id)===String(chat));
+  lines.push("");
+  if(own && Number(own.place)>10) lines.push("Твоё место: №"+own.place+" · "+fmt(own.balance));
+  else if(own) lines.push("Ты в первой десятке — место №"+own.place+".");
+  lines.push("Всего игроков: "+rows.length);
+  return "🏆 РЕЙТИНГ ИГРОКОВ\\n\\n"+lines.join("\\n");
+}
 async function handleText(chat,text,firstName,sendFn) {
   const raw=String(text||"").trim();
   if(raw!=="/perekup" && raw!=="🎮 Автономная игра" && raw!=="🚗 Симулятор Перекупа"){
@@ -939,6 +976,16 @@ async function handleCallback(chat,data,firstName,sendFn,answerFn,callbackId) {
   try { await answerFn?.(); } catch {}
   const [_,action,id]=String(data).split(":");
   if(action==="home"){await open(chat,firstName,sendFn);return true;}
+  if(action==="leaderboard"){
+    try {
+      const text=await leaderboardText(chat);
+      await sendFn(chat,text,{reply_markup:menu()});
+    } catch(e) {
+      console.log("LEADERBOARD ERROR:",e?.stack||e?.message||e);
+      await sendFn(chat,"⚠️ Не удалось загрузить рейтинг. Попробуй ещё раз.",{reply_markup:menu()});
+    }
+    return true;
+  }
   const run=await withState(chat,firstName,state=>{
     const advancesTurn = new Set(["refresh","diagnose","diagnose_deep","offer","buy","repair","prep","sell","negotiate","reject","accept","plate_refresh","platebuy","platesell","pmrefresh","pmbuy"]).has(action);
     if(advancesTurn) state.meta.turn=(Number(state.meta.turn)||0)+1;
@@ -1320,4 +1367,4 @@ async function handleCallback(chat,data,firstName,sendFn,answerFn,callbackId) {
   return true;
 }
 
-module.exports={init,load,save,open,handleText,handleCallback,CATALOG,CAR_PHOTOS,BUYER_TYPES,newState,refreshMarket,createListing,addTx,scoreListing,bestDeal,recommendation,addProgress,updateContracts,buyerOffer,buyerOfferDetails,buyerProfile,negotiation,dealRisk,runDiagnostic,vehicleCost,purchaseListing,repairVehicle,prepareVehicle,buyPlate,sellPlate,acceptPendingSale,parsePurchaseOfferInput,negotiatePurchase};
+module.exports={init,load,save,open,handleText,handleCallback,leaderboardText,CATALOG,CAR_PHOTOS,BUYER_TYPES,newState,refreshMarket,createListing,addTx,scoreListing,bestDeal,recommendation,addProgress,updateContracts,buyerOffer,buyerOfferDetails,buyerProfile,negotiation,dealRisk,runDiagnostic,vehicleCost,purchaseListing,repairVehicle,prepareVehicle,buyPlate,sellPlate,acceptPendingSale,parsePurchaseOfferInput,negotiatePurchase};
