@@ -357,33 +357,45 @@ function newState(chat, firstName) {
 async function load(chat, firstName) {
   const p=db(); if(!p) throw new Error("DATABASE_URL не настроен");
   const pool=await p;
-  const r=await pool.query("SELECT state FROM autonomous_game_state WHERE chat_id=$1",[String(chat)]);
-  if(r.rowCount) {
-    const state=r.rows[0].state;
-    state.plateMarket=state.plateMarket||[];
-    state.plateWarehouse=state.plateWarehouse||[];
-    state.contracts=state.contracts||[];
-    if(!state.meta) state.meta={seed:seedFor(chat),turn:0,createdAt:Date.now(),day:1,plateCycle:0};
+  const client=await pool.connect();
+  try {
+    await client.query("BEGIN");
+    let current=await client.query(
+      "SELECT state FROM autonomous_game_state WHERE chat_id=$1 FOR UPDATE",
+      [String(chat)]
+    );
+    if(!current.rowCount) {
+      const initialState=newState(chat,firstName);
+      await client.query(
+        "INSERT INTO autonomous_game_state(chat_id,version,state) VALUES($1,$2,$3::jsonb) ON CONFLICT(chat_id) DO NOTHING",
+        [String(chat),VERSION,JSON.stringify(initialState)]
+      );
+      // Another request may have created the profile while this transaction
+      // was waiting on the unique key; always reload the committed row.
+      current=await client.query(
+        "SELECT state FROM autonomous_game_state WHERE chat_id=$1 FOR UPDATE",
+        [String(chat)]
+      );
+    }
+    if(!current.rowCount) throw new Error("Unable to load or create player state");
+    const state=current.rows[0].state;
+    state.plateMarket=Array.isArray(state.plateMarket)?state.plateMarket:[];
+    state.plateWarehouse=Array.isArray(state.plateWarehouse)?state.plateWarehouse:[];
+    state.contracts=Array.isArray(state.contracts)?state.contracts:[];
+    if(!state.meta||typeof state.meta!=="object") state.meta={seed:seedFor(chat),turn:0,createdAt:Date.now(),day:1,plateCycle:0};
     state.meta.day=state.meta.day||1;
     state.processedCallbacks=Array.isArray(state.processedCallbacks)?state.processedCallbacks:[];
     state.pendingDeal=state.pendingDeal||null;
     state.pendingPurchase=state.pendingPurchase||null;
     ensureVehiclePlates(state);
     refreshPlates(state);
-    return state;
-  }
-  const initialState=newState(chat,firstName);
-  const client=await pool.connect();
-  try {
-    await client.query("BEGIN");
-    await client.query(
-      "INSERT INTO autonomous_game_state(chat_id,version,state) VALUES($1,$2,$3::jsonb) ON CONFLICT(chat_id) DO NOTHING",
-      [String(chat),VERSION,JSON.stringify(initialState)]
-    );
-    const current=await client.query("SELECT state FROM autonomous_game_state WHERE chat_id=$1 FOR UPDATE",[String(chat)]);
-    const state=current.rows[0].state;
+    // Register every active vehicle before returning its plate to the player.
+    // Registry writes and the normalized player state commit atomically.
     await syncVehiclePlateRegistry(client,String(chat),state,createUniqueVehiclePlate);
-    await client.query("UPDATE autonomous_game_state SET version=$2,state=$3::jsonb,updated_at=now() WHERE chat_id=$1",[String(chat),VERSION,JSON.stringify(state)]);
+    await client.query(
+      "UPDATE autonomous_game_state SET version=$2,state=$3::jsonb,updated_at=now() WHERE chat_id=$1",
+      [String(chat),VERSION,JSON.stringify(state)]
+    );
     await client.query("COMMIT");
     return state;
   } catch(e) {
