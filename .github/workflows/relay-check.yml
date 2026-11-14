@@ -52,11 +52,13 @@ jobs:
           node --check player-marketplace-lock.test.js
           node --check player-marketplace-expiry-worker.js
           node --check player-marketplace-expiry-worker.test.js
+          node --check player-marketplace-browse.test.js
           node --check player-marketplace-listings.postgres.integration.test.js
           node autonomous-game.test.js
           node player-marketplace-listings.test.js
           node player-marketplace-lock.test.js
           node player-marketplace-expiry-worker.test.js
+          node player-marketplace-browse.test.js
           node - <<'NODE'
           const fs = require("node:fs");
           const { Client } = require("pg");
