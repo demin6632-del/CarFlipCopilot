@@ -1018,7 +1018,7 @@ function streetDuelKeyboard(duel,chat,state){
   const rows=(state?.garage||[]).map(c=>[{text:"🚘 Вызвать: "+c.model+" · "+fmt(STREET_DUEL_STAKE),callback_data:"ag:duel_create:"+c.id}]);
   return {inline_keyboard:[...aiRow,...rows,[{text:"🔄 Обновить",callback_data:"ag:duel"}],[{text:"⬅️ Главное меню",callback_data:"ag:home"}]]};
 }
-async function createStreetDuel(chat,name,carId){
+async function createStreetDuel(chat,name,carId,callbackId){
   const p=db();if(!p)throw new Error("DATABASE_URL не настроен");const pool=await p;const client=await pool.connect();
   try{
     await client.query("BEGIN");await client.query("SELECT pg_advisory_xact_lock(834721906)");
@@ -1027,10 +1027,19 @@ async function createStreetDuel(chat,name,carId){
     const pr=await client.query("SELECT state FROM autonomous_game_state WHERE chat_id=$1 FOR UPDATE",[String(chat)]);
     if(!pr.rowCount){await client.query("ROLLBACK");return {ok:false,reason:"no_profile"};}
     const state=pr.rows[0].state;ensureVehiclePlates(state);
+    state.processedCallbacks=Array.isArray(state.processedCallbacks)?state.processedCallbacks:[];
+    if(callbackId&&state.processedCallbacks.includes(String(callbackId))){
+      await client.query("ROLLBACK");
+      return {ok:false,reason:"duplicate"};
+    }
     const car=(state.garage||[]).find(x=>String(x.id)===String(carId));
     if(!car){await client.query("ROLLBACK");return {ok:false,reason:"car"};}
     if(Number(state.player?.balance||0)<STREET_DUEL_STAKE){await client.query("ROLLBACK");return {ok:false,reason:"money"};}
     const power=streetDuelPower(car);
+    if(callbackId){
+      state.processedCallbacks.push(String(callbackId));
+      state.processedCallbacks=state.processedCallbacks.slice(-100);
+    }
     addTx(state,"street_duel_entry",-STREET_DUEL_STAKE,"Взнос в уличную дуэль");
     const r=await client.query("INSERT INTO autonomous_street_duels(status,challenger_chat_id,challenger_name,challenger_car,challenger_power,stake) VALUES('open',$1,$2,$3::jsonb,$4,$5) RETURNING *",[String(chat),String(name||"Перекуп"),JSON.stringify(car),power,STREET_DUEL_STAKE]);
     state.transactions[0].description="Взнос в уличную дуэль №"+r.rows[0].id;
@@ -1482,8 +1491,8 @@ async function handleCallback(chat,data,firstName,sendFn,answerFn,callbackId) {
     await screen(sendFn,chat,state,text,streetDuelKeyboard(openDuel,chat,state));return true;
   }
   if(action==="duel_create"){
-    const result=await createStreetDuel(chat,firstName,id),duel=result.duel||await getOpenStreetDuel(),state=await load(chat,firstName);
-    const messages={exists:"Уже есть открытый вызов. Дождись его завершения.",no_profile:"Сначала открой игру командой /start.",car:"Эта машина уже не в гараже.",money:"Для вызова нужно 50 000 ₽."};
+    const result=await createStreetDuel(chat,firstName,id,callbackId),duel=result.duel||await getOpenStreetDuel(),state=await load(chat,firstName);
+    const messages={exists:"Уже есть открытый вызов. Дождись его завершения.",duplicate:"Этот вызов уже был обработан. Открой раздел дуэлей ещё раз.",no_profile:"Сначала открой игру командой /start.",car:"Эта машина уже не в гараже.",money:"Для вызова нужно 50 000 ₽."};
     await sendFn(chat,result.ok?"🏁 Вызов создан! 50 000 ₽ списаны и зарезервированы.":"⚠️ "+(messages[result.reason]||"Не удалось создать вызов."),{reply_markup:streetDuelKeyboard(duel,chat,state)});return true;
   }
   if(action==="duel_cancel"){
