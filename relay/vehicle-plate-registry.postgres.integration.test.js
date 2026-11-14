@@ -151,6 +151,14 @@ async function main() {
     await syncVehiclePlateRegistry(client, "integration-owner-b", newOwnerState, () => "NEW0001");
     assert.equal(normalizePlate(newOwnerState.garage[0].plate), "AA0001", "transfer keeps the original plate");
 
+    const plateRecoveryState = {
+      meta: { vehiclePlatesIssued: [] },
+      garage: [{ id: "car-a", vehicleUid: uidA, plate: "" }],
+      market: []
+    };
+    await syncVehiclePlateRegistry(client, "integration-owner-b", plateRecoveryState, () => "SHOULDNOT0001");
+    assert.equal(plateRecoveryState.garage[0].plate, "AA0001", "a missing JSON plate is recovered from the registry by stable vehicle UID");
+
     newOwnerState.garage = newOwnerState.garage.filter(vehicle => vehicle.vehicleUid !== uidA);
     const retired = await syncVehiclePlateRegistry(client, "integration-owner-b", newOwnerState, () => "NEW0002");
     assert.equal(retired.retired, 1, "a vehicle leaving circulation is retired");
@@ -159,6 +167,17 @@ async function main() {
       [uidA]
     );
     assert.ok(retiredRow.rows[0] && retiredRow.rows[0].retired_at, "retired timestamp is persisted");
+
+    const attemptedResurrection = {
+      meta: { vehiclePlatesIssued: [] },
+      garage: [{ id: "car-a", vehicleUid: uidA, plate: "AA0001" }],
+      market: []
+    };
+    await assert.rejects(
+      syncVehiclePlateRegistry(client, "integration-owner-b", attemptedResurrection, () => "RESURRECT0001"),
+      /Retired vehicle UID cannot be reactivated/,
+      "a retired physical vehicle UID cannot be reactivated with a new or old plate"
+    );
 
     const ownerC = {
       meta: { vehiclePlatesIssued: [] },
