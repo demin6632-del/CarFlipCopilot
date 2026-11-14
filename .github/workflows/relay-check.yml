@@ -53,12 +53,15 @@ jobs:
           node --check player-marketplace-expiry-worker.js
           node --check player-marketplace-expiry-worker.test.js
           node --check player-marketplace-browse.test.js
+          node --check player-marketplace-settlement.js
+          node --check player-marketplace-settlement.test.js
           node --check player-marketplace-listings.postgres.integration.test.js
           node autonomous-game.test.js
           node player-marketplace-listings.test.js
           node player-marketplace-lock.test.js
           node player-marketplace-expiry-worker.test.js
           node player-marketplace-browse.test.js
+          node player-marketplace-settlement.test.js
           node - <<'NODE'
           const fs = require("node:fs");
           const { Client } = require("pg");
@@ -68,6 +71,7 @@ jobs:
               await client.connect();
               await client.query(fs.readFileSync("vehicle-plate-registry.sql", "utf8"));
               await client.query(fs.readFileSync("player-marketplace-listings.sql", "utf8"));
+              await client.query(fs.readFileSync("player-marketplace-settlement.sql", "utf8"));
               console.log("Marketplace PostgreSQL schemas: OK");
             } finally {
               await client.end();
