@@ -57,6 +57,8 @@ jobs:
       - name: Apply schema and run rollback-only integration test
         env:
           TEST_DATABASE_URL: postgres://autoflip_test:autoflip_test@127.0.0.1:5432/autoflip_test
+          DATABASE_URL: postgres://autoflip_test:autoflip_test@127.0.0.1:5432/autoflip_test
+          DATABASE_SSL: "false"
         run: |
           node <<'NODE'
           const fs = require("node:fs");
@@ -80,3 +82,4 @@ jobs:
           });
           NODE
           node vehicle-plate-registry.postgres.integration.test.js
+          node vehicle-plate-registry-backfill.js
