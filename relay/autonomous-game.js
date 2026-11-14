@@ -1,4 +1,5 @@
 const { Pool } = require("pg");
+const { randomUUID } = require("node:crypto");
 const sandbox = require("./car-sandbox");
 
 const VERSION = 2;
@@ -123,6 +124,17 @@ async function init() {
       ON autonomous_street_duels(status,created_at DESC);
     CREATE UNIQUE INDEX IF NOT EXISTS autonomous_street_duels_one_open_idx
       ON autonomous_street_duels(status) WHERE status='open';
+    CREATE TABLE IF NOT EXISTS autonomous_economy_ledger (
+      transaction_id uuid PRIMARY KEY,
+      chat_id text NOT NULL,
+      kind text NOT NULL,
+      amount bigint NOT NULL,
+      balance_after bigint NOT NULL,
+      description text NOT NULL DEFAULT '',
+      occurred_at timestamptz NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS autonomous_economy_ledger_chat_time_idx
+      ON autonomous_economy_ledger(chat_id, occurred_at DESC);
   `);
   return true;
 }
@@ -379,13 +391,53 @@ async function load(chat, firstName) {
   const again=await pool.query("SELECT state FROM autonomous_game_state WHERE chat_id=$1",[String(chat)]);
   return again.rows[0].state;
 }
+function ensureTransactionIds(state) {
+  state.transactions=Array.isArray(state.transactions)?state.transactions:[];
+  for(const tx of state.transactions){
+    if(!tx.id) tx.id=randomUUID();
+    if(typeof tx.ledgerPersisted!=="boolean") tx.ledgerPersisted=false;
+  }
+}
+async function persistEconomyLedger(client,chat,state) {
+  ensureTransactionIds(state);
+  state.meta=state.meta||{};
+  const backfill=!state.meta.economyLedgerBackfilled;
+  const pending=state.transactions.filter(tx=>backfill||tx.ledgerPersisted!==true);
+  if(pending.length){
+    const rows=pending.map(tx=>({
+      id:tx.id,kind:String(tx.kind||"unknown"),amount:money(tx.amount),
+      balance:money(tx.balance),description:String(tx.description||""),
+      time_ms:Math.max(0,Number(tx.time)||Date.now())
+    }));
+    await client.query(`
+      INSERT INTO autonomous_economy_ledger
+        (transaction_id,chat_id,kind,amount,balance_after,description,occurred_at)
+      SELECT x.id::uuid,$1,x.kind,x.amount,x.balance,x.description,
+        to_timestamp(x.time_ms::double precision/1000.0)
+      FROM jsonb_to_recordset($2::jsonb) AS x(
+        id text,kind text,amount bigint,balance bigint,description text,time_ms bigint
+      )
+      ON CONFLICT (transaction_id) DO NOTHING
+    `,[String(chat),JSON.stringify(rows)]);
+    for(const tx of pending) tx.ledgerPersisted=true;
+  }
+  state.meta.economyLedgerBackfilled=true;
+}
 async function save(chat,state) {
   const p=db(); if(!p) throw new Error("DATABASE_URL не настроен");
   const pool=await p;
-  await pool.query(
-    "UPDATE autonomous_game_state SET version=$2,state=$3::jsonb,updated_at=now() WHERE chat_id=$1",
-    [String(chat),VERSION,JSON.stringify(state)]
-  );
+  const client=await pool.connect();
+  try{
+    await client.query("BEGIN");
+    await client.query("SELECT chat_id FROM autonomous_game_state WHERE chat_id=$1 FOR UPDATE",[String(chat)]);
+    await persistEconomyLedger(client,chat,state);
+    await client.query(
+      "UPDATE autonomous_game_state SET version=$2,state=$3::jsonb,updated_at=now() WHERE chat_id=$1",
+      [String(chat),VERSION,JSON.stringify(state)]
+    );
+    await client.query("COMMIT");
+  }catch(e){await client.query("ROLLBACK").catch(()=>{});throw e;}
+  finally{client.release();}
 }
 async function withState(chat, firstName, mutate, callbackId) {
   const p=db(); if(!p) throw new Error("DATABASE_URL не настроен");
@@ -408,6 +460,7 @@ async function withState(chat, firstName, mutate, callbackId) {
       return {state,result:{duplicate:true}};
     }
     const result=await mutate(state);
+    await persistEconomyLedger(client,chat,state);
     await client.query("UPDATE autonomous_game_state SET version=$2,state=$3::jsonb,updated_at=now() WHERE chat_id=$1",[String(chat),VERSION,JSON.stringify(state)]);
     await client.query("COMMIT");
     return {state,result};
@@ -420,7 +473,7 @@ async function withState(chat, firstName, mutate, callbackId) {
 function addTx(state,kind,amount,description) {
   const delta=money(amount);
   state.player.balance+=delta;
-  state.transactions.unshift({time:Date.now(),kind,amount:delta,balance:state.player.balance,description,profit:kind==="sale" ? Number((String(description).match(/прибыль ([\d\s]+) ₽/)||[])[1]?.replace(/\s/g,"")||0) : 0});
+  state.transactions.unshift({id:randomUUID(),ledgerPersisted:false,time:Date.now(),kind,amount:delta,balance:state.player.balance,description,profit:kind==="sale" ? Number((String(description).match(/прибыль ([\d\s]+) ₽/)||[])[1]?.replace(/\s/g,"")||0) : 0});
   state.transactions=state.transactions.slice(0,80);
 }
 function scoreListing(car) {
