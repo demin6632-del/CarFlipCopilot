@@ -73,6 +73,10 @@ class FakePool {
           pool.state = JSON.parse(params[1]);
           return { rowCount: 1, rows: [] };
         }
+        if (sql.includes("SELECT seller_chat_id FROM autonomous_marketplace_listings")) {
+          const row = pool.listings.get(params[0]);
+          return { rowCount: row ? 1 : 0, rows: row ? [{ seller_chat_id: row.seller_chat_id }] : [] };
+        }
         if (sql.includes("SELECT id,vehicle_uid,seller_chat_id,status FROM autonomous_marketplace_listings")) {
           const row = pool.listings.get(params[0]);
           return { rowCount: row ? 1 : 0, rows: row ? [row] : [] };
