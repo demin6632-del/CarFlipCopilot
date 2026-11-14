@@ -1021,7 +1021,7 @@ async function joinStreetDuel(chat,name,duelId){
     }
     await client.query("UPDATE autonomous_game_state SET state=$2::jsonb,updated_at=now() WHERE chat_id=$1",[String(duel.challenger_chat_id),JSON.stringify(challenger)]);
     await client.query("UPDATE autonomous_game_state SET state=$2::jsonb,updated_at=now() WHERE chat_id=$1",[String(chat),JSON.stringify(opponent)]);
-    const result={winnerChat,winnerName,payout,fee,powerDifference:Math.round(Math.abs(challengerRoll-opponentRoll)),challengerRoll:Math.round(challengerRoll),opponentRoll:Math.round(opponentRoll),draw};
+    const result={winnerChat,winnerName,payout,fee,powerDifference:Math.abs(Number(duel.challenger_power||0)-Number(opponentPower||0)),challengerRoll:Math.round(challengerRoll),opponentRoll:Math.round(opponentRoll),draw};
     const upd=await client.query("UPDATE autonomous_street_duels SET status='finished',opponent_chat_id=$2,opponent_name=$3,opponent_car=$4::jsonb,opponent_power=$5,result=$6::jsonb,finished_at=now() WHERE id=$1 RETURNING *",[duel.id,String(chat),String(name||"Соперник"),JSON.stringify(opponentCar),opponentPower,JSON.stringify(result)]);
     await client.query("COMMIT");return {ok:true,duel:upd.rows[0],result};
   }catch(e){await client.query("ROLLBACK").catch(()=>{});throw e;}finally{client.release();}
@@ -1058,7 +1058,7 @@ async function createStreetDuelAI(chat,name,callbackId){
     const result={
       mode:"ai",winnerChat:draw?null:playerWon?String(chat):"autoflip-ai",
       winnerName:draw?"Ничья":playerWon?String(name||"Перекуп"):"AUTOFLIP ИИ",
-      payout,fee,powerDifference:Math.round(Math.abs(playerRoll-aiRoll)),
+      payout,fee,powerDifference:Math.abs(Number(playerPower||0)-Number(opponentPower||0)),
       challengerRoll:Math.round(playerRoll),opponentRoll:Math.round(aiRoll),draw
     };
     const duel=await client.query(
