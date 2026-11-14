@@ -9,7 +9,9 @@ function normalizePlate(plate) {
 // Stable UUID derived from the player scope and the vehicle's existing local ID.
 // This is a migration bridge: once vehicleUid is persisted, it always wins.
 function stableVehicleUid(ownerChatId, vehicle) {
-  if (vehicle && vehicle.vehicleUid) return String(vehicle.vehicleUid);
+  if (vehicle && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(vehicle.vehicleUid || ""))) {
+    return String(vehicle.vehicleUid);
+  }
   const localId = String(vehicle && vehicle.id || "");
   if (!localId) throw new Error("Vehicle is missing its local id");
   const hex = crypto.createHash("sha256")
