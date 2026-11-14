@@ -358,6 +358,30 @@ async function run() {
       .reduce((sum, tx) => sum + Number(tx.amount || 0), 0));
     assert.ok(genericState.processedCallbacks.includes(genericCallback));
 
+    // Distinct concurrent purchases for one player must both commit without losing a balance update.
+    const genericSecondCallback = "generic-crate-second-" + suffix;
+    const genericThirdCallback = "generic-crate-third-" + suffix;
+    await Promise.all([
+      game.handleCallback(
+        genericChat, "ag:crate_open:standard", "Generic Callback Tester", send, answer, genericSecondCallback
+      ),
+      game.handleCallback(
+        genericChat, "ag:crate_open:standard", "Generic Callback Tester", send, answer, genericThirdCallback
+      )
+    ]);
+    const afterDistinctCallbacks = await game.load(genericChat, "Generic Callback Tester");
+    const crateDebitTransactions = afterDistinctCallbacks.transactions.filter(
+      x => x.kind === "container_open"
+    );
+    assert.equal(crateDebitTransactions.length, 3);
+    assert.equal(crateDebitTransactions.filter(x => Number(x.amount) === -150000).length, 3);
+    assert.equal(
+      afterDistinctCallbacks.player.balance,
+      genericBalance + afterDistinctCallbacks.transactions
+        .filter(x => ["container_open", "container_cash", "container_jackpot"].includes(x.kind))
+        .reduce((sum, tx) => sum + Number(tx.amount || 0), 0)
+    );
+
     // The durable callback receipt must still reject a replay after the legacy 100-ID window rolls over.
     const firstRefreshCallback = "generic-refresh-first-" + suffix;
     await game.handleCallback(
