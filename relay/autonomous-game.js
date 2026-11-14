@@ -69,7 +69,7 @@ function db() {
   if (!poolPromise) {
     const pool = new Pool({
       connectionString: process.env.DATABASE_URL,
-      ssl: { rejectUnauthorized:false },
+      ssl: process.env.DATABASE_SSL === "false" ? false : { rejectUnauthorized:false },
       max: 5,
       connectionTimeoutMillis: 5000,
       query_timeout: 7000,
