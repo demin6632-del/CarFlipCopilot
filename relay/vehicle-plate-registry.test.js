@@ -10,8 +10,17 @@ class FakeTransactionClient {
       const plate = String(params[0]);
       const key = registry.normalizePlate(plate);
       if (sql.includes("'legacy-history'")) {
-        if (!this.byPlate.has(key)) this.byPlate.set(key, { plate, vehicle_uid: null, retired_at: true });
-        return { rowCount: 1, rows: [] };
+        const plates = Array.isArray(params[0]) ? params[0] : [params[0]];
+        let inserted = 0;
+        for (const value of plates) {
+          const historicalPlate = String(value);
+          const historicalKey = registry.normalizePlate(historicalPlate);
+          if (!this.byPlate.has(historicalKey)) {
+            this.byPlate.set(historicalKey, { plate: historicalPlate, vehicle_uid: null, retired_at: true });
+            inserted++;
+          }
+        }
+        return { rowCount: inserted, rows: [] };
       }
       const uid = String(params[1]);
       if (this.byPlate.has(key) || this.byUid.has(uid)) return { rowCount: 0, rows: [] };
