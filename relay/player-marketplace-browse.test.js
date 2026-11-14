@@ -37,6 +37,7 @@ const sample = {
   const rows = await listActiveMarketplaceListings(pool);
   assert.equal(rows.length, 1);
   assert.equal(rows[0].askingPrice, 850000);
+  assert.equal("sellerChatId" in rows[0], false, "public browse must not expose Telegram account IDs");
   assert.equal(rows[0].vehicle.model, "Lada Vesta 1.6");
   assert.equal("marketplaceListingId" in rows[0].vehicle, false);
   assert.match(captured.sql, /status='active' AND expires_at>now\(\)/);
