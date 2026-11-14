@@ -1789,6 +1789,7 @@ async function handleCallback(chat,data,firstName,sendFn,answerFn,callbackId) {
       const bits=String(id||"").split("|");
       const donor=state.garage.find(x=>String(x.id)===String(bits[1]));
       if(!donor)return {text:"⚠️ Донор не найден.",markup:sandboxWarehouseKeyboard(c,state)};
+      if(donor.marketplaceListingId)return {text:"🔒 Автомобиль-донор выставлен на общий рынок. Сначала отмени его объявление.",markup:sandboxDonorKeyboard(c,donor)};
       sandbox.buildCar(c); sandbox.buildCar(donor);
       const source=sandbox.getPart(donor,bits[2]);
       if(!source)return {text:"⚠️ Деталь донора не найдена.",markup:sandboxDonorKeyboard(c,donor)};
