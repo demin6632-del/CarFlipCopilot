@@ -1582,7 +1582,7 @@ async function marketplaceBrowseScreen(chat, page, sendFn) {
       "\n\nСтраница " + (safePage + 1) +
       "\nПокупка и безопасная передача автомобилей появятся на следующем этапе.";
     const buttons = [];
-    for (const listing of visibleRows) buttons.push({ text: "🔎 Подробнее: " + listing.vehicle.model.slice(0, 30), callback_data: "ag:pmarket_view:" + listing.id });
+    for (const listing of visibleRows) buttons.push({ text: "🔎 Подробнее: " + listing.vehicle.model.slice(0, 30), callback_data: "ag:pmarket_view:" + listing.id + ":" + safePage });
     if (safePage > 0) buttons.push({ text: "⬅️ Назад", callback_data: "ag:pmarket:" + (safePage - 1) });
     if (rows.length > 5) buttons.push({ text: "Вперёд ➡️", callback_data: "ag:pmarket:" + (safePage + 1) });
     buttons.push({ text: "🚘 Выставить автомобиль", callback_data: "ag:pmarket_sell" });
@@ -1690,9 +1690,9 @@ function parseMarketplacePrice(value) {
 
 async function handleCallback(chat,data,firstName,sendFn,answerFn,callbackId) {
   if(!String(data).startsWith("ag:")) return false;
-  const [_,action,id]=String(data).split(":");
+  const [_,action,id,extra]=String(data).split(":");
   if(action==="pmarket") return marketplaceBrowseScreen(chat, Math.max(0, Number(id)||0), sendFn);
-  if(action==="pmarket_view") return marketplaceDetailScreen(chat, id, sendFn);
+  if(action==="pmarket_view") return marketplaceDetailScreen(chat, id, sendFn, Math.max(0, Number(extra)||0));
   if(action==="pmarket_mine") return marketplaceMineScreen(chat, sendFn);
   if(action==="pmarket_sell") return marketplaceSellScreen(chat, firstName, sendFn);
   if(action==="pmarket_vehicle") {
