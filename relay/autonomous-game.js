@@ -231,7 +231,10 @@ function negotiation(state, car, deal) {
 function dealRisk(state, car) {
   const risk = Math.max(0, Math.min(0.8, car.risk - car.condition / 1000 + (car.mileageRolledBack ? Number(car.odometerRisk||0.24) : 0)));
   const roll = rng(state);
-  if (car.mileageRolledBack && roll < risk * 0.30) {\n    const penalty=Math.round((45000+rng(state)*95000)/1000)*1000;\n    return {type:"incident",penalty,text:"Покупатель проверил историю и обнаружил несоответствие пробега."};\n  }\n  if (roll < risk * 0.18) {
+  if (car.mileageRolledBack && roll < risk * 0.30) {
+    const penalty=Math.round((45000+rng(state)*95000)/1000)*1000;
+    return {type:"incident",penalty,text:"Покупатель проверил историю и обнаружил несоответствие пробега."};
+  }\n  if (roll < risk * 0.18) {
     const penalty = Math.round((9000 + rng(state) * 36000) / 1000) * 1000;
     return {type:"incident", penalty, text:"Покупатель заметил дополнительный дефект."};
   }
@@ -1008,7 +1011,7 @@ async function handleCallback(chat,data,firstName,sendFn,answerFn,callbackId) {
     return true;
   }
   const run=await withState(chat,firstName,state=>{
-    const advancesTurn = new Set(["refresh","diagnose","diagnose_deep","offer","buy","repair","prep","sell","negotiate","reject","accept","plate_refresh","platebuy","platesell","pmrefresh","pmbuy"]).has(action);
+    const advancesTurn = new Set(["refresh","diagnose","diagnose_deep","offer","buy","repair","prep","sell","negotiate","reject","accept","plate_refresh","platebuy","platesell","pmrefresh","pmbuy","borrow","repay","rollback"]).has(action);
     if(advancesTurn) state.meta.turn=(Number(state.meta.turn)||0)+1;
     if(callbackId) {
       state.processedCallbacks.push(String(callbackId));
