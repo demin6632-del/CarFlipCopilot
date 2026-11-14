@@ -1,12 +1,67 @@
 "use strict";
 
 const assert = require("node:assert/strict");
-const { Pool } = require("pg");
+const pg = require("pg");
+const { Pool } = pg;
 const {
   normalizePlate,
   syncVehiclePlateRegistry,
   transferVehicleOwner
 } = require("./vehicle-plate-registry");
+
+async function testTransactionalLoad(pool) {
+  process.env.DATABASE_URL = process.env.TEST_DATABASE_URL;
+  const OriginalPool = pg.Pool;
+  let gamePool = null;
+  pg.Pool = class TestPool extends OriginalPool {
+    constructor(config) {
+      super({ ...config, ssl: false });
+      gamePool = this;
+    }
+  };
+
+  try {
+    const game = require("./autonomous-game");
+    assert.equal(await game.init(), true, "game database initializes on the disposable PostgreSQL instance");
+
+    const legacyState = game.newState("load-integration-player", "Legacy");
+    legacyState.garage = [{ id: "legacy-garage-car", plate: "" }];
+    legacyState.market = [{ id: "legacy-market-car", plate: "" }];
+    legacyState.meta.vehiclePlatesIssued = [];
+    await pool.query(
+      "INSERT INTO autonomous_game_state(chat_id,version,state) VALUES($1,$2,$3::jsonb)",
+      ["load-integration-player", 2, JSON.stringify(legacyState)]
+    );
+
+    const loaded = await game.load("load-integration-player", "Legacy");
+    const active = [...loaded.garage, ...loaded.market];
+    assert.equal(active.length, 2);
+    for (const vehicle of active) {
+      assert.ok(vehicle.plate, "load() assigns a plate before returning the profile");
+      assert.ok(vehicle.vehicleUid, "load() persists a stable vehicle UID before returning the profile");
+    }
+
+    const stored = await pool.query(
+      "SELECT state FROM autonomous_game_state WHERE chat_id=$1",
+      ["load-integration-player"]
+    );
+    assert.equal(stored.rowCount, 1);
+    assert.deepEqual(stored.rows[0].state.garage, loaded.garage);
+    assert.deepEqual(stored.rows[0].state.market, loaded.market);
+
+    const registryRows = await pool.query(
+      "SELECT vehicle_uid FROM vehicle_plate_registry WHERE owner_chat_id=$1 AND retired_at IS NULL",
+      ["load-integration-player"]
+    );
+    assert.equal(registryRows.rowCount, 2, "both legacy vehicles are registered before load() returns");
+    const registered = new Set(registryRows.rows.map(row => String(row.vehicle_uid)));
+    assert.ok(active.every(vehicle => registered.has(vehicle.vehicleUid)));
+    console.log("PostgreSQL transactional load integration: OK");
+  } finally {
+    pg.Pool = OriginalPool;
+    if (gamePool) await gamePool.end();
+  }
+}
 
 async function main() {
   if (!process.env.TEST_DATABASE_URL) {
@@ -175,6 +230,8 @@ async function main() {
     } finally {
       await pool.query("DROP SCHEMA IF EXISTS registry_concurrency_test CASCADE");
     }
+
+    await testTransactionalLoad(pool);
   } catch (error) {
     await client.query("ROLLBACK").catch(() => {});
     throw error;
