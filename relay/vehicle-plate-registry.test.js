@@ -20,7 +20,7 @@ class FakeTransactionClient {
       this.byUid.set(uid, row);
       return { rowCount: 1, rows: [{ plate }] };
     }
-    if (sql.includes("SELECT plate, vehicle_uid, retired_at")) {
+    if (sql.includes("SELECT plate, vehicle_uid, owner_chat_id, retired_at")) {
       const row = this.byUid.get(String(params[0]));
       return { rowCount: row ? 1 : 0, rows: row ? [row] : [] };
     }
