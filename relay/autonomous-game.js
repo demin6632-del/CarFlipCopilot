@@ -67,14 +67,20 @@ let poolPromise = null;
 function db() {
   if (!process.env.DATABASE_URL) return null;
   if (!poolPromise) {
-    poolPromise = Promise.resolve(new Pool({
+    const pool = new Pool({
       connectionString: process.env.DATABASE_URL,
       ssl: { rejectUnauthorized:false },
       max: 5,
       connectionTimeoutMillis: 5000,
       query_timeout: 7000,
       statement_timeout: 7000
-    }));
+    });
+    // pg emits "error" on the pool when an idle client loses its connection.
+    // Without a listener Node treats that event as uncaught and may destabilize the bot.
+    pool.on("error", error => {
+      console.error("AUTONOMOUS GAME POOL ERROR:", error?.message || error);
+    });
+    poolPromise = Promise.resolve(pool);
   }
   return poolPromise;
 }
@@ -186,16 +192,22 @@ function ensureVehiclePlates(state) {
   state.garage=Array.isArray(state.garage)?state.garage:[];
   state.market=Array.isArray(state.market)?state.market:[];
   if(!Array.isArray(state.meta.vehiclePlatesIssued)) state.meta.vehiclePlatesIssued=[];
-  const used=new Set(state.meta.vehiclePlatesIssued.filter(Boolean));
+  // "issued" is a historical registry, not a set of plates that must be
+  // rejected when encountered on the same vehicle again.
+  const issued=new Set(state.meta.vehiclePlatesIssued.filter(Boolean));
+  const seenCurrent=new Set();
   for(const car of [...state.garage,...state.market]) {
-    if(!car.plate||used.has(car.plate)) {
+    const current=String(car.plate||"").trim();
+    if(!current||seenCurrent.has(current)) {
       let plate;
-      do { plate=plateCode(state); } while(used.has(plate));
+      do { plate=plateCode(state); } while(issued.has(plate)||seenCurrent.has(plate));
       car.plate=plate;
     }
-    used.add(car.plate);
-    if(!state.meta.vehiclePlatesIssued.includes(car.plate)) state.meta.vehiclePlatesIssued.push(car.plate);
+    seenCurrent.add(car.plate);
+    issued.add(car.plate);
   }
+  // Preserve retired plates forever while adding any legacy active plates.
+  state.meta.vehiclePlatesIssued=[...issued];
 }
 function createPlateListing(state) {
   const quality = 55 + Math.floor(rng(state)*46);
@@ -1981,4 +1993,4 @@ async function handleCallback(chat,data,firstName,sendFn,answerFn,callbackId) {
   return true;
 }
 
-module.exports={init,load,save,open,handleText,handleCallback,leaderboardText,CATALOG,CAR_PHOTOS,BUYER_TYPES,newState,refreshMarket,createListing,addTx,scoreListing,bestDeal,recommendation,addProgress,updateContracts,buyerOffer,buyerOfferDetails,buyerProfile,negotiation,dealRisk,runDiagnostic,vehicleCost,purchaseListing,repairVehicle,prepareVehicle,buyPlate,sellPlate,acceptPendingSale,parsePurchaseOfferInput,negotiatePurchase,streetDuelPower,STREET_DUEL_STAKE};
+module.exports={init,load,save,open,handleText,handleCallback,leaderboardText,CATALOG,CAR_PHOTOS,BUYER_TYPES,newState,refreshMarket,createListing,createUniqueVehiclePlate,ensureVehiclePlates,addTx,scoreListing,bestDeal,recommendation,addProgress,updateContracts,buyerOffer,buyerOfferDetails,buyerProfile,negotiation,dealRisk,runDiagnostic,vehicleCost,purchaseListing,repairVehicle,prepareVehicle,buyPlate,sellPlate,acceptPendingSale,parsePurchaseOfferInput,negotiatePurchase,streetDuelPower,STREET_DUEL_STAKE};
