@@ -22,6 +22,26 @@ jobs:
       - name: Package check
         working-directory: relay
         run: npm install --ignore-scripts
+      - name: Dependency security report
+        working-directory: relay
+        run: |
+          npm audit --json > /tmp/npm-audit.json || true
+          node - <<'NODE'
+          const report = require('/tmp/npm-audit.json');
+          for (const [name, item] of Object.entries(report.vulnerabilities || {})) {
+            console.log(JSON.stringify({
+              package: name,
+              severity: item.severity,
+              direct: item.isDirect,
+              range: item.range,
+              fixAvailable: item.fixAvailable,
+              via: item.via.map(v => typeof v === 'string' ? v : {
+                name: v.name, title: v.title, url: v.url, range: v.range
+              })
+            }));
+          }
+          console.log('Audit totals:', JSON.stringify(report.metadata?.vulnerabilities || {}));
+          NODE
       - name: Autonomous game tests
         working-directory: relay
         run: |
