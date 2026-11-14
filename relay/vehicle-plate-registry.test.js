@@ -89,6 +89,20 @@ async function test(name, fn) {
     assert.equal(client.byPlate.get("А123ВС77").vehicle_uid, "00000000-0000-5000-8000-000000000001");
   });
 
+  await test("duplicate plates inside one player state are separated", async () => {
+    const client = new FakeTransactionClient();
+    const state = {
+      meta: { vehiclePlatesIssued: ["А123ВС 77"] },
+      garage: [{ id: "car-a", plate: "А123ВС 77" }],
+      market: [{ id: "car-b", plate: "а123 вс 77" }]
+    };
+    let next = 0;
+    const result = await registry.syncVehiclePlateRegistry(client, "player-4", state, () => (++next === 1 ? "А123ВС 77" : "В456ОР 77"));
+    assert.equal(result.assigned, 2);
+    assert.equal(result.regenerated, 1);
+    assert.equal(registry.normalizePlate(state.garage[0].plate) === registry.normalizePlate(state.market[0].plate), false);
+  });
+
   await test("retired historical plates are never reissued", async () => {
     const client = new FakeTransactionClient();
     client.byPlate.set("А123ВС77", { plate: "А123ВС 77", vehicle_uid: null, retired_at: true });
