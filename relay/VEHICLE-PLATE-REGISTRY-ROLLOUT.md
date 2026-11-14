@@ -25,9 +25,12 @@ player data.
 
 - `vehicle-plate-registry.js` now contains an isolated transactional reservation helper.
 - `vehicle-plate-registry.test.js` covers normalization, stable IDs, repeat reconciliation, foreign collisions, retired numbers, and local duplicates.
-- The helper is deliberately **not called by the live game yet**. It requires the registry table and a PostgreSQL-backed integration test before it can be enabled.
+- The helper is now wired into every audited transactional write to `autonomous_game_state`, including the normal `withState()` path, initial profile creation, container-battle transactions, and street-duel transactions.
+- Registry synchronization and JSONB state persistence share the same PostgreSQL transaction. A failure rolls both back.
+- Active vehicles removed from a player's garage/market are retired in the registry. Explicit transfers must update registry ownership first, then reconcile both player states in the same transaction.
+- This code is still gated: it must not be deployed until the schema is installed and the PostgreSQL integration test passes.
 
-## Required application integration (not implemented yet)
+## Application integration audit
 
 - Add a stable UUID to every vehicle object. The helper derives a repeatable
   UUID from the owner ID and existing vehicle ID for legacy cars, then persists
@@ -42,12 +45,16 @@ player data.
   value in history and assign a fresh plate.
 - Update the JSONB state and registry in the same transaction. A failed state
   save must roll back the registry change too.
-- When a vehicle expires or is otherwise removed from circulation, mark its
+- When a vehicle expires or is otherwise removed from circulation, reconciliation marks its
   registry row retired in that same transaction. Do not retire a vehicle merely
-  because it moves from market to garage or between players.
+  because it moves from market to garage or between players. A player-to-player
+  transfer must change the registry owner before reconciling the old and new states.
 - Keep callback idempotency and existing per-chat row locking intact. Add
   concurrency tests using two different player transactions trying to reserve
   the same candidate simultaneously.
+- The audited game-state UPDATE statements now all call the registry helper before
+  persisting JSONB. The read-only existing-state branch of `load()` does not
+  write to the database; it is reconciled on the next transactional write.
 
 ## Rollout gates
 
