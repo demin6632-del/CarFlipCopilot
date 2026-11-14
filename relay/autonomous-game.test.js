@@ -528,3 +528,14 @@ test("full autonomous trading loop keeps economy consistent", () => {
   assert.ok(s.contracts.find(x => x.id === "profit_300k").completed);
   assert.ok(s.player.balance > startBalance);
 });
+
+test("marketplace price input accepts only safe positive whole-ruble amounts", () => {
+  assert.equal(game.parseMarketplacePrice("850000"), 850000);
+  assert.equal(game.parseMarketplacePrice(" 1 250 000 "), 1250000);
+  assert.equal(game.parseMarketplacePrice("0"), null);
+  assert.equal(game.parseMarketplacePrice("-500"), null);
+  assert.equal(game.parseMarketplacePrice("12.5"), null);
+  assert.equal(game.parseMarketplacePrice("1e6"), null);
+  assert.equal(game.parseMarketplacePrice("1000000000001"), null);
+  assert.equal(game.parseMarketplacePrice("abc"), null);
+});

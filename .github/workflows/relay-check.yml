@@ -10,6 +10,20 @@ on:
 jobs:
   check:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: autoflip_test
+          POSTGRES_USER: autoflip_test
+          POSTGRES_PASSWORD: autoflip_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U autoflip_test -d autoflip_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -24,12 +38,43 @@ jobs:
         run: |
           npm install --ignore-scripts
           npm audit --omit=dev
-      - name: Autonomous game tests
+      - name: Autonomous game and marketplace tests
         working-directory: relay
+        env:
+          TEST_DATABASE_URL: postgres://autoflip_test:autoflip_test@127.0.0.1:5432/autoflip_test
+          DATABASE_URL: postgres://autoflip_test:autoflip_test@127.0.0.1:5432/autoflip_test
+          DATABASE_SSL: "false"
         run: |
           node --check autonomous-game.js
           node --check autonomous-game.test.js
+          node --check player-marketplace-listings.js
+          node --check player-marketplace-listings.test.js
+          node --check player-marketplace-lock.test.js
+          node --check player-marketplace-expiry-worker.js
+          node --check player-marketplace-expiry-worker.test.js
+          node --check player-marketplace-browse.test.js
+          node --check player-marketplace-listings.postgres.integration.test.js
           node autonomous-game.test.js
+          node player-marketplace-listings.test.js
+          node player-marketplace-lock.test.js
+          node player-marketplace-expiry-worker.test.js
+          node player-marketplace-browse.test.js
+          node - <<'NODE'
+          const fs = require("node:fs");
+          const { Client } = require("pg");
+          (async () => {
+            const client = new Client({ connectionString: process.env.TEST_DATABASE_URL });
+            try {
+              await client.connect();
+              await client.query(fs.readFileSync("vehicle-plate-registry.sql", "utf8"));
+              await client.query(fs.readFileSync("player-marketplace-listings.sql", "utf8"));
+              console.log("Marketplace PostgreSQL schemas: OK");
+            } finally {
+              await client.end();
+            }
+          })().catch(error => { console.error(error); process.exitCode = 1; });
+          NODE
+          node player-marketplace-listings.postgres.integration.test.js
       - name: Game dashboard routing guard
         run: |
           node - <<'NODE'
@@ -70,9 +115,13 @@ jobs:
           if (!game.includes('async function cancelStreetDuel')) throw new Error('street duel cancellation/refund missing');
           if (!game.includes('street_duel_prize')) throw new Error('street duel payout missing');
           if (!game.includes('if(action==="duel_join")')) throw new Error('street duel route missing');
-          if (!game.includes('const [_,action,id]=String(data).split(":")')) throw new Error('callback action parsing missing');
+          if (!game.includes('const [_,action,id,extra]=String(data).split(":")')) throw new Error('callback action parsing missing');
+          if (!game.includes('if(action==="pmarket_view")')) throw new Error('marketplace detail callback missing');
           if (!game.includes('if(action==="crate_open")')) throw new Error('container opening flow missing');
           if (!bot.includes('"📦 Контейнеры":"containers"')) throw new Error('container keyboard route missing');
+          if (!game.includes('function marketplaceBrowseScreen')) throw new Error('player marketplace browse screen missing');
+          if (!game.includes('action==="pmarket"')) throw new Error('player marketplace browse callback missing');
+          if (!bot.includes('"🌐 Общий рынок":"pmarket"')) throw new Error('player marketplace reply-keyboard route missing');
           if (!game.includes('function withState')) throw new Error('transactional state guard missing');
           if (!game.includes('async function withState(chat, firstName, mutate, callbackId)')) throw new Error('callback idempotency guard missing');
           if (!game.includes('if(callbackId && state.processedCallbacks.includes(String(callbackId)))')) throw new Error('duplicate callback check is not transactional');
