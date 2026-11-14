@@ -29,7 +29,12 @@ jobs:
         run: |
           node --check autonomous-game.js
           node --check autonomous-game.test.js
+          node --check player-marketplace-listings.js
+          node --check player-marketplace-listings.test.js
+          node --check player-marketplace-lock.test.js
           node autonomous-game.test.js
+          node player-marketplace-listings.test.js
+          node player-marketplace-lock.test.js
       - name: Game dashboard routing guard
         run: |
           node - <<'NODE'
