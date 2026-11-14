@@ -5,6 +5,37 @@ on:
   pull_request:
     branches: ["main"]
 jobs:
+  economy-idempotency-integration:
+    name: Economy callback idempotency integration
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: autoflip_test
+          POSTGRES_USER: autoflip_test
+          POSTGRES_PASSWORD: autoflip_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U autoflip_test -d autoflip_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    defaults:
+      run:
+        working-directory: relay
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: npm install
+      - name: Verify transactional economy callbacks
+        env:
+          TEST_DATABASE_URL: postgres://autoflip_test:autoflip_test@127.0.0.1:5432/autoflip_test
+          DATABASE_SSL: "false"
+        run: node autonomous-game-economy.integration.test.js
   test:
     runs-on: ubuntu-latest
     defaults:

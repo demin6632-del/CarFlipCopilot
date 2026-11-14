@@ -1,4 +1,5 @@
 const { Pool } = require("pg");
+const { randomUUID } = require("node:crypto");
 const sandbox = require("./car-sandbox");
 
 const VERSION = 2;
@@ -69,7 +70,7 @@ function db() {
   if (!poolPromise) {
     const pool = new Pool({
       connectionString: process.env.DATABASE_URL,
-      ssl: { rejectUnauthorized:false },
+      ssl: process.env.DATABASE_SSL === "false" ? false : { rejectUnauthorized:false },
       max: 5,
       connectionTimeoutMillis: 5000,
       query_timeout: 7000,
@@ -123,6 +124,44 @@ async function init() {
       ON autonomous_street_duels(status,created_at DESC);
     CREATE UNIQUE INDEX IF NOT EXISTS autonomous_street_duels_one_open_idx
       ON autonomous_street_duels(status) WHERE status='open';
+    CREATE TABLE IF NOT EXISTS autonomous_economy_ledger (
+      transaction_id uuid PRIMARY KEY,
+      chat_id text NOT NULL,
+      kind text NOT NULL,
+      amount bigint NOT NULL,
+      balance_after bigint NOT NULL,
+      description text NOT NULL DEFAULT '',
+      occurred_at timestamptz NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS autonomous_processed_callbacks (
+      chat_id text NOT NULL,
+      callback_id text NOT NULL,
+      processed_at timestamptz NOT NULL DEFAULT now(),
+      PRIMARY KEY(chat_id, callback_id)
+    );
+    CREATE INDEX IF NOT EXISTS autonomous_processed_callbacks_time_idx
+      ON autonomous_processed_callbacks(processed_at);
+    CREATE INDEX IF NOT EXISTS autonomous_economy_ledger_chat_time_idx
+      ON autonomous_economy_ledger(chat_id, occurred_at DESC);
+    CREATE OR REPLACE FUNCTION reject_autonomous_economy_ledger_mutation()
+    RETURNS trigger LANGUAGE plpgsql AS $func$
+    BEGIN
+      RAISE EXCEPTION 'autonomous_economy_ledger is append-only';
+    END;
+    $func$;
+    DO $do$
+    BEGIN
+      IF NOT EXISTS (
+        SELECT 1 FROM pg_trigger
+        WHERE tgname='autonomous_economy_ledger_immutable_trg'
+          AND NOT tgisinternal
+      ) THEN
+        CREATE TRIGGER autonomous_economy_ledger_immutable_trg
+        BEFORE UPDATE OR DELETE ON autonomous_economy_ledger
+        FOR EACH ROW EXECUTE FUNCTION reject_autonomous_economy_ledger_mutation();
+      END IF;
+    END;
+    $do$;
   `);
   return true;
 }
@@ -379,13 +418,61 @@ async function load(chat, firstName) {
   const again=await pool.query("SELECT state FROM autonomous_game_state WHERE chat_id=$1",[String(chat)]);
   return again.rows[0].state;
 }
+function ensureTransactionIds(state) {
+  state.transactions=Array.isArray(state.transactions)?state.transactions:[];
+  for(const tx of state.transactions){
+    if(!tx.id) tx.id=randomUUID();
+    if(typeof tx.ledgerPersisted!=="boolean") tx.ledgerPersisted=false;
+  }
+}
+async function persistEconomyLedger(client,chat,state) {
+  ensureTransactionIds(state);
+  state.meta=state.meta||{};
+  const backfill=!state.meta.economyLedgerBackfilled;
+  const pending=state.transactions.filter(tx=>backfill||tx.ledgerPersisted!==true);
+  if(pending.length){
+    const rows=pending.map(tx=>({
+      id:tx.id,kind:String(tx.kind||"unknown"),amount:money(tx.amount),
+      balance:money(tx.balance),description:String(tx.description||""),
+      time_ms:Math.max(0,Number(tx.time)||Date.now())
+    }));
+    await client.query(`
+      INSERT INTO autonomous_economy_ledger
+        (transaction_id,chat_id,kind,amount,balance_after,description,occurred_at)
+      SELECT x.id::uuid,$1,x.kind,x.amount,x.balance,x.description,
+        to_timestamp(x.time_ms::double precision/1000.0)
+      FROM jsonb_to_recordset($2::jsonb) AS x(
+        id text,kind text,amount bigint,balance bigint,description text,time_ms bigint
+      )
+      ON CONFLICT (transaction_id) DO NOTHING
+    `,[String(chat),JSON.stringify(rows)]);
+    for(const tx of pending) tx.ledgerPersisted=true;
+  }
+  state.meta.economyLedgerBackfilled=true;
+}
 async function save(chat,state) {
   const p=db(); if(!p) throw new Error("DATABASE_URL не настроен");
   const pool=await p;
-  await pool.query(
-    "UPDATE autonomous_game_state SET version=$2,state=$3::jsonb,updated_at=now() WHERE chat_id=$1",
-    [String(chat),VERSION,JSON.stringify(state)]
+  const client=await pool.connect();
+  try{
+    await client.query("BEGIN");
+    await client.query("SELECT chat_id FROM autonomous_game_state WHERE chat_id=$1 FOR UPDATE",[String(chat)]);
+    await persistEconomyLedger(client,chat,state);
+    await client.query(
+      "UPDATE autonomous_game_state SET version=$2,state=$3::jsonb,updated_at=now() WHERE chat_id=$1",
+      [String(chat),VERSION,JSON.stringify(state)]
+    );
+    await client.query("COMMIT");
+  }catch(e){await client.query("ROLLBACK").catch(()=>{});throw e;}
+  finally{client.release();}
+}
+async function claimProcessedCallback(client, chat, callbackId) {
+  if (!callbackId) return true;
+  const result = await client.query(
+    "INSERT INTO autonomous_processed_callbacks(chat_id,callback_id) VALUES($1,$2) ON CONFLICT DO NOTHING RETURNING callback_id",
+    [String(chat), String(callbackId)]
   );
+  return result.rowCount === 1;
 }
 async function withState(chat, firstName, mutate, callbackId) {
   const p=db(); if(!p) throw new Error("DATABASE_URL не настроен");
@@ -407,7 +494,12 @@ async function withState(chat, firstName, mutate, callbackId) {
       await client.query("ROLLBACK");
       return {state,result:{duplicate:true}};
     }
+    if(callbackId && !(await claimProcessedCallback(client, chat, callbackId))) {
+      await client.query("ROLLBACK");
+      return {state,result:{duplicate:true}};
+    }
     const result=await mutate(state);
+    await persistEconomyLedger(client,chat,state);
     await client.query("UPDATE autonomous_game_state SET version=$2,state=$3::jsonb,updated_at=now() WHERE chat_id=$1",[String(chat),VERSION,JSON.stringify(state)]);
     await client.query("COMMIT");
     return {state,result};
@@ -420,7 +512,7 @@ async function withState(chat, firstName, mutate, callbackId) {
 function addTx(state,kind,amount,description) {
   const delta=money(amount);
   state.player.balance+=delta;
-  state.transactions.unshift({time:Date.now(),kind,amount:delta,balance:state.player.balance,description,profit:kind==="sale" ? Number((String(description).match(/прибыль ([\d\s]+) ₽/)||[])[1]?.replace(/\s/g,"")||0) : 0});
+  state.transactions.unshift({id:randomUUID(),ledgerPersisted:false,time:Date.now(),kind,amount:delta,balance:state.player.balance,description,profit:kind==="sale" ? Number((String(description).match(/прибыль ([\d\s]+) ₽/)||[])[1]?.replace(/\s/g,"")||0) : 0});
   state.transactions=state.transactions.slice(0,80);
 }
 function scoreListing(car) {
@@ -883,7 +975,7 @@ function battleKeyboard(battle,chat) {
     [{text:"📦 Контейнеры",callback_data:"ag:containers"}]
   ]};
 }
-async function createContainerBattle(chat,name) {
+async function createContainerBattle(chat,name,callbackId) {
   const p=db(); if(!p) throw new Error("DATABASE_URL не настроен");
   const pool=await p;
   const client=await pool.connect();
@@ -895,12 +987,25 @@ async function createContainerBattle(chat,name) {
     const profile=await client.query("SELECT state FROM autonomous_game_state WHERE chat_id=$1 FOR UPDATE",[String(chat)]);
     if(!profile.rowCount){await client.query("ROLLBACK");return {ok:false,reason:"no_profile"};}
     const state=profile.rows[0].state;
+    state.processedCallbacks=Array.isArray(state.processedCallbacks)?state.processedCallbacks:[];
+    if(callbackId && state.processedCallbacks.includes(String(callbackId))){
+      await client.query("ROLLBACK");
+      return {ok:false,reason:"duplicate"};
+    }
+    if(callbackId && !(await claimProcessedCallback(client, chat, callbackId))){
+      await client.query("ROLLBACK");
+      return {ok:false,reason:"duplicate"};
+    }
     if(Number(state.player?.balance||0)<100000){await client.query("ROLLBACK");return {ok:false,reason:"money"};}
+    if(callbackId){
+      state.processedCallbacks.push(String(callbackId));
+      state.processedCallbacks=state.processedCallbacks.slice(-100);
+    }
     state.player.balance-=100000;
     state.transactions=Array.isArray(state.transactions)?state.transactions:[];
     state.transactions.unshift({time:Date.now(),kind:"container_battle_entry",amount:-100000,balance:state.player.balance,description:"Взнос в контейнерную битву",profit:0});
     state.transactions=state.transactions.slice(0,80);
-    if(callbackId){state.processedCallbacks.push(String(callbackId));state.processedCallbacks=state.processedCallbacks.slice(-80);}
+    await persistEconomyLedger(client,chat,state);
     await client.query("UPDATE autonomous_game_state SET state=$2::jsonb,updated_at=now() WHERE chat_id=$1",[String(chat),JSON.stringify(state)]);
     const r=await client.query("INSERT INTO autonomous_container_battles(status,owner_chat_id,entry_fee,players) VALUES('open',$1,100000,$2::jsonb) RETURNING id,status,owner_chat_id,entry_fee,players,results,created_at",[String(chat),JSON.stringify([{chatId:String(chat),name:String(name||"Перекуп")}])]);
     await client.query("COMMIT");return {ok:true,battle:r.rows[0]};
@@ -927,6 +1032,7 @@ async function joinContainerBattle(chat,name,battleId) {
     state.transactions=Array.isArray(state.transactions)?state.transactions:[];
     state.transactions.unshift({time:Date.now(),kind:"container_battle_entry",amount:-Number(battle.entry_fee),balance:state.player.balance,description:"Взнос в контейнерную битву #"+battle.id,profit:0});
     state.transactions=state.transactions.slice(0,80);
+    await persistEconomyLedger(client,chat,state);
     await client.query("UPDATE autonomous_game_state SET state=$2::jsonb,updated_at=now() WHERE chat_id=$1",[String(chat),JSON.stringify(state)]);
     players.push({chatId:String(chat),name:String(name||"Перекуп")});
     const upd=await client.query("UPDATE autonomous_container_battles SET players=$2::jsonb WHERE id=$1 RETURNING id,status,owner_chat_id,entry_fee,players,results,created_at",[battle.id,JSON.stringify(players)]);
@@ -957,6 +1063,7 @@ async function startContainerBattle(chat,battleId) {
       state.transactions=Array.isArray(state.transactions)?state.transactions:[];
       state.transactions.unshift({time:Date.now(),kind:"container_battle_prize",amount:result.reward,balance:state.player.balance,description:"Награда за "+result.rank+" место в битве #"+battle.id,profit:0});
       state.transactions=state.transactions.slice(0,80);
+      await persistEconomyLedger(client,result.chatId,state);
       await client.query("UPDATE autonomous_game_state SET state=$2::jsonb,updated_at=now() WHERE chat_id=$1",[String(result.chatId),JSON.stringify(state)]);
       paid+=result.reward;
     }
@@ -1000,17 +1107,15 @@ function streetDuelText(duel,chat){
   return ["🏁 РЕЗУЛЬТАТ ДУЭЛИ №"+duel.id,"","🚘 "+(duel.challenger_name||"Игрок 1")+": "+(duel.challenger_car?.model||"—")+" · "+(duel.challenger_power||0)+" ед.","🔢 Госномер: "+(duel.challenger_car?.plate||"не указан"),"🚘 "+(duel.opponent_name||"Игрок 2")+": "+(duel.opponent_car?.model||"—")+" · "+(duel.opponent_power||0)+" ед.","🔢 Госномер: "+(duel.opponent_car?.plate||"не указан"),"","🏆 Победитель: "+(r.winnerName||"Ничья"),"⚡ Разница мощности: "+(r.powerDifference||0)+" ед.","💰 Выплата: "+fmt(r.payout||0),"🏦 Комиссия: "+fmt(r.fee||0)].join("\n");
 }
 function streetDuelKeyboard(duel,chat,state){
-  const aiRow=(state?.garage||[]).length?[[{text:"🤖 Сразиться с ИИ · "+fmt(STREET_DUEL_STAKE),callback_data:"ag:duel_ai"}]]:[];
   if(duel?.status==="open")return {inline_keyboard:[
     ...(String(duel.challenger_chat_id)!==String(chat)?[[{text:"🏁 Принять вызов · "+fmt(duel.stake),callback_data:"ag:duel_join:"+duel.id}]]:[]),
     ...(String(duel.challenger_chat_id)===String(chat)?[[{text:"❌ Отменить вызов и вернуть ставку",callback_data:"ag:duel_cancel:"+duel.id}]]:[]),
-    ...aiRow,
     [{text:"🔄 Обновить",callback_data:"ag:duel"}],[{text:"⬅️ Главное меню",callback_data:"ag:home"}]
   ]};
   const rows=(state?.garage||[]).map(c=>[{text:"🚘 Вызвать: "+c.model+" · "+fmt(STREET_DUEL_STAKE),callback_data:"ag:duel_create:"+c.id}]);
-  return {inline_keyboard:[...aiRow,...rows,[{text:"🔄 Обновить",callback_data:"ag:duel"}],[{text:"⬅️ Главное меню",callback_data:"ag:home"}]]};
+  return {inline_keyboard:[...rows,[{text:"🔄 Обновить",callback_data:"ag:duel"}],[{text:"⬅️ Главное меню",callback_data:"ag:home"}]]};
 }
-async function createStreetDuel(chat,name,carId){
+async function createStreetDuel(chat,name,carId,callbackId){
   const p=db();if(!p)throw new Error("DATABASE_URL не настроен");const pool=await p;const client=await pool.connect();
   try{
     await client.query("BEGIN");await client.query("SELECT pg_advisory_xact_lock(834721906)");
@@ -1019,13 +1124,27 @@ async function createStreetDuel(chat,name,carId){
     const pr=await client.query("SELECT state FROM autonomous_game_state WHERE chat_id=$1 FOR UPDATE",[String(chat)]);
     if(!pr.rowCount){await client.query("ROLLBACK");return {ok:false,reason:"no_profile"};}
     const state=pr.rows[0].state;ensureVehiclePlates(state);
+    state.processedCallbacks=Array.isArray(state.processedCallbacks)?state.processedCallbacks:[];
+    if(callbackId&&state.processedCallbacks.includes(String(callbackId))){
+      await client.query("ROLLBACK");
+      return {ok:false,reason:"duplicate"};
+    }
+    if(callbackId && !(await claimProcessedCallback(client, chat, callbackId))){
+      await client.query("ROLLBACK");
+      return {ok:false,reason:"duplicate"};
+    }
     const car=(state.garage||[]).find(x=>String(x.id)===String(carId));
     if(!car){await client.query("ROLLBACK");return {ok:false,reason:"car"};}
     if(Number(state.player?.balance||0)<STREET_DUEL_STAKE){await client.query("ROLLBACK");return {ok:false,reason:"money"};}
     const power=streetDuelPower(car);
+    if(callbackId){
+      state.processedCallbacks.push(String(callbackId));
+      state.processedCallbacks=state.processedCallbacks.slice(-100);
+    }
     addTx(state,"street_duel_entry",-STREET_DUEL_STAKE,"Взнос в уличную дуэль");
     const r=await client.query("INSERT INTO autonomous_street_duels(status,challenger_chat_id,challenger_name,challenger_car,challenger_power,stake) VALUES('open',$1,$2,$3::jsonb,$4,$5) RETURNING *",[String(chat),String(name||"Перекуп"),JSON.stringify(car),power,STREET_DUEL_STAKE]);
     state.transactions[0].description="Взнос в уличную дуэль №"+r.rows[0].id;
+    await persistEconomyLedger(client,chat,state);
     await client.query("UPDATE autonomous_game_state SET state=$2::jsonb,updated_at=now() WHERE chat_id=$1",[String(chat),JSON.stringify(state)]);
     await client.query("COMMIT");return {ok:true,duel:r.rows[0]};
   }catch(e){await client.query("ROLLBACK").catch(()=>{});throw e;}finally{client.release();}
@@ -1043,6 +1162,7 @@ async function cancelStreetDuel(chat,duelId){
     if(!pr.rowCount){await client.query("ROLLBACK");return {ok:false,reason:"no_profile"};}
     const state=pr.rows[0].state;
     addTx(state,"street_duel_refund",Number(duel.stake),"Возврат ставки за отмену дуэли №"+duel.id);
+    await persistEconomyLedger(client,chat,state);
     await client.query("UPDATE autonomous_game_state SET state=$2::jsonb,updated_at=now() WHERE chat_id=$1",[String(chat),JSON.stringify(state)]);
     const upd=await client.query("UPDATE autonomous_street_duels SET status='cancelled',result=$2::jsonb,finished_at=now() WHERE id=$1 RETURNING *",[duel.id,JSON.stringify({winnerName:"Вызов отменён",payout:Number(duel.stake),fee:0})]);
     await client.query("COMMIT");return {ok:true,duel:upd.rows[0]};
@@ -1081,7 +1201,9 @@ async function joinStreetDuel(chat,name,duelId){
     }else{
       winnerName=String(name||"Соперник");addTx(opponent,"street_duel_prize",payout,"Победа в уличной дуэли №"+duel.id);
     }
+    await persistEconomyLedger(client,duel.challenger_chat_id,challenger);
     await client.query("UPDATE autonomous_game_state SET state=$2::jsonb,updated_at=now() WHERE chat_id=$1",[String(duel.challenger_chat_id),JSON.stringify(challenger)]);
+    await persistEconomyLedger(client,chat,opponent);
     await client.query("UPDATE autonomous_game_state SET state=$2::jsonb,updated_at=now() WHERE chat_id=$1",[String(chat),JSON.stringify(opponent)]);
     const result={winnerChat,winnerName,payout,fee,powerDifference:Math.abs(Number(duel.challenger_power||0)-Number(opponentPower||0)),challengerRoll:Math.round(challengerRoll),opponentRoll:Math.round(opponentRoll),draw};
     const upd=await client.query("UPDATE autonomous_street_duels SET status='finished',opponent_chat_id=$2,opponent_name=$3,opponent_car=$4::jsonb,opponent_power=$5,result=$6::jsonb,finished_at=now() WHERE id=$1 RETURNING *",[duel.id,String(chat),String(name||"Соперник"),JSON.stringify(opponentCar),opponentPower,JSON.stringify(result)]);
@@ -1098,8 +1220,13 @@ async function createStreetDuelAI(chat,name,callbackId){
     ensureVehiclePlates(state);
     state.processedCallbacks=Array.isArray(state.processedCallbacks)?state.processedCallbacks:[];
     if(callbackId&&state.processedCallbacks.includes(String(callbackId))){await client.query("ROLLBACK");return {ok:false,reason:"duplicate"};}
+    if(callbackId && !(await claimProcessedCallback(client, chat, callbackId))){await client.query("ROLLBACK");return {ok:false,reason:"duplicate"};}
     if(!Array.isArray(state.garage)||!state.garage.length){await client.query("ROLLBACK");return {ok:false,reason:"no_car"};}
     if(Number(state.player?.balance||0)<STREET_DUEL_STAKE){await client.query("ROLLBACK");return {ok:false,reason:"money"};}
+    if(callbackId){
+      state.processedCallbacks.push(String(callbackId));
+      state.processedCallbacks=state.processedCallbacks.slice(-100);
+    }
     const playerCar=state.garage.slice().sort((a,b)=>streetDuelPower(b)-streetDuelPower(a))[0];
     const playerPower=streetDuelPower(playerCar);
     const eligibleAiCars=CATALOG.filter(car=>car.id!==playerCar.catalogId);
@@ -1130,6 +1257,7 @@ async function createStreetDuelAI(chat,name,callbackId){
       "INSERT INTO autonomous_street_duels(status,challenger_chat_id,challenger_name,challenger_car,challenger_power,opponent_name,opponent_car,opponent_power,stake,result,finished_at) VALUES('finished',$1,$2,$3::jsonb,$4,'AUTOFLIP ИИ',$5::jsonb,$6,$7,$8::jsonb,now()) RETURNING *",
       [String(chat),String(name||"Перекуп"),JSON.stringify(playerCar),playerPower,JSON.stringify(opponentCar),opponentPower,STREET_DUEL_STAKE,JSON.stringify(result)]
     );
+    await persistEconomyLedger(client,chat,state);
     await client.query("UPDATE autonomous_game_state SET state=$2::jsonb,updated_at=now() WHERE chat_id=$1",[String(chat),JSON.stringify(state)]);
     await client.query("COMMIT");
     return {ok:true,duel:duel.rows[0],result};
@@ -1463,15 +1591,14 @@ async function handleCallback(chat,data,firstName,sendFn,answerFn,callbackId) {
     await screen(sendFn,chat,state,streetDuelText(shown,chat),streetDuelKeyboard(shown,chat,state));return true;
   }
   if(action==="duel_ai"){
-    const result=await createStreetDuelAI(chat,firstName,callbackId),state=await load(chat,firstName);
-    const openDuel=await getOpenStreetDuel();
-    const messages={no_profile:"Сначала открой игру командой /start.",no_car:"В гараже нет автомобиля для гонки. Сначала купи машину.",money:"Для дуэли с ИИ нужно 50 000 ₽.",duplicate:"Эта дуэль уже обработана. Открой раздел дуэлей ещё раз."};
-    const text=result.ok?streetDuelText(result.duel,chat):"⚠️ "+(messages[result.reason]||"Не удалось начать дуэль с ИИ.");
-    await screen(sendFn,chat,state,text,streetDuelKeyboard(openDuel,chat,state));return true;
+    await sendFn(chat,"⚠️ Дуэли с ИИ отключены. В AUTOFLIP соперниками могут быть только реальные игроки.",{
+      reply_markup:{inline_keyboard:[[{text:"🏁 Открыть уличные дуэли",callback_data:"ag:duel"}],[{text:"⬅️ Главное меню",callback_data:"ag:home"}]]}
+    });
+    return true;
   }
   if(action==="duel_create"){
-    const result=await createStreetDuel(chat,firstName,id),duel=result.duel||await getOpenStreetDuel(),state=await load(chat,firstName);
-    const messages={exists:"Уже есть открытый вызов. Дождись его завершения.",no_profile:"Сначала открой игру командой /start.",car:"Эта машина уже не в гараже.",money:"Для вызова нужно 50 000 ₽."};
+    const result=await createStreetDuel(chat,firstName,id,callbackId),duel=result.duel||await getOpenStreetDuel(),state=await load(chat,firstName);
+    const messages={exists:"Уже есть открытый вызов. Дождись его завершения.",duplicate:"Этот вызов уже был обработан. Открой раздел дуэлей ещё раз.",no_profile:"Сначала открой игру командой /start.",car:"Эта машина уже не в гараже.",money:"Для вызова нужно 50 000 ₽."};
     await sendFn(chat,result.ok?"🏁 Вызов создан! 50 000 ₽ списаны и зарезервированы.":"⚠️ "+(messages[result.reason]||"Не удалось создать вызов."),{reply_markup:streetDuelKeyboard(duel,chat,state)});return true;
   }
   if(action==="duel_cancel"){
@@ -1492,7 +1619,7 @@ async function handleCallback(chat,data,firstName,sendFn,answerFn,callbackId) {
     return true;
   }
   if(action==="battle_create"){
-    const result=await createContainerBattle(chat,firstName);
+    const result=await createContainerBattle(chat,firstName,callbackId);
     const battle=result.battle||await getContainerBattle();
     await sendFn(chat,result.ok?"✅ Комната создана. Приглашай других игроков!": "⚠️ Уже есть открытая комната. Можно присоединиться к ней.",{reply_markup:battleKeyboard(battle,chat)});
     return true;
