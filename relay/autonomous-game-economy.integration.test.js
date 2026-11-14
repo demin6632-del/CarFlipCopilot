@@ -24,12 +24,41 @@ async function run() {
   const opponentChat = "economy-opponent-" + suffix;
   const ledgerChat = "economy-ledger-" + suffix;
   const genericChat = "economy-generic-" + suffix;
+  const buyChat = "economy-buy-" + suffix;
   const send = async () => true;
   const answer = async () => true;
 
   try {
     await game.init();
     await game.init(); // schema and append-only trigger creation must be idempotent
+
+    // A repeated purchase callback must transfer the car and debit the buyer only once.
+    const buyInitial = await game.load(buyChat, "Vehicle Buyer");
+    const buyCandidate = buyInitial.market
+      .filter(car => Number(car.buyPrice) <= Number(buyInitial.player.balance))
+      .sort((a, b) => Number(a.buyPrice) - Number(b.buyPrice))[0];
+    assert.ok(buyCandidate, "test profile must have at least one affordable vehicle listing");
+    const buyInitialBalance = buyInitial.player.balance;
+    const buyCallback = "vehicle-buy-" + suffix;
+    await Promise.all([
+      game.handleCallback(
+        buyChat, "ag:buy:" + buyCandidate.id, "Vehicle Buyer", send, answer, buyCallback
+      ),
+      game.handleCallback(
+        buyChat, "ag:buy:" + buyCandidate.id, "Vehicle Buyer", send, answer, buyCallback
+      )
+    ]);
+    const boughtState = await game.load(buyChat, "Vehicle Buyer");
+    assert.equal(boughtState.player.balance, buyInitialBalance - buyCandidate.buyPrice);
+    assert.equal(boughtState.garage.filter(car => String(car.id) === String(buyCandidate.id)).length, 1);
+    assert.equal(boughtState.transactions.filter(tx => tx.kind === "buy").length, 1);
+    ledgerRows = await pool.query(
+      "SELECT kind,amount FROM autonomous_economy_ledger WHERE chat_id=$1",
+      [buyChat]
+    );
+    assert.equal(ledgerRows.rowCount, 1);
+    assert.equal(ledgerRows.rows[0].kind, "buy");
+    assert.equal(Number(ledgerRows.rows[0].amount), -Number(buyCandidate.buyPrice));
 
     const battleInitial = await game.load(battleChat, "Battle Tester");
     const battleBalance = battleInitial.player.balance;
