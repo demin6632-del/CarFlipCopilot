@@ -153,7 +153,10 @@ async function main() {
 
     const plateRecoveryState = {
       meta: { vehiclePlatesIssued: [] },
-      garage: [{ id: "car-a", vehicleUid: uidA, plate: "" }],
+      garage: [
+        { id: "car-a", vehicleUid: uidA, plate: "" },
+        { id: "car-b", vehicleUid: uidB, plate: "BB0001" }
+      ],
       market: []
     };
     await syncVehiclePlateRegistry(client, "integration-owner-b", plateRecoveryState, () => "SHOULDNOT0001");
