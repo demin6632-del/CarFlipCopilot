@@ -284,87 +284,31 @@ async function run() {
       );
     }
 
-    const aiInitial = await game.load(aiChat, "AI Tester");
-    const car = { ...aiInitial.market[0], status: "owned" };
-    aiInitial.market = aiInitial.market.filter(x => x.id !== car.id);
-    aiInitial.garage.push(car);
-    await game.save(aiChat, aiInitial);
-    const aiBalance = aiInitial.player.balance;
-    const aiCallback = "ai-duel-callback-" + suffix;
-
-    await game.handleCallback(
-      aiChat, "ag:duel_ai", "AI Tester", send, answer, aiCallback
+    // AI street duels are disabled: the stale callback must not touch profile state or money.
+    const aiMessages = [];
+    const aiSend = async (chat, message, options) => {
+      aiMessages.push({ chat, message, options });
+      return true;
+    };
+    const aiHandled = await game.handleCallback(
+      aiChat, "ag:duel_ai", "AI Tester", aiSend, answer, "ai-duel-disabled-" + suffix
     );
-    let aiState = await game.load(aiChat, "AI Tester");
-    assert.ok(aiState.processedCallbacks.includes(aiCallback));
-    assert.equal(
-      aiState.transactions.filter(x =>
-        x.kind === "street_duel_entry" && x.description === "Взнос в дуэль с ИИ"
-      ).length,
-      1
+    assert.equal(aiHandled, true);
+    assert.match(aiMessages[0]?.message || "", /Дуэли с ИИ отключены/);
+    assert.deepEqual(
+      aiMessages[0]?.options?.reply_markup?.inline_keyboard?.map(row => row[0]?.callback_data),
+      ["ag:duel", "ag:home"]
     );
-    const balanceAfterFirstDuel = aiState.player.balance;
-
-    await game.handleCallback(
-      aiChat, "ag:duel_ai", "AI Tester", send, answer, aiCallback
+    const aiProfile = await pool.query(
+      "SELECT chat_id FROM autonomous_game_state WHERE chat_id=$1",
+      [aiChat]
     );
-    aiState = await game.load(aiChat, "AI Tester");
-    assert.equal(aiState.player.balance, balanceAfterFirstDuel);
-    assert.equal(
-      aiState.transactions.filter(x =>
-        x.kind === "street_duel_entry" && x.description === "Взнос в дуэль с ИИ"
-      ).length,
-      1
-    );
-
-    const duelCount = await pool.query(
+    assert.equal(aiProfile.rowCount, 0);
+    const aiDuelCount = await pool.query(
       "SELECT COUNT(*)::integer AS count FROM autonomous_street_duels WHERE challenger_chat_id=$1",
       [aiChat]
     );
-    assert.equal(duelCount.rows[0].count, 1);
-    assert.ok([aiBalance - 50000, aiBalance, aiBalance + 45000].includes(balanceAfterFirstDuel));
-
-    // Two concurrent deliveries of the same callback must produce exactly one duel and one stake.
-    const aiRaceCallback = "ai-duel-race-" + suffix;
-    await Promise.all([
-      game.handleCallback(aiChat, "ag:duel_ai", "AI Tester", send, answer, aiRaceCallback),
-      game.handleCallback(aiChat, "ag:duel_ai", "AI Tester", send, answer, aiRaceCallback)
-    ]);
-    aiState = await game.load(aiChat, "AI Tester");
-    assert.equal(
-      aiState.transactions.filter(x =>
-        x.kind === "street_duel_entry" && x.description === "Взнос в дуэль с ИИ"
-      ).length,
-      2
-    );
-    const balanceAfterRace = aiState.player.balance;
-    const raceDuelCount = await pool.query(
-      "SELECT COUNT(*)::integer AS count FROM autonomous_street_duels WHERE challenger_chat_id=$1",
-      [aiChat]
-    );
-    assert.equal(raceDuelCount.rows[0].count, 2);
-    ledgerRows = await pool.query(
-      "SELECT kind,amount FROM autonomous_economy_ledger WHERE chat_id=$1",
-      [aiChat]
-    );
-    assert.equal(
-      ledgerRows.rowCount,
-      aiState.transactions.filter(x =>
-        x.kind === "street_duel_entry" || x.kind === "street_duel_refund" || x.kind === "street_duel_prize"
-      ).length
-    );
-    assert.ok([balanceAfterFirstDuel - 50000, balanceAfterFirstDuel, balanceAfterFirstDuel + 45000].includes(balanceAfterRace));
-
-    ledgerRows = await pool.query(
-      "SELECT kind,amount FROM autonomous_economy_ledger WHERE chat_id=$1",
-      [aiChat]
-    );
-    assert.equal(
-      ledgerRows.rowCount,
-      aiState.transactions.filter(x =>
-        x.kind === "street_duel_entry" || x.kind === "street_duel_refund" || x.kind === "street_duel_prize"
-      ).length
-    );
+    assert.equal(aiDuelCount.rows[0].count, 0);
 
     // Generic state-mutating economy callbacks must also be idempotent under concurrent delivery.
     const genericInitial = await game.load(genericChat, "Generic Callback Tester");
