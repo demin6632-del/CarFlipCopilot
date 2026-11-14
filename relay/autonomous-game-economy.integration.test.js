@@ -292,6 +292,38 @@ async function run() {
     );
     assert.equal(duelCount.rows[0].count, 1);
     assert.ok([aiBalance - 50000, aiBalance, aiBalance + 45000].includes(balanceAfterFirstDuel));
+
+    // Two concurrent deliveries of the same callback must produce exactly one duel and one stake.
+    const aiRaceCallback = "ai-duel-race-" + suffix;
+    await Promise.all([
+      game.handleCallback(aiChat, "ag:duel_ai", "AI Tester", send, answer, aiRaceCallback),
+      game.handleCallback(aiChat, "ag:duel_ai", "AI Tester", send, answer, aiRaceCallback)
+    ]);
+    aiState = await game.load(aiChat, "AI Tester");
+    assert.equal(
+      aiState.transactions.filter(x =>
+        x.kind === "street_duel_entry" && x.description === "Взнос в дуэль с ИИ"
+      ).length,
+      2
+    );
+    const balanceAfterRace = aiState.player.balance;
+    const raceDuelCount = await pool.query(
+      "SELECT COUNT(*)::integer AS count FROM autonomous_street_duels WHERE challenger_chat_id=$1",
+      [aiChat]
+    );
+    assert.equal(raceDuelCount.rows[0].count, 2);
+    ledgerRows = await pool.query(
+      "SELECT kind,amount FROM autonomous_economy_ledger WHERE chat_id=$1",
+      [aiChat]
+    );
+    assert.equal(
+      ledgerRows.rowCount,
+      aiState.transactions.filter(x =>
+        x.kind === "street_duel_entry" || x.kind === "street_duel_refund" || x.kind === "street_duel_prize"
+      ).length
+    );
+    assert.ok([balanceAfterFirstDuel - 50000, balanceAfterFirstDuel, balanceAfterFirstDuel + 45000].includes(balanceAfterRace));
+
     ledgerRows = await pool.query(
       "SELECT kind,amount FROM autonomous_economy_ledger WHERE chat_id=$1",
       [aiChat]
