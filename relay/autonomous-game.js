@@ -1237,7 +1237,7 @@ async function streetDuelChampionshipText(chat){
         COALESCE((result->>'draw')::boolean,false) AS is_draw,
         COALESCE((result->>'payout')::numeric,0) AS payout_amount
       FROM autonomous_street_duels
-      WHERE status='finished' AND finished_at>=date_trunc('month',now())
+      WHERE status='finished'\n        AND finished_at >= (date_trunc('month',now() AT TIME ZONE 'Europe/Moscow') AT TIME ZONE 'Europe/Moscow')\n        AND finished_at < ((date_trunc('month',now() AT TIME ZONE 'Europe/Moscow') + interval '1 month') AT TIME ZONE 'Europe/Moscow')
     ),
     participants AS (
       SELECT challenger_chat_id AS chat_id,challenger_name AS name,is_draw,
