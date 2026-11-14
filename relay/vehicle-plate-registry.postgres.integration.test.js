@@ -57,6 +57,39 @@ async function testTransactionalLoad(pool) {
     const registered = new Set(registryRows.rows.map(row => String(row.vehicle_uid)));
     assert.ok(active.every(vehicle => registered.has(vehicle.vehicleUid)));
     console.log("PostgreSQL transactional load integration: OK");
+
+    // Two first-time requests for the same player must converge on one
+    // profile and one stable set of registered vehicles.
+    const [concurrentLoadA, concurrentLoadB] = await Promise.all([
+      game.load("concurrent-new-player", "Concurrent"),
+      game.load("concurrent-new-player", "Concurrent")
+    ]);
+    assert.deepEqual(
+      concurrentLoadA.garage.map(vehicle => [vehicle.vehicleUid, vehicle.plate]),
+      concurrentLoadB.garage.map(vehicle => [vehicle.vehicleUid, vehicle.plate]),
+      "concurrent first loads return the same stable garage"
+    );
+    assert.deepEqual(
+      concurrentLoadA.market.map(vehicle => [vehicle.vehicleUid, vehicle.plate]),
+      concurrentLoadB.market.map(vehicle => [vehicle.vehicleUid, vehicle.plate]),
+      "concurrent first loads return the same stable market"
+    );
+    const concurrentProfile = await pool.query(
+      "SELECT COUNT(*)::int AS profiles FROM autonomous_game_state WHERE chat_id=$1",
+      ["concurrent-new-player"]
+    );
+    assert.equal(concurrentProfile.rows[0].profiles, 1, "only one profile is created");
+    const concurrentRegistry = await pool.query(
+      "SELECT COUNT(*)::int AS active_vehicles, COUNT(DISTINCT plate_key)::int AS unique_plates " +
+      "FROM vehicle_plate_registry WHERE owner_chat_id=$1 AND retired_at IS NULL",
+      ["concurrent-new-player"]
+    );
+    assert.equal(
+      concurrentRegistry.rows[0].active_vehicles,
+      concurrentRegistry.rows[0].unique_plates,
+      "concurrent profile creation cannot duplicate plate reservations"
+    );
+    console.log("PostgreSQL concurrent first-load integration: OK");
   } finally {
     pg.Pool = OriginalPool;
     if (gamePool) await gamePool.end();
