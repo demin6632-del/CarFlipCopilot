@@ -28,6 +28,41 @@ test("market listings have valid original game data", () => {
   }
 });
 
+test("vehicle plates stay unchanged when a saved state is normalized", () => {
+  const s = game.newState("plate-stability", "Tester");
+  const before = [...s.garage, ...s.market].map(car => [car.id, car.plate]);
+  game.ensureVehiclePlates(s);
+  const afterFirst = [...s.garage, ...s.market].map(car => [car.id, car.plate]);
+  game.ensureVehiclePlates(s);
+  const afterSecond = [...s.garage, ...s.market].map(car => [car.id, car.plate]);
+  assert.deepEqual(afterFirst, before);
+  assert.deepEqual(afterSecond, before);
+});
+
+test("duplicate active vehicle plates are repaired without changing the first valid owner", () => {
+  const s = game.newState("plate-duplicate", "Tester");
+  const duplicate = "А123ВС 77";
+  s.market[0].plate = duplicate;
+  s.market[1].plate = duplicate;
+  s.meta.vehiclePlatesIssued.push(duplicate);
+  game.ensureVehiclePlates(s);
+  assert.equal(s.market[0].plate, duplicate);
+  assert.notEqual(s.market[1].plate, duplicate);
+  assert.equal(new Set(s.market.map(car => car.plate)).size, s.market.length);
+  const repaired = s.market.map(car => car.plate);
+  game.ensureVehiclePlates(s);
+  assert.deepEqual(s.market.map(car => car.plate), repaired);
+});
+
+test("retired vehicle plates are never issued again to a new vehicle", () => {
+  const s = game.newState("plate-retired", "Tester");
+  const retired = "А123ВС 77";
+  s.meta.vehiclePlatesIssued.push(retired);
+  for (let i = 0; i < 20; i++) {
+    assert.notEqual(game.createUniqueVehiclePlate(s), retired);
+  }
+});
+
 test("ledger changes balance exactly once per transaction", () => {
   const s = game.newState("test-player-3", "Tester");
   const start = s.player.balance;
