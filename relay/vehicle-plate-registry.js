@@ -58,14 +58,14 @@ async function syncVehiclePlateRegistry(client, ownerChatId, state, createCandid
 
   const active = activeVehicles(state);
   const activePlateKeys = new Set(active.map(vehicle => normalizePlate(vehicle.plate)).filter(Boolean));
-  const historical = new Set(state.meta.vehiclePlatesIssued.map(normalizePlate).filter(key => key && !activePlateKeys.has(key)));
+  const historicalValues = new Set(state.meta.vehiclePlatesIssued.map(value => String(value || "").trim()).filter(value => value && !activePlateKeys.has(normalizePlate(value))));
   const localSeen = new Set();
   let assigned = 0;
   let regenerated = 0;
 
   // Import historical values as permanently retired reservations. Do not let a
   // legacy history entry overwrite an already-active registry record.
-  for (const oldPlate of historical) {
+  for (const oldPlate of historicalValues) {
     await insertHistoricalPlate(client, oldPlate);
   }
 
@@ -130,11 +130,11 @@ async function syncVehiclePlateRegistry(client, ownerChatId, state, createCandid
     }
     vehicle.plate = plate;
     localSeen.add(normalizePlate(plate));
-    historical.add(normalizePlate(plate));
+    historicalValues.add(plate);
     assigned++;
   }
 
-  state.meta.vehiclePlatesIssued = [...historical];
+  state.meta.vehiclePlatesIssued = [...historicalValues];
   return { assigned, regenerated };
 }
 
