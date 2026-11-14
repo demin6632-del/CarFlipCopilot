@@ -34,15 +34,6 @@ function activeVehicles(state) {
   ];
 }
 
-async function insertHistoricalPlate(client, plate) {
-  const key = normalizePlate(plate);
-  if (!key) return;
-  await client.query(
-    "INSERT INTO vehicle_plate_registry(plate, source, retired_at) " +
-    "VALUES($1, 'legacy-history', now()) ON CONFLICT DO NOTHING",
-    [String(plate).trim()]
-  );
-}
 
 /**
  * Reserve or recover globally unique plates for every vehicle in one player's
@@ -65,10 +56,15 @@ async function syncVehiclePlateRegistry(client, ownerChatId, state, createCandid
   let assigned = 0;
   let regenerated = 0;
 
-  // Import historical values as permanently retired reservations. Do not let a
-  // legacy history entry overwrite an already-active registry record.
-  for (const oldPlate of historicalValues) {
-    await insertHistoricalPlate(client, oldPlate);
+  // Import historical values in one query instead of one round-trip per
+  // plate. Do not let a legacy history entry overwrite an active registry row.
+  if (historicalValues.size) {
+    await client.query(
+      "INSERT INTO vehicle_plate_registry(plate, source, retired_at) " +
+      "SELECT value, 'legacy-history', now() FROM unnest($1::text[]) AS value " +
+      "ON CONFLICT DO NOTHING",
+      [[...historicalValues]]
+    );
   }
 
   for (const vehicle of active) {
