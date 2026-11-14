@@ -24,6 +24,12 @@ class FakeTransactionClient {
       const row = this.byUid.get(String(params[0]));
       return { rowCount: row ? 1 : 0, rows: row ? [row] : [] };
     }
+    if (sql.includes("UPDATE vehicle_plate_registry") && sql.includes("RETURNING plate")) {
+      const row = this.byUid.get(String(params[0]));
+      if (!row || row.owner_chat_id !== String(params[1]) || row.retired_at) return { rowCount: 0, rows: [] };
+      row.owner_chat_id = String(params[2]);
+      return { rowCount: 1, rows: [{ plate: row.plate }] };
+    }
     if (sql.includes("UPDATE vehicle_plate_registry")) {
       const row = this.byUid.get(String(params[0]));
       if (row) row.owner_chat_id = String(params[1]);
@@ -87,6 +93,25 @@ async function test(name, fn) {
     assert.equal(state.garage[0].plate, "В456ОР 77");
     assert.equal(result.regenerated, 1);
     assert.equal(client.byPlate.get("А123ВС77").vehicle_uid, "00000000-0000-5000-8000-000000000001");
+  });
+
+  await test("ownership transfer requires the current owner and preserves plate", async () => {
+    const client = new FakeTransactionClient();
+    const state = { meta: { vehiclePlatesIssued: [] }, garage: [{ id: "transfer-car", plate: "А123ВС 77" }], market: [] };
+    await registry.syncVehiclePlateRegistry(client, "old-owner", state, () => "В456ОР 77");
+    const uid = state.garage[0].vehicleUid;
+    const transfer = await registry.transferVehicleOwner(client, uid, "old-owner", "new-owner");
+    assert.equal(transfer.plate, "А123ВС 77");
+    assert.equal(client.byUid.get(uid).owner_chat_id, "new-owner");
+    await assert.rejects(() => registry.transferVehicleOwner(client, uid, "old-owner", "third-owner"));
+  });
+
+  await test("reconciliation cannot silently steal a vehicle from another owner", async () => {
+    const client = new FakeTransactionClient();
+    client.byPlate.set("А123ВС77", { plate: "А123ВС 77", vehicle_uid: "00000000-0000-5000-8000-000000000001", owner_chat_id: "owner-a", retired_at: null });
+    client.byUid.set("00000000-0000-5000-8000-000000000001", client.byPlate.get("А123ВС77"));
+    const state = { meta: { vehiclePlatesIssued: [] }, garage: [{ id: "copied-car", vehicleUid: "00000000-0000-5000-8000-000000000001", plate: "А123ВС 77" }], market: [] };
+    await assert.rejects(() => registry.syncVehiclePlateRegistry(client, "owner-b", state, () => "В456ОР 77"), /ownership conflict/);
   });
 
   await test("duplicate plates inside one player state are separated", async () => {
