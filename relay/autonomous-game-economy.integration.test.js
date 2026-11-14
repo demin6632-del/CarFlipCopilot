@@ -19,6 +19,9 @@ async function run() {
   const battleGuestChat = "economy-battle-guest-" + suffix;
   const aiChat = "economy-ai-" + suffix;
   const streetChat = "economy-street-" + suffix;
+  const cancelChat = "economy-cancel-" + suffix;
+  const challengeChat = "economy-challenger-" + suffix;
+  const opponentChat = "economy-opponent-" + suffix;
   const ledgerChat = "economy-ledger-" + suffix;
   const send = async () => true;
   const answer = async () => true;
@@ -158,6 +161,98 @@ async function run() {
     assert.equal(ledgerRows.rows[0].kind, "street_duel_entry");
     assert.equal(Number(ledgerRows.rows[0].amount), -50000);
 
+    const cancelInitial = await game.load(cancelChat, "Cancel Tester");
+    const cancelCar = { ...cancelInitial.market[0], status: "owned" };
+    cancelInitial.market = cancelInitial.market.filter(x => x.id !== cancelCar.id);
+    cancelInitial.garage.push(cancelCar);
+    await game.save(cancelChat, cancelInitial);
+    const cancelBalance = cancelInitial.player.balance;
+    await game.handleCallback(
+      cancelChat, "ag:duel_create:" + cancelCar.id, "Cancel Tester", send, answer,
+      "cancel-create-" + suffix
+    );
+    const cancelDuel = await pool.query(
+      "SELECT id FROM autonomous_street_duels WHERE challenger_chat_id=$1 AND status='open'",
+      [cancelChat]
+    );
+    assert.equal(cancelDuel.rowCount, 1);
+    const cancelCallback = "cancel-duel-" + suffix;
+    await game.handleCallback(
+      cancelChat, "ag:duel_cancel:" + cancelDuel.rows[0].id, "Cancel Tester", send, answer,
+      cancelCallback
+    );
+    let cancelState = await game.load(cancelChat, "Cancel Tester");
+    assert.equal(cancelState.player.balance, cancelBalance);
+    let cancelLedger = await pool.query(
+      "SELECT kind,amount FROM autonomous_economy_ledger WHERE chat_id=$1 ORDER BY occurred_at",
+      [cancelChat]
+    );
+    assert.equal(cancelLedger.rowCount, 2);
+    assert.deepEqual(cancelLedger.rows.map(x => x.kind).sort(), ["street_duel_entry", "street_duel_refund"]);
+    await game.handleCallback(
+      cancelChat, "ag:duel_cancel:" + cancelDuel.rows[0].id, "Cancel Tester", send, answer,
+      cancelCallback
+    );
+    cancelState = await game.load(cancelChat, "Cancel Tester");
+    assert.equal(cancelState.player.balance, cancelBalance);
+    cancelLedger = await pool.query(
+      "SELECT transaction_id FROM autonomous_economy_ledger WHERE chat_id=$1",
+      [cancelChat]
+    );
+    assert.equal(cancelLedger.rowCount, 2);
+
+    const challengerInitial = await game.load(challengeChat, "Challenger");
+    const challengerCar = { ...challengerInitial.market[0], status: "owned" };
+    challengerInitial.market = challengerInitial.market.filter(x => x.id !== challengerCar.id);
+    challengerInitial.garage.push(challengerCar);
+    await game.save(challengeChat, challengerInitial);
+    const opponentInitial = await game.load(opponentChat, "Opponent");
+    const opponentCar = { ...opponentInitial.market[0], status: "owned" };
+    opponentInitial.market = opponentInitial.market.filter(x => x.id !== opponentCar.id);
+    opponentInitial.garage.push(opponentCar);
+    await game.save(opponentChat, opponentInitial);
+    const challengerBalance = challengerInitial.player.balance;
+    const opponentBalance = opponentInitial.player.balance;
+    await game.handleCallback(
+      challengeChat, "ag:duel_create:" + challengerCar.id, "Challenger", send, answer,
+      "challenge-create-" + suffix
+    );
+    const openStreet = await pool.query(
+      "SELECT id FROM autonomous_street_duels WHERE challenger_chat_id=$1 AND status='open'",
+      [challengeChat]
+    );
+    assert.equal(openStreet.rowCount, 1);
+    await game.handleCallback(
+      opponentChat, "ag:duel_join:" + openStreet.rows[0].id, "Opponent", send, answer,
+      "challenge-join-" + suffix
+    );
+    const settled = await pool.query(
+      "SELECT status,result FROM autonomous_street_duels WHERE id=$1",
+      [openStreet.rows[0].id]
+    );
+    assert.equal(settled.rows[0].status, "finished");
+    const result = settled.rows[0].result;
+    const expectedChallenger = result.draw ? challengerBalance :
+      String(result.winnerChat) === challengeChat ? challengerBalance + 45000 : challengerBalance - 50000;
+    const expectedOpponent = result.draw ? opponentBalance :
+      String(result.winnerChat) === opponentChat ? opponentBalance + 45000 : opponentBalance - 50000;
+    const challengerState = await game.load(challengeChat, "Challenger");
+    const opponentState = await game.load(opponentChat, "Opponent");
+    assert.equal(challengerState.player.balance, expectedChallenger);
+    assert.equal(opponentState.player.balance, expectedOpponent);
+    for (const [chatId, state] of [[challengeChat, challengerState], [opponentChat, opponentState]]) {
+      const rows = await pool.query(
+        "SELECT transaction_id FROM autonomous_economy_ledger WHERE chat_id=$1",
+        [chatId]
+      );
+      assert.equal(
+        rows.rowCount,
+        state.transactions.filter(x =>
+          x.kind === "street_duel_entry" || x.kind === "street_duel_refund" || x.kind === "street_duel_prize"
+        ).length
+      );
+    }
+
     const aiInitial = await game.load(aiChat, "AI Tester");
     const car = { ...aiInitial.market[0], status: "owned" };
     aiInitial.market = aiInitial.market.filter(x => x.id !== car.id);
@@ -240,10 +335,10 @@ async function run() {
 
     console.log("Autonomous game economy idempotency and ledger integration: OK");
   } finally {
-    await pool.query("DELETE FROM autonomous_economy_ledger WHERE chat_id = ANY($1::text[])", [[battleChat, battleGuestChat, aiChat, streetChat, ledgerChat]]).catch(() => {});
+    await pool.query("DELETE FROM autonomous_economy_ledger WHERE chat_id = ANY($1::text[])", [[battleChat, battleGuestChat, aiChat, streetChat, cancelChat, challengeChat, opponentChat, ledgerChat]]).catch(() => {});
     await pool.query("DELETE FROM autonomous_game_state WHERE chat_id = ANY($1::text[])", [[battleChat, aiChat, streetChat, ledgerChat]]).catch(() => {});
     await pool.query("DELETE FROM autonomous_container_battles WHERE owner_chat_id=$1", [battleChat]).catch(() => {});
-    await pool.query("DELETE FROM autonomous_street_duels WHERE challenger_chat_id = ANY($1::text[])", [[aiChat, streetChat]]).catch(() => {});
+    await pool.query("DELETE FROM autonomous_street_duels WHERE challenger_chat_id = ANY($1::text[])", [[aiChat, streetChat, cancelChat, challengeChat]]).catch(() => {});
     await pool.end();
   }
 }
