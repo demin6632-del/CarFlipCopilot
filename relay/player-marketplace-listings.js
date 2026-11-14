@@ -109,6 +109,21 @@ async function cancelMarketplaceListing(pool, input) {
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
+    const preview = await client.query(
+      "SELECT seller_chat_id FROM autonomous_marketplace_listings WHERE id=$1::uuid",
+      [listingId]
+    );
+    if (!preview.rowCount) throw marketplaceError("LISTING_NOT_FOUND", "Listing was not found");
+    if (String(preview.rows[0].seller_chat_id) !== sellerChatId) {
+      throw marketplaceError("NOT_SELLER", "Only the listing owner can cancel it");
+    }
+
+    // Keep a consistent lock order: player state first, then listing row.
+    const stateResult = await client.query(
+      "SELECT state FROM autonomous_game_state WHERE chat_id=$1 FOR UPDATE",
+      [sellerChatId]
+    );
+    if (!stateResult.rowCount) throw marketplaceError("PROFILE_NOT_FOUND", "Seller profile was not found");
     const listingResult = await client.query(
       "SELECT id,vehicle_uid,seller_chat_id,status FROM autonomous_marketplace_listings WHERE id=$1::uuid FOR UPDATE",
       [listingId]
@@ -120,11 +135,6 @@ async function cancelMarketplaceListing(pool, input) {
     }
     if (listing.status !== "active") throw marketplaceError("LISTING_NOT_ACTIVE", "Listing is no longer active");
 
-    const stateResult = await client.query(
-      "SELECT state FROM autonomous_game_state WHERE chat_id=$1 FOR UPDATE",
-      [sellerChatId]
-    );
-    if (!stateResult.rowCount) throw marketplaceError("PROFILE_NOT_FOUND", "Seller profile was not found");
     const state = stateResult.rows[0].state;
     state.garage = Array.isArray(state.garage) ? state.garage : [];
     const car = state.garage.find(item =>
@@ -161,40 +171,53 @@ async function expireMarketplaceListings(pool, { batchSize = 50 } = {}) {
     const client = await pool.connect();
     try {
       await client.query("BEGIN");
-      const listingResult = await client.query(
-        "SELECT id,vehicle_uid,seller_chat_id,status FROM autonomous_marketplace_listings " +
-        "WHERE status='active' AND expires_at<=now() ORDER BY expires_at,id LIMIT 1 FOR UPDATE SKIP LOCKED"
+      // Read a candidate without locking it. All writers then lock state before listing,
+      // avoiding the state/listing lock inversion that can deadlock create vs expiry.
+      const candidate = await client.query(
+        "SELECT id,seller_chat_id FROM autonomous_marketplace_listings " +
+        "WHERE status='active' AND expires_at<=now() ORDER BY expires_at,id LIMIT 1"
       );
-      if (!listingResult.rowCount) {
+      if (!candidate.rowCount) {
         await client.query("COMMIT");
         break;
       }
-      const listing = listingResult.rows[0];
+      const candidateId = String(candidate.rows[0].id);
+      const sellerChatId = String(candidate.rows[0].seller_chat_id);
       const stateResult = await client.query(
         "SELECT state FROM autonomous_game_state WHERE chat_id=$1 FOR UPDATE",
-        [String(listing.seller_chat_id)]
+        [sellerChatId]
       );
+      const listingResult = await client.query(
+        "SELECT id,vehicle_uid,seller_chat_id,status FROM autonomous_marketplace_listings WHERE id=$1::uuid FOR UPDATE",
+        [candidateId]
+      );
+      if (!listingResult.rowCount || listingResult.rows[0].status !== "active" ||
+          String(listingResult.rows[0].seller_chat_id) !== sellerChatId) {
+        await client.query("COMMIT");
+        continue;
+      }
+      const listing = listingResult.rows[0];
       if (stateResult.rowCount) {
         const state = stateResult.rows[0].state;
         state.garage = Array.isArray(state.garage) ? state.garage : [];
         const car = state.garage.find(item =>
           String(item.vehicleUid) === String(listing.vehicle_uid) &&
-          String(item.marketplaceListingId || "") === String(listing.id)
+          String(item.marketplaceListingId || "") === candidateId
         );
         if (car) {
           delete car.marketplaceListingId;
           await client.query(
             "UPDATE autonomous_game_state SET state=$2::jsonb,updated_at=now() WHERE chat_id=$1",
-            [String(listing.seller_chat_id), JSON.stringify(state)]
+            [sellerChatId, JSON.stringify(state)]
           );
         }
       }
       await client.query(
         "UPDATE autonomous_marketplace_listings SET status='expired',updated_at=now() WHERE id=$1::uuid AND status='active'",
-        [String(listing.id)]
+        [candidateId]
       );
       await client.query("COMMIT");
-      expired.push(String(listing.id));
+      expired.push(candidateId);
     } catch (error) {
       await client.query("ROLLBACK").catch(() => {});
       throw error;
