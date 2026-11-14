@@ -109,7 +109,7 @@ async function test(name, fn) {
       });
       listingIds.push(created.listing.id);
       await pool.query(
-        "UPDATE autonomous_marketplace_listings SET expires_at=now()-interval '1 minute' WHERE id=$1::uuid",
+        "UPDATE autonomous_marketplace_listings SET created_at=now()-interval '2 minutes', expires_at=now()-interval '1 minute' WHERE id=$1::uuid",
         [created.listing.id]
       );
       const result = await marketplace.expireMarketplaceListings(pool, { batchSize: 5 });
