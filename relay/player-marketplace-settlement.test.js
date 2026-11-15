@@ -211,6 +211,22 @@ async function test(name, fn) {
     assert.equal(pool.listing.status, "active");
   });
 
+  await test("seller balance overflow rejects before transferring the vehicle", async () => {
+    const pool = new FakePool();
+    pool.states.get(SELLER).player.balance = Number.MAX_SAFE_INTEGER - 100;
+    await assert.rejects(
+      () => purchaseMarketplaceListing(pool, { buyerChatId: BUYER, listingId: LISTING, callbackId: CALLBACK }),
+      error => error.code === "BALANCE_OVERFLOW"
+    );
+    assert.equal(pool.states.get(BUYER).player.balance, 2000000);
+    assert.equal(pool.states.get(SELLER).player.balance, Number.MAX_SAFE_INTEGER - 100);
+    assert.equal(pool.registry.owner_chat_id, SELLER);
+    assert.equal(pool.listing.status, "active");
+    assert.equal(pool.ledger.length, 0);
+    assert.equal(pool.marketTransactions.length, 0);
+    assert.equal(pool.receipts.size, 0);
+  });
+
   await test("expired listing cannot be purchased", async () => {
     const pool = new FakePool();
     pool.listing.expires_at = new Date(Date.now() - 1000);
