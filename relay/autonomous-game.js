@@ -1638,7 +1638,7 @@ async function marketplaceBrowseScreen(chat, page, sendFn) {
     const text = "🌐 ОБЩИЙ РЫНОК AUTOFLIP\n\n" +
       (visibleRows.length ? lines.join("\n\n") : "Пока нет активных объявлений игроков.") +
       "\n\nСтраница " + (safePage + 1) +
-      "\nПокупка и безопасная передача автомобилей появятся на следующем этапе.";
+      "\nОткрой объявление, чтобы изучить автомобиль и перейти к безопасной покупке.";
     const buttons = [];
     for (const listing of visibleRows) buttons.push({ text: "🔎 Подробнее: " + listing.vehicle.model.slice(0, 30), callback_data: "ag:pmarket_view:" + listing.id + ":" + safePage });
     if (safePage > 0) buttons.push({ text: "⬅️ Назад", callback_data: "ag:pmarket:" + (safePage - 1) });
@@ -1826,7 +1826,7 @@ async function handleCallback(chat,data,firstName,sendFn,answerFn,callbackId) {
       if (result.duplicate) {
         await sendFn(chat, "↩️ Это подтверждение уже обработано. Проверь гараж и баланс — повторного списания не будет.", { reply_markup: { inline_keyboard: [[{ text: "🏠 Гараж", callback_data: "ag:garage" }], [{ text: "🌐 Общий рынок", callback_data: "ag:pmarket:0" }]] } });
       } else if (result.ok) {
-        await sendFn(chat, "✅ ПОКУПКА УСПЕШНО ЗАВЕРШЕНА\n\nАвтомобиль: " + result.plate + "\nСписано: " + fmt(result.price) + "\nНомер и история автомобиля сохранены. Средства продавцу зачислены атомарно.", { reply_markup: { inline_keyboard: [[{ text: "🏠 Открыть гараж", callback_data: "ag:garage" }], [{ text: "🌐 Общий рынок", callback_data: "ag:pmarket:0" }]] } });
+        await sendFn(chat, "✅ ПОКУПКА УСПЕШНО ЗАВЕРШЕНА\n\nАвтомобиль: " + (result.model || "Автомобиль") + " · " + result.plate + "\nСписано: " + fmt(result.price) + "\nНомер и история автомобиля сохранены. Средства продавцу зачислены атомарно.", { reply_markup: { inline_keyboard: [[{ text: "🏠 Открыть гараж", callback_data: "ag:garage" }], [{ text: "🌐 Общий рынок", callback_data: "ag:pmarket:0" }]] } });
       }
     } catch (error) {
       const messages = {
