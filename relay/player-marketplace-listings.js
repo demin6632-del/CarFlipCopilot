@@ -288,6 +288,22 @@ async function getActiveMarketplaceListing(pool, listingId) {
   return result.rowCount ? publicListingRow(result.rows[0]) : null;
 }
 
+async function getActiveMarketplaceListingForBuyer(pool, listingId, buyerChatId) {
+  const id = String(listingId || "");
+  const buyer = String(buyerChatId ?? "").trim();
+  if (!UUID_RE.test(id)) throw marketplaceError("INVALID_LISTING_ID", "Marketplace listing ID is invalid");
+  if (!buyer) throw marketplaceError("INVALID_BUYER", "Buyer account is required");
+  const result = await pool.query(
+    "SELECT id,seller_chat_id,asking_price,status,vehicle_snapshot,created_at,expires_at " +
+    "FROM autonomous_marketplace_listings WHERE id=$1::uuid AND status='active' AND expires_at>now()",
+    [id]
+  );
+  if (!result.rowCount) return null;
+  // The seller's Telegram ID is used only for this comparison and is never
+  // included in the public object returned to the Telegram UI.
+  return { ...publicListingRow(result.rows[0]), isSeller: String(result.rows[0].seller_chat_id) === buyer };
+}
+
 async function listMarketplaceListingsForSeller(pool, sellerChatId, options = {}) {
   if (sellerChatId == null || !String(sellerChatId).trim()) {
     throw marketplaceError("INVALID_SELLER", "Seller account is required");
@@ -313,5 +329,6 @@ module.exports = {
   normalizeBrowseOptions,
   listActiveMarketplaceListings,
   getActiveMarketplaceListing,
+  getActiveMarketplaceListingForBuyer,
   listMarketplaceListingsForSeller
 };
