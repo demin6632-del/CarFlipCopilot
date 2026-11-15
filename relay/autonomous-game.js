@@ -1737,12 +1737,10 @@ async function marketplacePurchaseConfirmScreen(chat, listingId, sendFn) {
       "\n💰 Цена: " + fmt(listing.askingPrice) +
       "\n\nТвой баланс: " + fmt(balance) +
       "\nСвободных мест в гараже: " + Math.max(0, capacity - garageCount) +
-      "\n\nПри подтверждении сумма будет списана, а автомобиль и его номер перейдут тебе одной защищённой операцией.";
+      (!canAfford ? "\n\n⚠️ Недостаточно средств для этой покупки." : !hasSpace ? "\n\n⚠️ Сначала освободи место в гараже." : "\n\nПри подтверждении сумма будет списана, а автомобиль и его номер перейдут тебе одной защищённой операцией.");
     const buttons = [];
     if (canAfford && hasSpace) {
       buttons.push([{ text: "✅ Подтвердить покупку за " + fmt(listing.askingPrice), callback_data: marketplacePurchaseConfirmCallback(listing.id, listing.askingPrice) }]);
-    } else {
-      buttons.push([{ text: canAfford ? "🔒 Гараж заполнен" : "💳 Недостаточно средств", callback_data: "ag:pmb:" + listing.id }]);
     }
     buttons.push([{ text: "⬅️ К объявлению", callback_data: "ag:pmarket_view:" + listing.id + ":0" }]);
     buttons.push([{ text: "🌐 Общий рынок", callback_data: "ag:pmarket:0" }]);
