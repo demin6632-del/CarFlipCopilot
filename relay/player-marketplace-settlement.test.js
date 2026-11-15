@@ -137,6 +137,7 @@ async function test(name, fn) {
     });
     assert.equal(result.ok, true);
     assert.equal(result.price, 850000);
+    assert.equal(result.sellerChatId, SELLER, "private settlement result identifies the seller for post-commit notification");
     assert.equal(pool.states.get(BUYER).player.balance, 1150000);
     assert.equal(pool.states.get(SELLER).player.balance, 1350000);
     assert.equal(pool.states.get(BUYER).garage[0].vehicleUid, UID);
