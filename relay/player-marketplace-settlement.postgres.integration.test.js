@@ -96,6 +96,24 @@ async function test(name, fn) {
       ].sort((a,b)=>a[0].localeCompare(b[0])));
       const history = await pool.query("SELECT count(*)::int AS count FROM autonomous_marketplace_transactions WHERE listing_id=$1::uuid", [listingId]);
       assert.equal(history.rows[0].count, 1);
+
+      const replay = await purchaseMarketplaceListing(pool, {
+        buyerChatId: buyerA, listingId, callbackId: "pg-settlement-" + suffix
+      });
+      assert.deepEqual(replay, { ok: false, duplicate: true });
+      const replayStates = await pool.query(
+        "SELECT chat_id,state FROM autonomous_game_state WHERE chat_id=ANY($1::text[])",
+        [[seller, buyerA]]
+      );
+      const replayById = new Map(replayStates.rows.map(row => [row.chat_id, row.state]));
+      assert.equal(replayById.get(buyerA).player.balance, 1150000);
+      assert.equal(replayById.get(seller).player.balance, 1250000);
+      assert.equal(replayById.get(buyerA).garage.length, 1);
+      const replayLedger = await pool.query(
+        "SELECT count(*)::int AS count FROM autonomous_economy_ledger WHERE chat_id=ANY($1::text[]) AND kind IN ('marketplace_purchase','marketplace_sale')",
+        [[buyerA, seller]]
+      );
+      assert.equal(replayLedger.rows[0].count, 2);
     });
 
     await test("two buyers racing for one listing cannot both complete the purchase", async () => {
