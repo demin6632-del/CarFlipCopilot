@@ -151,6 +151,24 @@ async function test(name, fn) {
     assert.equal(pool.commits, 1);
   });
 
+  await test("stale confirmation price aborts without debiting or transferring the vehicle", async () => {
+    const pool = new FakePool();
+    await assert.rejects(
+      () => purchaseMarketplaceListing(pool, {
+        buyerChatId: BUYER, listingId: LISTING, callbackId: CALLBACK, expectedPrice: 840000
+      }),
+      error => error.code === "PRICE_CHANGED"
+    );
+    assert.equal(pool.states.get(BUYER).player.balance, 2000000);
+    assert.equal(pool.states.get(SELLER).player.balance, 500000);
+    assert.equal(pool.registry.owner_chat_id, SELLER);
+    assert.equal(pool.listing.status, "active");
+    assert.equal(pool.ledger.length, 0);
+    assert.equal(pool.marketTransactions.length, 0);
+    assert.equal(pool.receipts.size, 0);
+    assert.equal(pool.commits, 0);
+  });
+
   await test("same callback replay is rejected without a second debit", async () => {
     const pool = new FakePool();
     await purchaseMarketplaceListing(pool, { buyerChatId: BUYER, listingId: LISTING, callbackId: CALLBACK });
