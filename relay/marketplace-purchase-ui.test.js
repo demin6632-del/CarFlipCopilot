@@ -14,6 +14,11 @@ assert.throws(() => marketplacePurchaseConfirmCallback(listingId, 0));
 assert.throws(() => marketplacePurchaseConfirmCallback(listingId, 1000000000001));
 
 const gameSource = fs.readFileSync(require.resolve("./autonomous-game"), "utf8");
+const telegramSource = fs.readFileSync(require.resolve("./telegram-bot"), "utf8");
+assert.match(telegramSource, /autonomousGame\.handleCallback\(chat,data,q\.from\?\.first_name\|\|"Перекуп",\s*\(c,t,extra\)=>send\(c,t,extra\),\s*\(\)=>Promise\.resolve\(\),\s*q\.id\)/,
+  "Telegram callback query ID must reach the game callback handler for idempotent settlement");
+assert.match(gameSource, /purchaseMarketplaceListing\(await p,\s*\{\s*buyerChatId:\s*String\(chat\),\s*listingId:\s*id,\s*expectedPrice,\s*callbackId:\s*String\(callbackId \|\| ""\)/,
+  "Purchase settlement must receive the confirmed price and Telegram callback ID");
 const purchaseStart = gameSource.indexOf('purchaseResult = await purchaseMarketplaceListing');
 const purchaseCatch = gameSource.indexOf('} catch (error) {', purchaseStart);
 const purchaseOutcome = gameSource.indexOf('if (purchaseResult.duplicate)', purchaseCatch);
