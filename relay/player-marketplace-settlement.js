@@ -185,6 +185,7 @@ async function purchaseMarketplaceListing(pool, input) {
     await client.query("COMMIT");
     return {
       ok: true, listingId, vehicleUid: String(listing.vehicle_uid),
+      model: String(car.model || listing.vehicle_snapshot?.model || "Автомобиль"),
       plate: String(registry.plate), price,
       buyerBalance: buyer.player.balance, sellerBalance: seller.player.balance
     };
