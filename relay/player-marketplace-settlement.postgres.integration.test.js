@@ -58,7 +58,7 @@ async function test(name, fn) {
       [seller, JSON.stringify(sellerState), buyerA, JSON.stringify(buyerState(buyerA)), buyerB, JSON.stringify(buyerState(buyerB))]
     );
     await pool.query(
-      "INSERT INTO autonomous_marketplace_listings(id,vehicle_uid,seller_chat_id,asking_price,status,vehicle_snapshot,created_at,expires_at) " +
+      "INSERT INTO autonomous_marketplace_listings(id,vehicle_uid,seller_chat_id,asking_price,status,vehicle_snapshot,expires_at) " +
       "VALUES($1::uuid,$2::uuid,$3,850000,'active',$4::jsonb,now()+interval '1 day')",
       [listingId, vehicleUid, seller, JSON.stringify({ model: car.model, plate, year: 2021, mileage: 52000, condition: 94, damage: 1 })]
     );
