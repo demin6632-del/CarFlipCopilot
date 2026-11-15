@@ -1709,7 +1709,7 @@ function marketplacePurchaseConfirmCallback(listingId, price) {
   return data;
 }
 
-async function marketplacePurchaseConfirmScreen(chat, listingId, sendFn) {
+async function marketplacePurchaseConfirmScreen(chat, listingId, firstName, sendFn) {
   const p = db();
   if (!p) {
     await sendFn(chat, "⚠️ Общий рынок временно недоступен.", { reply_markup: { inline_keyboard: [[{ text: "🌐 Общий рынок", callback_data: "ag:pmarket:0" }]] } });
@@ -1725,7 +1725,7 @@ async function marketplacePurchaseConfirmScreen(chat, listingId, sendFn) {
       await sendFn(chat, "⚠️ Нельзя покупать собственное объявление.", { reply_markup: { inline_keyboard: [[{ text: "📋 Мои объявления", callback_data: "ag:pmarket_mine" }]] } });
       return true;
     }
-    const state = await load(chat, "Игрок");
+    const state = await load(chat, firstName);
     const balance = Number(state.player?.balance) || 0;
     const capacity = Number.isInteger(state.player?.garageCapacity) && state.player.garageCapacity > 0 ? state.player.garageCapacity : GARAGE_CAPACITY;
     const garageCount = Array.isArray(state.garage) ? state.garage.length : 0;
@@ -1810,7 +1810,7 @@ async function handleCallback(chat,data,firstName,sendFn,answerFn,callbackId) {
   const [_,action,id,extra]=String(data).split(":");
   if(action==="pmarket") return marketplaceBrowseScreen(chat, Math.max(0, Number(id)||0), sendFn);
   if(action==="pmarket_view") return marketplaceDetailScreen(chat, id, sendFn, Math.max(0, Number(extra)||0));
-  if(action==="pmb") return marketplacePurchaseConfirmScreen(chat, id, sendFn);
+  if(action==="pmb") return marketplacePurchaseConfirmScreen(chat, id, firstName, sendFn);
   if(action==="pmc") {
     const expectedPrice = parseMarketplacePrice(extra);
     if (!expectedPrice) {
