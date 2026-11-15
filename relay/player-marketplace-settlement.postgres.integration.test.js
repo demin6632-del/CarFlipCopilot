@@ -4,7 +4,7 @@ const assert = require("node:assert/strict");
 const crypto = require("node:crypto");
 const { Pool } = require("pg");
 const { purchaseMarketplaceListing } = require("./player-marketplace-settlement");
-const { cancelMarketplaceListing } = require("./player-marketplace-listings");
+const { cancelMarketplaceListing, expireMarketplaceListings } = require("./player-marketplace-listings");
 
 const connectionString = process.env.TEST_DATABASE_URL || process.env.DATABASE_URL;
 if (!connectionString) {
@@ -200,6 +200,51 @@ async function test(name, fn) {
         assert.equal(byId.get(seller).garage.some(item => item.vehicleUid === raceUid && !item.marketplaceListingId), true);
         assert.equal(byId.get(buyerA).garage.some(item => item.vehicleUid === raceUid), false);
       }
+    });
+
+
+    await test("expired-listing worker racing a purchase never transfers an expired vehicle", async () => {
+      const raceUid = crypto.randomUUID();
+      const raceListing = crypto.randomUUID();
+      const racePlate = "Н" + String(100 + Math.floor(Math.random() * 900)) + "ОР " + String(10 + Math.floor(Math.random() * 90));
+      const raceCar = {
+        id: "expiry-race-car-" + suffix, vehicleUid: raceUid, plate: racePlate,
+        model: "Expiry Race Car", year: 2023, mileage: 5000, condition: 100,
+        marketplaceListingId: raceListing
+      };
+      await pool.query(
+        "INSERT INTO vehicle_plate_registry(plate,vehicle_uid,owner_chat_id,source) VALUES($1,$2::uuid,$3,'settlement-expiry-race-test')",
+        [racePlate, raceUid, seller]
+      );
+      const currentSeller = await pool.query("SELECT state FROM autonomous_game_state WHERE chat_id=$1", [seller]);
+      const nextSellerState = currentSeller.rows[0].state;
+      nextSellerState.garage.push(raceCar);
+      await pool.query("UPDATE autonomous_game_state SET state=$2::jsonb WHERE chat_id=$1", [seller, JSON.stringify(nextSellerState)]);
+      await pool.query(
+        "INSERT INTO autonomous_marketplace_listings(id,vehicle_uid,seller_chat_id,asking_price,status,vehicle_snapshot,expires_at) " +
+        "VALUES($1::uuid,$2::uuid,$3,300000,'active',$4::jsonb,now()-interval '1 second')",
+        [raceListing, raceUid, seller, JSON.stringify({ model: raceCar.model, plate: racePlate, year: 2023, mileage: 5000, condition: 100, damage: 0 })]
+      );
+
+      const outcomes = await Promise.allSettled([
+        purchaseMarketplaceListing(pool, { buyerChatId: buyerA, listingId: raceListing, callbackId: "expiry-race-buy-" + suffix }),
+        expireMarketplaceListings(pool, { batchSize: 1 })
+      ]);
+      assert.equal(outcomes[0].status, "rejected");
+      assert.equal(outcomes[1].status, "fulfilled");
+      const listing = await pool.query("SELECT status FROM autonomous_marketplace_listings WHERE id=$1::uuid", [raceListing]);
+      const registry = await pool.query("SELECT owner_chat_id FROM vehicle_plate_registry WHERE vehicle_uid=$1::uuid", [raceUid]);
+      const states = await pool.query(
+        "SELECT chat_id,state FROM autonomous_game_state WHERE chat_id=ANY($1::text[])",
+        [[seller, buyerA]]
+      );
+      const byId = new Map(states.rows.map(row => [row.chat_id, row.state]));
+      assert.equal(listing.rows[0].status, "expired");
+      assert.equal(registry.rows[0].owner_chat_id, seller);
+      assert.equal(byId.get(seller).garage.some(item => item.vehicleUid === raceUid && !item.marketplaceListingId), true);
+      assert.equal(byId.get(buyerA).garage.some(item => item.vehicleUid === raceUid), false);
+      assert.equal(byId.get(buyerA).player.balance, 1150000);
+      assert.equal(byId.get(seller).player.balance, 1250000);
     });
 
     console.log("Player marketplace settlement PostgreSQL integration: OK");
