@@ -138,11 +138,11 @@ async function purchaseMarketplaceListing(pool, input) {
     const sellerTxId = randomUUID();
     const now = Date.now();
     buyer.transactions.unshift({
-      id: buyerTxId, time: now, kind: "marketplace_purchase", amount: -price,
+      id: buyerTxId, ledgerPersisted: true, time: now, kind: "marketplace_purchase", amount: -price,
       balance: buyer.player.balance, description: "Покупка автомобиля на общем рынке"
     });
     seller.transactions.unshift({
-      id: sellerTxId, time: now, kind: "marketplace_sale", amount: price,
+      id: sellerTxId, ledgerPersisted: true, time: now, kind: "marketplace_sale", amount: price,
       balance: seller.player.balance, description: "Продажа автомобиля на общем рынке"
     });
     buyer.transactions = buyer.transactions.slice(0, 80);
