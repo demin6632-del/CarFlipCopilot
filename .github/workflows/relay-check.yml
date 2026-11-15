@@ -83,6 +83,7 @@ jobs:
           NODE
           node player-marketplace-settlement.postgres.integration.test.js
           node player-marketplace-listings.postgres.integration.test.js
+          node autonomous-game-economy.integration.test.js
       - name: Game dashboard routing guard
         run: |
           node - <<'NODE'
