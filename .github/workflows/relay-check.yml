@@ -73,7 +73,9 @@ jobs:
               await client.query(fs.readFileSync("vehicle-plate-registry.sql", "utf8"));
               await client.query(fs.readFileSync("player-marketplace-listings.sql", "utf8"));
               await client.query(fs.readFileSync("player-marketplace-settlement.sql", "utf8"));
-              console.log("Marketplace PostgreSQL schemas: OK");
+              // Settlement migration must be safe to reapply during staged rollout.
+              await client.query(fs.readFileSync("player-marketplace-settlement.sql", "utf8"));
+              console.log("Marketplace PostgreSQL schemas (including settlement reapply): OK");
             } finally {
               await client.end();
             }
