@@ -186,7 +186,7 @@ async function purchaseMarketplaceListing(pool, input) {
     return {
       ok: true, listingId, vehicleUid: String(listing.vehicle_uid),
       model: String(car.model || listing.vehicle_snapshot?.model || "Автомобиль"),
-      plate: String(registry.plate), price,
+      plate: String(registry.plate), price, sellerChatId,
       buyerBalance: buyer.player.balance, sellerBalance: seller.player.balance
     };
   } catch (error) {
