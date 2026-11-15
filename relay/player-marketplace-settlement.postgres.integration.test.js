@@ -58,7 +58,7 @@ async function test(name, fn) {
       [seller, JSON.stringify(sellerState), buyerA, JSON.stringify(buyerState(buyerA)), buyerB, JSON.stringify(buyerState(buyerB))]
     );
     await pool.query(
-      "INSERT INTO autonomous_marketplace_listings(id,vehicle_uid,seller_chat_id,asking_price,status,vehicle_snapshot,expires_at) " +
+      "INSERT INTO autonomous_marketplace_listings(id,vehicle_uid,seller_chat_id,asking_price,status,vehicle_snapshot,created_at,expires_at) " +
       "VALUES($1::uuid,$2::uuid,$3,850000,'active',$4::jsonb,now()+interval '1 day')",
       [listingId, vehicleUid, seller, JSON.stringify({ model: car.model, plate, year: 2021, mileage: 52000, condition: 94, damage: 1 })]
     );
@@ -222,7 +222,7 @@ async function test(name, fn) {
       await pool.query("UPDATE autonomous_game_state SET state=$2::jsonb WHERE chat_id=$1", [seller, JSON.stringify(nextSellerState)]);
       await pool.query(
         "INSERT INTO autonomous_marketplace_listings(id,vehicle_uid,seller_chat_id,asking_price,status,vehicle_snapshot,expires_at) " +
-        "VALUES($1::uuid,$2::uuid,$3,300000,'active',$4::jsonb,now()-interval '1 second')",
+        "VALUES($1::uuid,$2::uuid,$3,300000,'active',$4::jsonb,now()-interval '2 days',now()-interval '1 second')",
         [raceListing, raceUid, seller, JSON.stringify({ model: raceCar.model, plate: racePlate, year: 2023, mileage: 5000, condition: 100, damage: 0 })]
       );
 
