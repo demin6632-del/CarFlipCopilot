@@ -56,6 +56,7 @@ jobs:
           node --check player-marketplace-browse.test.js
           node --check player-marketplace-settlement.js
           node --check player-marketplace-settlement.test.js
+          node --check marketplace-purchase-ui.test.js
           node --check player-marketplace-settlement.postgres.integration.test.js
           node --check player-marketplace-listings.postgres.integration.test.js
           node autonomous-game.test.js
@@ -64,6 +65,7 @@ jobs:
           node player-marketplace-expiry-worker.test.js
           node player-marketplace-browse.test.js
           node player-marketplace-settlement.test.js
+          node marketplace-purchase-ui.test.js
           node - <<'NODE'
           const fs = require("node:fs");
           const { Client } = require("pg");
@@ -127,6 +129,9 @@ jobs:
           if (!game.includes('if(action==="duel_join")')) throw new Error('street duel route missing');
           if (!game.includes('const [_,action,id,extra]=String(data).split(":")')) throw new Error('callback action parsing missing');
           if (!game.includes('if(action==="pmarket_view")')) throw new Error('marketplace detail callback missing');
+          if (!game.includes('if(action==="pmb")')) throw new Error('marketplace purchase confirmation screen missing');
+          if (!game.includes('if(action==="pmc")')) throw new Error('marketplace purchase settlement callback missing');
+          if (!game.includes('expectedPrice, callbackId: String(callbackId || "")')) throw new Error('marketplace confirmed price and callback id are not revalidated');
           if (!game.includes('if(action==="crate_open")')) throw new Error('container opening flow missing');
           if (!bot.includes('"📦 Контейнеры":"containers"')) throw new Error('container keyboard route missing');
           if (!game.includes('function marketplaceBrowseScreen')) throw new Error('player marketplace browse screen missing');
