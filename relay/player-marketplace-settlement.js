@@ -32,6 +32,10 @@ async function purchaseMarketplaceListing(pool, input) {
   const buyerChatId = String(input?.buyerChatId ?? "").trim();
   const listingId = String(input?.listingId ?? "");
   const callbackId = String(input?.callbackId ?? "").trim();
+  const expectedPrice = input?.expectedPrice == null ? null : Number(input.expectedPrice);
+  if (expectedPrice !== null && (!Number.isSafeInteger(expectedPrice) || expectedPrice <= 0 || expectedPrice > MAX_PRICE)) {
+    throw settlementError("INVALID_EXPECTED_PRICE", "Expected listing price is invalid");
+  }
   if (!buyerChatId) throw settlementError("INVALID_BUYER", "Buyer account is required");
   if (!UUID_RE.test(listingId)) throw settlementError("INVALID_LISTING_ID", "Listing ID is invalid");
   if (!callbackId || callbackId.length > 256) {
@@ -97,6 +101,9 @@ async function purchaseMarketplaceListing(pool, input) {
     const price = Number(listing.asking_price);
     if (!Number.isSafeInteger(price) || price <= 0 || price > MAX_PRICE) {
       throw settlementError("INVALID_LISTING_PRICE", "Listing price is invalid");
+    }
+    if (expectedPrice !== null && price !== expectedPrice) {
+      throw settlementError("PRICE_CHANGED", "Listing price changed after the confirmation screen was opened");
     }
     const buyerBalance = safeMoney(buyer.player.balance);
     const sellerBalance = safeMoney(seller.player.balance);
