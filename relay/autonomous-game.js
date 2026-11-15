@@ -2,7 +2,8 @@ const { Pool } = require("pg");
 const { randomUUID } = require("node:crypto");
 const sandbox = require("./car-sandbox");
 const { syncVehiclePlateRegistry } = require("./vehicle-plate-registry");
-const { listActiveMarketplaceListings, getActiveMarketplaceListing, listMarketplaceListingsForSeller, createMarketplaceListing, cancelMarketplaceListing } = require("./player-marketplace-listings");
+const { listActiveMarketplaceListings, getActiveMarketplaceListingForBuyer, listMarketplaceListingsForSeller, createMarketplaceListing, cancelMarketplaceListing } = require("./player-marketplace-listings");
+const { purchaseMarketplaceListing } = require("./player-marketplace-settlement");
 
 const VERSION = 2;
 const START_BALANCE = 3000000;
@@ -1662,7 +1663,7 @@ async function marketplaceDetailScreen(chat, listingId, sendFn, returnPage = 0) 
     return true;
   }
   try {
-    const listing = await getActiveMarketplaceListing(await p, listingId);
+    const listing = await getActiveMarketplaceListingForBuyer(await p, listingId, String(chat));
     if (!listing) {
       await sendFn(chat, "⌛ Это объявление больше недоступно: оно снято продавцом или срок размещения истёк.", {
         reply_markup: { inline_keyboard: [[{ text: "🔄 Обновить общий рынок", callback_data: "ag:pmarket:" + returnPage }], [{ text: "⬅️ Главное меню", callback_data: "ag:home" }]] }
@@ -1680,14 +1681,75 @@ async function marketplaceDetailScreen(chat, listingId, sendFn, returnPage = 0) 
       "\n💰 Цена продавца: " + fmt(listing.askingPrice) +
       "\n🗓 Размещено: " + date(listing.createdAt) +
       "\n⌛ Действует до: " + date(listing.expiresAt) +
-      "\n\nПокупка через AUTOFLIP появится после запуска безопасной передачи автомобиля и оплаты.";
-    const markup = { inline_keyboard: [[{ text: "⬅️ Назад к объявлениям", callback_data: "ag:pmarket:" + returnPage }], [{ text: "📋 Мои объявления", callback_data: "ag:pmarket_mine" }]] };
+      (listing.isSeller ? "\n\nЭто твоё объявление." : "\n\nПокупка проходит только после отдельного подтверждения. До него деньги не списываются.");
+    const buttons = [];
+    if (!listing.isSeller) buttons.push([{ text: "🛒 Перейти к покупке", callback_data: "ag:pmb:" + listing.id }]);
+    buttons.push([{ text: "⬅️ Назад к объявлениям", callback_data: "ag:pmarket:" + returnPage }]);
+    buttons.push([{ text: "📋 Мои объявления", callback_data: "ag:pmarket_mine" }]);
+    const markup = { inline_keyboard: buttons };
     const photo = carPhotoFor(car);
     if (photo && body.length <= 1024) await sendFn(chat, body, { photo_url: photo, reply_markup: markup });
     else await sendFn(chat, body, { reply_markup: markup });
   } catch (error) {
     console.log("PLAYER MARKETPLACE DETAIL ERROR:", error?.stack || error?.message || error);
     await sendFn(chat, "⚠️ Не удалось открыть объявление. Попробуй обновить общий рынок.", { reply_markup: { inline_keyboard: [[{ text: "🌐 Общий рынок", callback_data: "ag:pmarket:" + returnPage }]] } });
+  }
+  return true;
+}
+
+function marketplacePurchaseConfirmCallback(listingId, price) {
+  const id = String(listingId || "");
+  const amount = Number(price);
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id) ||
+      !Number.isSafeInteger(amount) || amount <= 0 || amount > 1000000000000) {
+    throw new Error("Invalid marketplace confirmation payload");
+  }
+  const data = "ag:pmc:" + id + ":" + String(amount);
+  if (Buffer.byteLength(data, "utf8") > 64) throw new Error("Marketplace confirmation callback exceeds Telegram limit");
+  return data;
+}
+
+async function marketplacePurchaseConfirmScreen(chat, listingId, sendFn) {
+  const p = db();
+  if (!p) {
+    await sendFn(chat, "⚠️ Общий рынок временно недоступен.", { reply_markup: { inline_keyboard: [[{ text: "🌐 Общий рынок", callback_data: "ag:pmarket:0" }]] } });
+    return true;
+  }
+  try {
+    const listing = await getActiveMarketplaceListingForBuyer(await p, listingId, String(chat));
+    if (!listing) {
+      await sendFn(chat, "⌛ Объявление уже недоступно. Обнови общий рынок.", { reply_markup: { inline_keyboard: [[{ text: "🌐 Общий рынок", callback_data: "ag:pmarket:0" }]] } });
+      return true;
+    }
+    if (listing.isSeller) {
+      await sendFn(chat, "⚠️ Нельзя покупать собственное объявление.", { reply_markup: { inline_keyboard: [[{ text: "📋 Мои объявления", callback_data: "ag:pmarket_mine" }]] } });
+      return true;
+    }
+    const state = await load(chat, "Игрок");
+    const balance = Number(state.player?.balance) || 0;
+    const capacity = Number.isInteger(state.player?.garageCapacity) && state.player.garageCapacity > 0 ? state.player.garageCapacity : GARAGE_CAPACITY;
+    const garageCount = Array.isArray(state.garage) ? state.garage.length : 0;
+    const canAfford = balance >= listing.askingPrice;
+    const hasSpace = garageCount < capacity;
+    const body = "🛒 ПОДТВЕРЖДЕНИЕ ПОКУПКИ\n\n" +
+      listing.vehicle.model + (listing.vehicle.year ? " · " + listing.vehicle.year : "") +
+      "\n🔢 Госномер: " + (listing.vehicle.plate || "не указан") +
+      "\n💰 Цена: " + fmt(listing.askingPrice) +
+      "\n\nТвой баланс: " + fmt(balance) +
+      "\nСвободных мест в гараже: " + Math.max(0, capacity - garageCount) +
+      "\n\nПри подтверждении сумма будет списана, а автомобиль и его номер перейдут тебе одной защищённой операцией.";
+    const buttons = [];
+    if (canAfford && hasSpace) {
+      buttons.push([{ text: "✅ Подтвердить покупку за " + fmt(listing.askingPrice), callback_data: marketplacePurchaseConfirmCallback(listing.id, listing.askingPrice) }]);
+    } else {
+      buttons.push([{ text: canAfford ? "🔒 Гараж заполнен" : "💳 Недостаточно средств", callback_data: "ag:pmb:" + listing.id }]);
+    }
+    buttons.push([{ text: "⬅️ К объявлению", callback_data: "ag:pmarket_view:" + listing.id + ":0" }]);
+    buttons.push([{ text: "🌐 Общий рынок", callback_data: "ag:pmarket:0" }]);
+    await sendFn(chat, body, { reply_markup: { inline_keyboard: buttons } });
+  } catch (error) {
+    console.log("PLAYER MARKETPLACE CONFIRM SCREEN ERROR:", error?.stack || error?.message || error);
+    await sendFn(chat, "⚠️ Не удалось подготовить покупку. Обнови объявление и попробуй снова.", { reply_markup: { inline_keyboard: [[{ text: "🌐 Общий рынок", callback_data: "ag:pmarket:0" }]] } });
   }
   return true;
 }
@@ -1750,6 +1812,38 @@ async function handleCallback(chat,data,firstName,sendFn,answerFn,callbackId) {
   const [_,action,id,extra]=String(data).split(":");
   if(action==="pmarket") return marketplaceBrowseScreen(chat, Math.max(0, Number(id)||0), sendFn);
   if(action==="pmarket_view") return marketplaceDetailScreen(chat, id, sendFn, Math.max(0, Number(extra)||0));
+  if(action==="pmb") return marketplacePurchaseConfirmScreen(chat, id, sendFn);
+  if(action==="pmc") {
+    const expectedPrice = parseMarketplacePrice(extra);
+    if (!expectedPrice) {
+      await sendFn(chat, "⚠️ Данные подтверждения некорректны. Открой объявление заново.", { reply_markup: { inline_keyboard: [[{ text: "🌐 Общий рынок", callback_data: "ag:pmarket:0" }]] } });
+      return true;
+    }
+    try {
+      const p = db();
+      if (!p) throw new Error("DATABASE_UNAVAILABLE");
+      const result = await purchaseMarketplaceListing(await p, {
+        buyerChatId: String(chat), listingId: id, expectedPrice, callbackId: String(callbackId || "")
+      });
+      if (result.duplicate) {
+        await sendFn(chat, "↩️ Это подтверждение уже обработано. Проверь гараж и баланс — повторного списания не будет.", { reply_markup: { inline_keyboard: [[{ text: "🏠 Гараж", callback_data: "ag:garage" }], [{ text: "🌐 Общий рынок", callback_data: "ag:pmarket:0" }]] } });
+      } else if (result.ok) {
+        await sendFn(chat, "✅ ПОКУПКА УСПЕШНО ЗАВЕРШЕНА\n\nАвтомобиль: " + result.plate + "\nСписано: " + fmt(result.price) + "\nНомер и история автомобиля сохранены. Средства продавцу зачислены атомарно.", { reply_markup: { inline_keyboard: [[{ text: "🏠 Открыть гараж", callback_data: "ag:garage" }], [{ text: "🌐 Общий рынок", callback_data: "ag:pmarket:0" }]] } });
+      }
+    } catch (error) {
+      const messages = {
+        PRICE_CHANGED: "Цена объявления изменилась после открытия подтверждения. Проверь новую цену и подтверди покупку заново.",
+        LISTING_NOT_ACTIVE: "Объявление уже продано, снято или срок его действия истёк.",
+        LISTING_NOT_FOUND: "Объявление не найдено.",
+        SELF_PURCHASE: "Нельзя покупать собственное объявление.",
+        INSUFFICIENT_FUNDS: "На балансе недостаточно средств.",
+        GARAGE_FULL: "В гараже нет свободного места.",
+        DUPLICATE_VEHICLE: "Этот автомобиль уже есть в твоём гараже."
+      };
+      await sendFn(chat, "⚠️ " + (messages[error?.code] || "Покупка не выполнена. Деньги и автомобиль не изменены."), { reply_markup: { inline_keyboard: [[{ text: "🔄 Проверить объявление", callback_data: "ag:pmarket_view:" + id + ":0" }], [{ text: "🌐 Общий рынок", callback_data: "ag:pmarket:0" }]] } });
+    }
+    return true;
+  }
   if(action==="pmarket_mine") return marketplaceMineScreen(chat, sendFn);
   if(action==="pmarket_sell") return marketplaceSellScreen(chat, firstName, sendFn);
   if(action==="pmarket_vehicle") {
@@ -2333,4 +2427,4 @@ async function handleCallback(chat,data,firstName,sendFn,answerFn,callbackId) {
   return true;
 }
 
-module.exports={init,load,save,open,handleText,handleCallback,leaderboardText,isMarketplaceListingActionBlocked,parseMarketplacePrice,CATALOG,CAR_PHOTOS,BUYER_TYPES,newState,refreshMarket,createListing,createUniqueVehiclePlate,ensureVehiclePlates,addTx,scoreListing,bestDeal,recommendation,addProgress,updateContracts,buyerOffer,buyerOfferDetails,buyerProfile,negotiation,dealRisk,runDiagnostic,vehicleCost,purchaseListing,repairVehicle,prepareVehicle,buyPlate,sellPlate,acceptPendingSale,parsePurchaseOfferInput,negotiatePurchase,streetDuelPower,STREET_DUEL_STAKE};
+module.exports={init,load,save,open,handleText,handleCallback,leaderboardText,isMarketplaceListingActionBlocked,parseMarketplacePrice,marketplacePurchaseConfirmCallback,CATALOG,CAR_PHOTOS,BUYER_TYPES,newState,refreshMarket,createListing,createUniqueVehiclePlate,ensureVehiclePlates,addTx,scoreListing,bestDeal,recommendation,addProgress,updateContracts,buyerOffer,buyerOfferDetails,buyerProfile,negotiation,dealRisk,runDiagnostic,vehicleCost,purchaseListing,repairVehicle,prepareVehicle,buyPlate,sellPlate,acceptPendingSale,parsePurchaseOfferInput,negotiatePurchase,streetDuelPower,STREET_DUEL_STAKE};
