@@ -1817,17 +1817,13 @@ async function handleCallback(chat,data,firstName,sendFn,answerFn,callbackId) {
       await sendFn(chat, "⚠️ Данные подтверждения некорректны. Открой объявление заново.", { reply_markup: { inline_keyboard: [[{ text: "🌐 Общий рынок", callback_data: "ag:pmarket:0" }]] } });
       return true;
     }
+    let purchaseResult;
     try {
       const p = db();
       if (!p) throw new Error("DATABASE_UNAVAILABLE");
-      const result = await purchaseMarketplaceListing(await p, {
+      purchaseResult = await purchaseMarketplaceListing(await p, {
         buyerChatId: String(chat), listingId: id, expectedPrice, callbackId: String(callbackId || "")
       });
-      if (result.duplicate) {
-        await sendFn(chat, "↩️ Это подтверждение уже обработано. Проверь гараж и баланс — повторного списания не будет.", { reply_markup: { inline_keyboard: [[{ text: "🏠 Гараж", callback_data: "ag:garage" }], [{ text: "🌐 Общий рынок", callback_data: "ag:pmarket:0" }]] } });
-      } else if (result.ok) {
-        await sendFn(chat, "✅ ПОКУПКА УСПЕШНО ЗАВЕРШЕНА\n\nАвтомобиль: " + (result.model || "Автомобиль") + " · " + result.plate + "\nСписано: " + fmt(result.price) + "\nНомер и история автомобиля сохранены. Средства продавцу зачислены атомарно.", { reply_markup: { inline_keyboard: [[{ text: "🏠 Открыть гараж", callback_data: "ag:garage" }], [{ text: "🌐 Общий рынок", callback_data: "ag:pmarket:0" }]] } });
-      }
     } catch (error) {
       const messages = {
         PRICE_CHANGED: "Цена объявления изменилась после открытия подтверждения. Проверь новую цену и подтверди покупку заново.",
@@ -1836,9 +1832,24 @@ async function handleCallback(chat,data,firstName,sendFn,answerFn,callbackId) {
         SELF_PURCHASE: "Нельзя покупать собственное объявление.",
         INSUFFICIENT_FUNDS: "На балансе недостаточно средств.",
         GARAGE_FULL: "В гараже нет свободного места.",
-        DUPLICATE_VEHICLE: "Этот автомобиль уже есть в твоём гараже."
+        DUPLICATE_VEHICLE: "Этот автомобиль уже есть в твоём гараже.",
+        BALANCE_OVERFLOW: "Сделка отклонена: зачисление продавцу превысило допустимый предел баланса.",
+        PROFILE_NOT_FOUND: "Не удалось найти профиль покупателя или продавца.",
+        SELLER_VEHICLE_MISSING: "Продавец больше не владеет этим автомобилем.",
+        VEHICLE_REGISTRY_MISMATCH: "Не удалось подтвердить уникальный номер автомобиля."
       };
       await sendFn(chat, "⚠️ " + (messages[error?.code] || "Покупка не выполнена. Деньги и автомобиль не изменены."), { reply_markup: { inline_keyboard: [[{ text: "🔄 Проверить объявление", callback_data: "ag:pmarket_view:" + id + ":0" }], [{ text: "🌐 Общий рынок", callback_data: "ag:pmarket:0" }]] } });
+      return true;
+    }
+
+    // Messaging happens only after the database transaction has committed.
+    // A Telegram send failure must never be reported as a failed purchase.
+    if (purchaseResult.duplicate) {
+      await sendFn(chat, "↩️ Это подтверждение уже обработано. Проверь гараж и баланс — повторного списания не будет.", { reply_markup: { inline_keyboard: [[{ text: "🏠 Гараж", callback_data: "ag:garage" }], [{ text: "🌐 Общий рынок", callback_data: "ag:pmarket:0" }]] } });
+    } else if (purchaseResult.ok) {
+      await sendFn(chat, "✅ ПОКУПКА УСПЕШНО ЗАВЕРШЕНА\n\nАвтомобиль: " + (purchaseResult.model || "Автомобиль") + " · " + purchaseResult.plate + "\nСписано: " + fmt(purchaseResult.price) + "\nНомер и история автомобиля сохранены. Средства продавцу зачислены атомарно.", { reply_markup: { inline_keyboard: [[{ text: "🏠 Открыть гараж", callback_data: "ag:garage" }], [{ text: "🌐 Общий рынок", callback_data: "ag:pmarket:0" }]] } });
+    } else {
+      await sendFn(chat, "⚠️ Не удалось подтвердить результат покупки. Проверь гараж, баланс и общий рынок перед повторными действиями.", { reply_markup: { inline_keyboard: [[{ text: "🏠 Гараж", callback_data: "ag:garage" }], [{ text: "🌐 Общий рынок", callback_data: "ag:pmarket:0" }]] } });
     }
     return true;
   }
