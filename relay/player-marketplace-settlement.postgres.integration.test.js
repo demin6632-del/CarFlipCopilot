@@ -64,6 +64,32 @@ async function test(name, fn) {
       [listingId, vehicleUid, seller, JSON.stringify({ model: car.model, plate, year: 2021, mileage: 52000, condition: 94, damage: 1 })]
     );
 
+    await test("PostgreSQL settlement rejects a stale confirmation price without changing state", async () => {
+      await assert.rejects(
+        () => purchaseMarketplaceListing(pool, {
+          buyerChatId: buyerA, listingId, callbackId: "stale-confirm-" + suffix, expectedPrice: 849999
+        }),
+        error => error.code === "PRICE_CHANGED"
+      );
+      const states = await pool.query(
+        "SELECT chat_id,state FROM autonomous_game_state WHERE chat_id=ANY($1::text[])",
+        [[seller, buyerA]]
+      );
+      const byId = new Map(states.rows.map(row => [row.chat_id, row.state]));
+      assert.equal(byId.get(buyerA).player.balance, 2000000);
+      assert.equal(byId.get(seller).player.balance, 400000);
+      assert.equal(byId.get(seller).garage[0].vehicleUid, vehicleUid);
+      const listing = await pool.query("SELECT status FROM autonomous_marketplace_listings WHERE id=$1::uuid", [listingId]);
+      assert.equal(listing.rows[0].status, "active");
+      const registry = await pool.query("SELECT owner_chat_id FROM vehicle_plate_registry WHERE vehicle_uid=$1::uuid", [vehicleUid]);
+      assert.equal(registry.rows[0].owner_chat_id, seller);
+      const receipt = await pool.query(
+        "SELECT count(*)::int AS count FROM autonomous_processed_callbacks WHERE chat_id=$1 AND callback_id=$2",
+        [buyerA, "stale-confirm-" + suffix]
+      );
+      assert.equal(receipt.rows[0].count, 0);
+    });
+
     await test("PostgreSQL settlement moves the exact vehicle and reconciles both balances and ledger", async () => {
       const result = await purchaseMarketplaceListing(pool, {
         buyerChatId: buyerA, listingId, callbackId: "pg-settlement-" + suffix
