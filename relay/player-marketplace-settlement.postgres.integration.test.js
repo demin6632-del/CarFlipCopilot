@@ -5,6 +5,7 @@ const crypto = require("node:crypto");
 const { Pool } = require("pg");
 const { purchaseMarketplaceListing } = require("./player-marketplace-settlement");
 const { cancelMarketplaceListing, expireMarketplaceListings } = require("./player-marketplace-listings");
+const game = require("./autonomous-game");
 
 const connectionString = process.env.TEST_DATABASE_URL || process.env.DATABASE_URL;
 if (!connectionString) {
@@ -87,6 +88,22 @@ async function test(name, fn) {
       const registry = await pool.query("SELECT owner_chat_id,plate FROM vehicle_plate_registry WHERE vehicle_uid=$1::uuid", [vehicleUid]);
       assert.equal(registry.rows[0].owner_chat_id, buyerA);
       assert.equal(registry.rows[0].plate, plate);
+
+      // Reconcile both profiles after the ownership transfer. The seller's
+      // stale historical plate must not retire the buyer's active registry row.
+      await game.load(seller, "Settlement Seller");
+      const buyerReloaded = await game.load(buyerA, "Settlement Buyer");
+      assert.equal(buyerReloaded.garage.length, 1);
+      assert.equal(buyerReloaded.garage[0].vehicleUid, vehicleUid);
+      assert.equal(buyerReloaded.garage[0].plate, plate);
+      const registryAfterReload = await pool.query(
+        "SELECT owner_chat_id,plate,retired_at FROM vehicle_plate_registry WHERE vehicle_uid=$1::uuid",
+        [vehicleUid]
+      );
+      assert.equal(registryAfterReload.rows[0].owner_chat_id, buyerA);
+      assert.equal(registryAfterReload.rows[0].plate, plate);
+      assert.equal(registryAfterReload.rows[0].retired_at, null);
+
       const listing = await pool.query("SELECT status,sold_to_chat_id FROM autonomous_marketplace_listings WHERE id=$1::uuid", [listingId]);
       assert.equal(listing.rows[0].status, "sold");
       assert.equal(listing.rows[0].sold_to_chat_id, buyerA);
