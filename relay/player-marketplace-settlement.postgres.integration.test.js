@@ -165,6 +165,10 @@ async function test(name, fn) {
         "INSERT INTO vehicle_plate_registry(plate,vehicle_uid,owner_chat_id,source) VALUES($1,$2::uuid,$3,'settlement-callback-race-test')",
         [racePlate, raceUid, seller]
       );
+      const beforeStates = await pool.query("SELECT chat_id,state FROM autonomous_game_state WHERE chat_id=ANY($1::text[])", [[seller, buyerB]]);
+      const beforeById = new Map(beforeStates.rows.map(row => [row.chat_id, row.state]));
+      const sellerBalanceBefore = beforeById.get(seller).player.balance;
+      const buyerBalanceBefore = beforeById.get(buyerB).player.balance;
       const currentSeller = await pool.query("SELECT state FROM autonomous_game_state WHERE chat_id=$1", [seller]);
       const nextSellerState = currentSeller.rows[0].state;
       nextSellerState.garage.push(raceCar);
@@ -188,8 +192,8 @@ async function test(name, fn) {
         [[seller, buyerB]]
       );
       const byId = new Map(states.rows.map(row => [row.chat_id, row.state]));
-      assert.equal(byId.get(buyerB).player.balance, 1825000);
-      assert.equal(byId.get(seller).player.balance, 1425000);
+      assert.equal(byId.get(buyerB).player.balance, buyerBalanceBefore - 175000);
+      assert.equal(byId.get(seller).player.balance, sellerBalanceBefore + 175000);
       assert.equal(byId.get(buyerB).garage.filter(item => item.vehicleUid === raceUid).length, 1);
       assert.equal(byId.get(seller).garage.some(item => item.vehicleUid === raceUid), false);
       const listing = await pool.query("SELECT status,sold_to_chat_id FROM autonomous_marketplace_listings WHERE id=$1::uuid", [raceListing]);
