@@ -83,3 +83,4 @@ jobs:
           NODE
           node vehicle-plate-registry.postgres.integration.test.js
           node vehicle-plate-registry-backfill.js
+          node autonomous-game-economy.integration.test.js
