@@ -4,6 +4,7 @@ const assert = require("node:assert/strict");
 const crypto = require("node:crypto");
 const { Pool } = require("pg");
 const { purchaseMarketplaceListing } = require("./player-marketplace-settlement");
+const { cancelMarketplaceListing } = require("./player-marketplace-listings");
 
 const connectionString = process.env.TEST_DATABASE_URL || process.env.DATABASE_URL;
 if (!connectionString) {
@@ -147,6 +148,58 @@ async function test(name, fn) {
       assert.equal(count.rows[0].count, 1);
       const owners = await pool.query("SELECT owner_chat_id FROM vehicle_plate_registry WHERE vehicle_uid=$1::uuid", [secondUid]);
       assert.equal(owners.rows[0].owner_chat_id, listing.rows[0].sold_to_chat_id);
+    });
+
+
+    await test("purchase racing seller cancellation produces exactly one consistent outcome", async () => {
+      const raceUid = crypto.randomUUID();
+      const raceListing = crypto.randomUUID();
+      const racePlate = "Е" + String(100 + Math.floor(Math.random() * 900)) + "КХ " + String(10 + Math.floor(Math.random() * 90));
+      const raceCar = {
+        id: "cancel-race-car-" + suffix, vehicleUid: raceUid, plate: racePlate,
+        model: "Cancellation Race Car", year: 2022, mileage: 12000, condition: 99,
+        marketplaceListingId: raceListing
+      };
+      await pool.query(
+        "INSERT INTO vehicle_plate_registry(plate,vehicle_uid,owner_chat_id,source) VALUES($1,$2::uuid,$3,'settlement-cancel-race-test')",
+        [racePlate, raceUid, seller]
+      );
+      const currentSeller = await pool.query("SELECT state FROM autonomous_game_state WHERE chat_id=$1", [seller]);
+      const nextSellerState = currentSeller.rows[0].state;
+      nextSellerState.garage.push(raceCar);
+      await pool.query("UPDATE autonomous_game_state SET state=$2::jsonb WHERE chat_id=$1", [seller, JSON.stringify(nextSellerState)]);
+      await pool.query(
+        "INSERT INTO autonomous_marketplace_listings(id,vehicle_uid,seller_chat_id,asking_price,status,vehicle_snapshot,expires_at) " +
+        "VALUES($1::uuid,$2::uuid,$3,250000,'active',$4::jsonb,now()+interval '1 day')",
+        [raceListing, raceUid, seller, JSON.stringify({ model: raceCar.model, plate: racePlate, year: 2022, mileage: 12000, condition: 99, damage: 0 })]
+      );
+
+      const outcomes = await Promise.allSettled([
+        purchaseMarketplaceListing(pool, { buyerChatId: buyerA, listingId: raceListing, callbackId: "cancel-race-buy-" + suffix }),
+        cancelMarketplaceListing(pool, { sellerChatId: seller, listingId: raceListing })
+      ]);
+      const purchaseWon = outcomes[0].status === "fulfilled" && outcomes[0].value.ok === true;
+      const cancelWon = outcomes[1].status === "fulfilled" && outcomes[1].value.ok === true;
+      assert.equal(Number(purchaseWon) + Number(cancelWon), 1);
+
+      const listing = await pool.query("SELECT status FROM autonomous_marketplace_listings WHERE id=$1::uuid", [raceListing]);
+      const registry = await pool.query("SELECT owner_chat_id FROM vehicle_plate_registry WHERE vehicle_uid=$1::uuid", [raceUid]);
+      const states = await pool.query(
+        "SELECT chat_id,state FROM autonomous_game_state WHERE chat_id=ANY($1::text[])",
+        [[seller, buyerA]]
+      );
+      const byId = new Map(states.rows.map(row => [row.chat_id, row.state]));
+      if (purchaseWon) {
+        assert.equal(listing.rows[0].status, "sold");
+        assert.equal(registry.rows[0].owner_chat_id, buyerA);
+        assert.equal(byId.get(buyerA).garage.some(item => item.vehicleUid === raceUid && !item.marketplaceListingId), true);
+        assert.equal(byId.get(seller).garage.some(item => item.vehicleUid === raceUid), false);
+      } else {
+        assert.equal(listing.rows[0].status, "cancelled");
+        assert.equal(registry.rows[0].owner_chat_id, seller);
+        assert.equal(byId.get(seller).garage.some(item => item.vehicleUid === raceUid && !item.marketplaceListingId), true);
+        assert.equal(byId.get(buyerA).garage.some(item => item.vehicleUid === raceUid), false);
+      }
     });
 
     console.log("Player marketplace settlement PostgreSQL integration: OK");
