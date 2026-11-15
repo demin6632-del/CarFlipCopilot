@@ -1847,10 +1847,10 @@ async function handleCallback(chat,data,firstName,sendFn,answerFn,callbackId) {
     if (purchaseResult.ok && purchaseResult.sellerChatId) {
       try {
         await sendFn(purchaseResult.sellerChatId,
-          "🎉 ТВОЙ АВТОМОБИЛЬ ПРОДАН НА ОБЩЕМ РЫНКЕ\\n\\nАвтомобиль: " +
+          "🎉 ТВОЙ АВТОМОБИЛЬ ПРОДАН НА ОБЩЕМ РЫНКЕ\n\nАвтомобиль: " +
           (purchaseResult.model || "Автомобиль") + " · " + purchaseResult.plate +
-          "\\nПолучено: " + fmt(purchaseResult.price) +
-          "\\nСредства зачислены на твой баланс.");
+          "\nПолучено: " + fmt(purchaseResult.price) +
+          "\nСредства зачислены на твой баланс.");
       } catch (notifyError) {
         console.log("MARKETPLACE SELLER NOTIFICATION WARNING:", notifyError?.message || notifyError);
       }
