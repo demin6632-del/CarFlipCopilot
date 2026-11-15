@@ -95,6 +95,7 @@ async function test(name, fn) {
         buyerChatId: buyerA, listingId, callbackId: "pg-settlement-" + suffix
       });
       assert.equal(result.ok, true);
+      assert.equal(result.sellerChatId, seller, "settlement returns seller ID only to its private caller");
       const states = await pool.query(
         "SELECT chat_id,state FROM autonomous_game_state WHERE chat_id=ANY($1::text[])",
         [[seller, buyerA]]
