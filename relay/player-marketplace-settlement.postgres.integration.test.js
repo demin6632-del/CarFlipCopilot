@@ -92,6 +92,19 @@ async function test(name, fn) {
       assert.equal(listing.rows[0].sold_to_chat_id, buyerA);
       const ledger = await pool.query("SELECT chat_id,kind,amount,balance_after FROM autonomous_economy_ledger WHERE chat_id=ANY($1::text[]) AND kind IN ('marketplace_purchase','marketplace_sale')", [[buyerA, seller]]);
       assert.equal(ledger.rowCount, 2);
+      await assert.rejects(
+        pool.query("UPDATE autonomous_economy_ledger SET amount=0 WHERE chat_id=$1 AND kind='marketplace_purchase'", [buyerA]),
+        /autonomous_economy_ledger is append-only/
+      );
+      await assert.rejects(
+        pool.query("DELETE FROM autonomous_economy_ledger WHERE chat_id=$1 AND kind='marketplace_sale'", [seller]),
+        /autonomous_economy_ledger is append-only/
+      );
+      const immutableLedger = await pool.query(
+        "SELECT count(*)::int AS count FROM autonomous_economy_ledger WHERE chat_id=ANY($1::text[]) AND kind IN ('marketplace_purchase','marketplace_sale')",
+        [[buyerA, seller]]
+      );
+      assert.equal(immutableLedger.rows[0].count, 2);
       assert.deepEqual(ledger.rows.map(row => [row.chat_id, Number(row.amount), Number(row.balance_after)]).sort((a,b)=>a[0].localeCompare(b[0])), [
         [buyerA, -850000, 1150000], [seller, 850000, 1250000]
       ].sort((a,b)=>a[0].localeCompare(b[0])));
