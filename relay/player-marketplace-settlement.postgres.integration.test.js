@@ -165,6 +165,10 @@ async function test(name, fn) {
         "INSERT INTO vehicle_plate_registry(plate,vehicle_uid,owner_chat_id,source) VALUES($1,$2::uuid,$3,'settlement-callback-race-test')",
         [racePlate, raceUid, seller]
       );
+      const ledgerBefore = await pool.query(
+        "SELECT count(*)::int AS count FROM autonomous_economy_ledger WHERE chat_id=ANY($1::text[]) AND kind IN ('marketplace_purchase','marketplace_sale')",
+        [[seller, buyerB]]
+      );
       const beforeStates = await pool.query("SELECT chat_id,state FROM autonomous_game_state WHERE chat_id=ANY($1::text[])", [[seller, buyerB]]);
       const beforeById = new Map(beforeStates.rows.map(row => [row.chat_id, row.state]));
       const sellerBalanceBefore = beforeById.get(seller).player.balance;
@@ -203,7 +207,7 @@ async function test(name, fn) {
         "SELECT count(*)::int AS count FROM autonomous_economy_ledger WHERE chat_id=ANY($1::text[]) AND kind IN ('marketplace_purchase','marketplace_sale')",
         [[seller, buyerB]]
       );
-      assert.equal(ledger.rows[0].count, 2);
+      assert.equal(ledger.rows[0].count, ledgerBefore.rows[0].count + 2);
       const history = await pool.query("SELECT count(*)::int AS count FROM autonomous_marketplace_transactions WHERE listing_id=$1::uuid", [raceListing]);
       assert.equal(history.rows[0].count, 1);
       const receipt = await pool.query(
