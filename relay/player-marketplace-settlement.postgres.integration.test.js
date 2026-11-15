@@ -226,6 +226,7 @@ async function test(name, fn) {
         [raceListing, raceUid, seller, JSON.stringify({ model: raceCar.model, plate: racePlate, year: 2023, mileage: 5000, condition: 100, damage: 0 })]
       );
 
+      const balanceSnapshot = new Map((await pool.query("SELECT chat_id,state FROM autonomous_game_state WHERE chat_id=ANY($1::text[])", [[seller, buyerA]])).rows.map(row => [row.chat_id, row.state.player.balance]));
       const outcomes = await Promise.allSettled([
         purchaseMarketplaceListing(pool, { buyerChatId: buyerA, listingId: raceListing, callbackId: "expiry-race-buy-" + suffix }),
         expireMarketplaceListings(pool, { batchSize: 1 })
@@ -239,6 +240,8 @@ async function test(name, fn) {
         [[seller, buyerA]]
       );
       const byId = new Map(states.rows.map(row => [row.chat_id, row.state]));
+      assert.equal(byId.get(buyerA).player.balance, balanceSnapshot.get(buyerA));
+      assert.equal(byId.get(seller).player.balance, balanceSnapshot.get(seller));
       assert.equal(listing.rows[0].status, "expired");
       assert.equal(registry.rows[0].owner_chat_id, seller);
       assert.equal(byId.get(seller).garage.some(item => item.vehicleUid === raceUid && !item.marketplaceListingId), true);
