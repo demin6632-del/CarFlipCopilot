@@ -151,6 +151,64 @@ async function test(name, fn) {
     });
 
 
+
+    await test("concurrent replay of the same purchase callback settles only once", async () => {
+      const raceUid = crypto.randomUUID();
+      const raceListing = crypto.randomUUID();
+      const racePlate = "С" + String(100 + Math.floor(Math.random() * 900)) + "МН " + String(10 + Math.floor(Math.random() * 90));
+      const raceCar = {
+        id: "callback-race-car-" + suffix, vehicleUid: raceUid, plate: racePlate,
+        model: "Concurrent Callback Race Car", year: 2024, mileage: 2500, condition: 100,
+        marketplaceListingId: raceListing
+      };
+      await pool.query(
+        "INSERT INTO vehicle_plate_registry(plate,vehicle_uid,owner_chat_id,source) VALUES($1,$2::uuid,$3,'settlement-callback-race-test')",
+        [racePlate, raceUid, seller]
+      );
+      const currentSeller = await pool.query("SELECT state FROM autonomous_game_state WHERE chat_id=$1", [seller]);
+      const nextSellerState = currentSeller.rows[0].state;
+      nextSellerState.garage.push(raceCar);
+      await pool.query("UPDATE autonomous_game_state SET state=$2::jsonb WHERE chat_id=$1", [seller, JSON.stringify(nextSellerState)]);
+      await pool.query(
+        "INSERT INTO autonomous_marketplace_listings(id,vehicle_uid,seller_chat_id,asking_price,status,vehicle_snapshot,expires_at) " +
+        "VALUES($1::uuid,$2::uuid,$3,175000,'active',$4::jsonb,now()+interval '1 day')",
+        [raceListing, raceUid, seller, JSON.stringify({ model: raceCar.model, plate: racePlate, year: 2024, mileage: 2500, condition: 100, damage: 0 })]
+      );
+
+      const callbackId = "same-callback-race-" + suffix;
+      const results = await Promise.all([
+        purchaseMarketplaceListing(pool, { buyerChatId: buyerB, listingId: raceListing, callbackId }),
+        purchaseMarketplaceListing(pool, { buyerChatId: buyerB, listingId: raceListing, callbackId })
+      ]);
+      assert.equal(results.filter(result => result.ok === true).length, 1);
+      assert.equal(results.filter(result => result.duplicate === true).length, 1);
+
+      const states = await pool.query(
+        "SELECT chat_id,state FROM autonomous_game_state WHERE chat_id=ANY($1::text[])",
+        [[seller, buyerB]]
+      );
+      const byId = new Map(states.rows.map(row => [row.chat_id, row.state]));
+      assert.equal(byId.get(buyerB).player.balance, 1825000);
+      assert.equal(byId.get(seller).player.balance, 1425000);
+      assert.equal(byId.get(buyerB).garage.filter(item => item.vehicleUid === raceUid).length, 1);
+      assert.equal(byId.get(seller).garage.some(item => item.vehicleUid === raceUid), false);
+      const listing = await pool.query("SELECT status,sold_to_chat_id FROM autonomous_marketplace_listings WHERE id=$1::uuid", [raceListing]);
+      assert.equal(listing.rows[0].status, "sold");
+      assert.equal(listing.rows[0].sold_to_chat_id, buyerB);
+      const ledger = await pool.query(
+        "SELECT count(*)::int AS count FROM autonomous_economy_ledger WHERE chat_id=ANY($1::text[]) AND kind IN ('marketplace_purchase','marketplace_sale')",
+        [[seller, buyerB]]
+      );
+      assert.equal(ledger.rows[0].count, 2);
+      const history = await pool.query("SELECT count(*)::int AS count FROM autonomous_marketplace_transactions WHERE listing_id=$1::uuid", [raceListing]);
+      assert.equal(history.rows[0].count, 1);
+      const receipt = await pool.query(
+        "SELECT count(*)::int AS count FROM autonomous_processed_callbacks WHERE chat_id=$1 AND callback_id=$2",
+        [buyerB, callbackId]
+      );
+      assert.equal(receipt.rows[0].count, 1);
+    });
+
     await test("purchase racing seller cancellation produces exactly one consistent outcome", async () => {
       const raceUid = crypto.randomUUID();
       const raceListing = crypto.randomUUID();
