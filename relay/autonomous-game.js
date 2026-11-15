@@ -1239,58 +1239,6 @@ async function joinStreetDuel(chat,name,duelId){
     await client.query("COMMIT");return {ok:true,duel:upd.rows[0],result};
   }catch(e){await client.query("ROLLBACK").catch(()=>{});throw e;}finally{client.release();}
 }
-async function createStreetDuelAI(chat,name,callbackId){
-  const p=db();if(!p)throw new Error("DATABASE_URL не настроен");const pool=await p;const client=await pool.connect();
-  try{
-    await client.query("BEGIN");
-    const pr=await client.query("SELECT state FROM autonomous_game_state WHERE chat_id=$1 FOR UPDATE",[String(chat)]);
-    if(!pr.rowCount){await client.query("ROLLBACK");return {ok:false,reason:"no_profile"};}
-    const state=pr.rows[0].state;
-    ensureVehiclePlates(state);
-    state.processedCallbacks=Array.isArray(state.processedCallbacks)?state.processedCallbacks:[];
-    if(callbackId&&state.processedCallbacks.includes(String(callbackId))){await client.query("ROLLBACK");return {ok:false,reason:"duplicate"};}
-    if(callbackId && !(await claimProcessedCallback(client,chat,callbackId))){await client.query("ROLLBACK");return {ok:false,reason:"duplicate"};}
-    if(callbackId){state.processedCallbacks.push(String(callbackId));state.processedCallbacks=state.processedCallbacks.slice(-100);}
-    if(!Array.isArray(state.garage)||!state.garage.length){await client.query("ROLLBACK");return {ok:false,reason:"no_car"};}
-    if(Number(state.player?.balance||0)<STREET_DUEL_STAKE){await client.query("ROLLBACK");return {ok:false,reason:"money"};}
-    const playerCar=state.garage.slice().sort((a,b)=>streetDuelPower(b)-streetDuelPower(a))[0];
-    const playerPower=streetDuelPower(playerCar);
-    const eligibleAiCars=CATALOG.filter(car=>car.id!==playerCar.catalogId);
-    const base=eligibleAiCars.sort((a,b)=>Math.abs((DUEL_BASE_POWER[a.id]||140)-playerPower)-Math.abs((DUEL_BASE_POWER[b.id]||140)-playerPower))[0];
-    const opponentCar={
-      id:"ai_"+Date.now(),catalogId:base.id,model:base.name,year:base.year,
-      plate:createUniqueVehiclePlate(state),
-      mileage:50000+Math.floor(Math.random()*130000),condition:82+Math.floor(Math.random()*19),
-      status:"ai",aiOpponent:true
-    };
-    const opponentPower=Math.max(35,Math.round(playerPower*(0.92+Math.random()*0.16)));
-    addTx(state,"street_duel_entry",-STREET_DUEL_STAKE,"Взнос в дуэль с ИИ");
-    const playerRoll=playerPower*(0.96+Math.random()*0.08);
-    const aiRoll=opponentPower*(0.96+Math.random()*0.08);
-    const draw=Math.abs(playerRoll-aiRoll)<0.75;
-    const playerWon=!draw&&playerRoll>aiRoll;
-    const payout=draw?STREET_DUEL_STAKE:playerWon?Math.round(STREET_DUEL_STAKE*1.9):0;
-    const fee=playerWon?STREET_DUEL_STAKE*2-payout:0;
-    if(draw)addTx(state,"street_duel_refund",STREET_DUEL_STAKE,"Возврат ставки за ничью с ИИ");
-    else if(playerWon)addTx(state,"street_duel_prize",payout,"Победа над ИИ в уличной дуэли");
-    const result={
-      mode:"ai",winnerChat:draw?null:playerWon?String(chat):"autoflip-ai",
-      winnerName:draw?"Ничья":playerWon?String(name||"Перекуп"):"AUTOFLIP ИИ",
-      payout,fee,powerDifference:Math.abs(Number(playerPower||0)-Number(opponentPower||0)),
-      challengerRoll:Math.round(playerRoll),opponentRoll:Math.round(aiRoll),draw
-    };
-    const duel=await client.query(
-      "INSERT INTO autonomous_street_duels(status,challenger_chat_id,challenger_name,challenger_car,challenger_power,opponent_name,opponent_car,opponent_power,stake,result,finished_at) VALUES('finished',$1,$2,$3::jsonb,$4,'AUTOFLIP ИИ',$5::jsonb,$6,$7,$8::jsonb,now()) RETURNING *",
-      [String(chat),String(name||"Перекуп"),JSON.stringify(playerCar),playerPower,JSON.stringify(opponentCar),opponentPower,STREET_DUEL_STAKE,JSON.stringify(result)]
-    );
-    await persistEconomyLedger(client,chat,state);
-    await syncVehiclePlateRegistry(client,String(chat),state,createUniqueVehiclePlate);
-    await client.query("UPDATE autonomous_game_state SET state=$2::jsonb,updated_at=now() WHERE chat_id=$1",[String(chat),JSON.stringify(state)]);
-    await client.query("COMMIT");
-    return {ok:true,duel:duel.rows[0],result};
-  }catch(e){await client.query("ROLLBACK").catch(()=>{});throw e;}finally{client.release();}
-}
-
 function containerText(state) {
   const parts=Array.isArray(state.player.containerParts)?state.player.containerParts:[];
   return ["📦 КОНТЕЙНЕРНЫЙ ТЕРМИНАЛ","","Открывай контейнеры с запчастями и находками.","Каждый контейнер содержит случайную награду: деньги, детали или редкий приз.","","💰 Баланс: "+fmt(state.player.balance),"🧩 Деталей на складе: "+parts.length,...(parts.length?["","СКЛАД ДЕТАЛЕЙ",...parts.slice(0,8).map((p,i)=>(i+1)+". "+p.name+" · "+p.condition+"% · оценка "+fmt(p.value))]:[])].join("\n");
