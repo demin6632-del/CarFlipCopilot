@@ -5,6 +5,7 @@ on:
     paths:
       - 'relay/**'
       - '.github/workflows/relay-check.yml'
+      - '.github/workflows/carflip-copilot-checks.yml'
   workflow_dispatch:
 
 jobs:
