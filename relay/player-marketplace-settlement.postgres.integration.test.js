@@ -248,6 +248,97 @@ async function test(name, fn) {
       assert.equal(byId.get(buyerA).garage.some(item => item.vehicleUid === raceUid), false);
     });
 
+
+    await test("settlement failure after registry transfer rolls back registry, balances, garages, listing and ledger", async () => {
+      const rollbackUid = crypto.randomUUID();
+      const rollbackListing = crypto.randomUUID();
+      const rollbackPlate = "Р" + String(100 + Math.floor(Math.random() * 900)) + "ТУ " + String(10 + Math.floor(Math.random() * 90));
+      const rollbackCar = {
+        id: "rollback-car-" + suffix, vehicleUid: rollbackUid, plate: rollbackPlate,
+        model: "Rollback Integration Car", year: 2024, mileage: 1000, condition: 100,
+        marketplaceListingId: rollbackListing
+      };
+      const sellerBefore = await pool.query("SELECT state FROM autonomous_game_state WHERE chat_id=$1", [seller]);
+      const buyerBefore = await pool.query("SELECT state FROM autonomous_game_state WHERE chat_id=$1", [buyerB]);
+      const sellerBalanceBefore = sellerBefore.rows[0].state.player.balance;
+      const buyerBalanceBefore = buyerBefore.rows[0].state.player.balance;
+      const sellerGarageBefore = sellerBefore.rows[0].state.garage.length;
+      const buyerGarageBefore = buyerBefore.rows[0].state.garage.length;
+      const ledgerBefore = await pool.query(
+        "SELECT count(*)::int AS count FROM autonomous_economy_ledger WHERE chat_id=ANY($1::text[])",
+        [[seller, buyerB]]
+      );
+      const triggerSuffix = suffix.replace(/-/g, "");
+      const functionName = "settlement_rollback_fail_" + triggerSuffix;
+      const triggerName = "settlement_rollback_fail_trg_" + triggerSuffix;
+
+      await pool.query(
+        "INSERT INTO vehicle_plate_registry(plate,vehicle_uid,owner_chat_id,source) VALUES($1,$2::uuid,$3,'settlement-rollback-test')",
+        [rollbackPlate, rollbackUid, seller]
+      );
+      const sellerWithCar = sellerBefore.rows[0].state;
+      sellerWithCar.garage.push(rollbackCar);
+      await pool.query("UPDATE autonomous_game_state SET state=$2::jsonb WHERE chat_id=$1", [seller, JSON.stringify(sellerWithCar)]);
+      await pool.query(
+        "INSERT INTO autonomous_marketplace_listings(id,vehicle_uid,seller_chat_id,asking_price,status,vehicle_snapshot,expires_at) " +
+        "VALUES($1::uuid,$2::uuid,$3,125000,'active',$4::jsonb,now()+interval '1 day')",
+        [rollbackListing, rollbackUid, seller, JSON.stringify({ model: rollbackCar.model, plate: rollbackPlate, year: 2024, mileage: 1000, condition: 100, damage: 0 })]
+      );
+
+      try {
+        await pool.query(`
+          CREATE FUNCTION ${functionName}() RETURNS trigger LANGUAGE plpgsql AS $rollback$
+          BEGIN
+            IF NEW.listing_id = '${rollbackListing}'::uuid THEN
+              RAISE EXCEPTION 'intentional settlement rollback integration failure';
+            END IF;
+            RETURN NEW;
+          END;
+          $rollback$
+        `);
+        await pool.query(`CREATE TRIGGER ${triggerName} BEFORE INSERT ON autonomous_marketplace_transactions FOR EACH ROW EXECUTE FUNCTION ${functionName}()`);
+
+        await assert.rejects(
+          purchaseMarketplaceListing(pool, {
+            buyerChatId: buyerB, listingId: rollbackListing, callbackId: "rollback-" + suffix
+          }),
+          /intentional settlement rollback integration failure/
+        );
+      } finally {
+        await pool.query(`DROP TRIGGER IF EXISTS ${triggerName} ON autonomous_marketplace_transactions`);
+        await pool.query(`DROP FUNCTION IF EXISTS ${functionName}()`);
+      }
+
+      const registry = await pool.query("SELECT owner_chat_id,plate FROM vehicle_plate_registry WHERE vehicle_uid=$1::uuid", [rollbackUid]);
+      assert.equal(registry.rows[0].owner_chat_id, seller);
+      assert.equal(registry.rows[0].plate, rollbackPlate);
+      const listing = await pool.query("SELECT status FROM autonomous_marketplace_listings WHERE id=$1::uuid", [rollbackListing]);
+      assert.equal(listing.rows[0].status, "active");
+      const states = await pool.query(
+        "SELECT chat_id,state FROM autonomous_game_state WHERE chat_id=ANY($1::text[])",
+        [[seller, buyerB]]
+      );
+      const byId = new Map(states.rows.map(row => [row.chat_id, row.state]));
+      assert.equal(byId.get(seller).player.balance, sellerBalanceBefore);
+      assert.equal(byId.get(buyerB).player.balance, buyerBalanceBefore);
+      assert.equal(byId.get(seller).garage.length, sellerGarageBefore + 1);
+      assert.equal(byId.get(buyerB).garage.length, buyerGarageBefore);
+      const retainedCar = byId.get(seller).garage.find(item => item.vehicleUid === rollbackUid);
+      assert.equal(retainedCar.marketplaceListingId, rollbackListing);
+      const ledgerAfter = await pool.query(
+        "SELECT count(*)::int AS count FROM autonomous_economy_ledger WHERE chat_id=ANY($1::text[])",
+        [[seller, buyerB]]
+      );
+      assert.equal(ledgerAfter.rows[0].count, ledgerBefore.rows[0].count);
+      const history = await pool.query("SELECT count(*)::int AS count FROM autonomous_marketplace_transactions WHERE listing_id=$1::uuid", [rollbackListing]);
+      assert.equal(history.rows[0].count, 0);
+      const callback = await pool.query(
+        "SELECT count(*)::int AS count FROM autonomous_processed_callbacks WHERE chat_id=$1 AND callback_id=$2",
+        [buyerB, "rollback-" + suffix]
+      );
+      assert.equal(callback.rows[0].count, 0);
+    });
+
     console.log("Player marketplace settlement PostgreSQL integration: OK");
   } finally {
     await pool.query("DELETE FROM autonomous_marketplace_transactions WHERE listing_id IN (SELECT id FROM autonomous_marketplace_listings WHERE seller_chat_id=$1)", [seller]).catch(() => {});
