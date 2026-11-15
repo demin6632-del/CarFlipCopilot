@@ -156,6 +156,7 @@ async function init() {
       IF NOT EXISTS (
         SELECT 1 FROM pg_trigger
         WHERE tgname='autonomous_economy_ledger_immutable_trg'
+          AND tgrelid='autonomous_economy_ledger'::regclass
           AND NOT tgisinternal
       ) THEN
         CREATE TRIGGER autonomous_economy_ledger_immutable_trg
