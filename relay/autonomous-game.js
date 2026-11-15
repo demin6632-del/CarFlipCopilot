@@ -1842,6 +1842,20 @@ async function handleCallback(chat,data,firstName,sendFn,answerFn,callbackId) {
       return true;
     }
 
+    // Seller notification is sent only after commit and cannot roll back or
+    // misreport a completed transaction if Telegram delivery fails.
+    if (purchaseResult.ok && purchaseResult.sellerChatId) {
+      try {
+        await sendFn(purchaseResult.sellerChatId,
+          "🎉 ТВОЙ АВТОМОБИЛЬ ПРОДАН НА ОБЩЕМ РЫНКЕ\\n\\nАвтомобиль: " +
+          (purchaseResult.model || "Автомобиль") + " · " + purchaseResult.plate +
+          "\\nПолучено: " + fmt(purchaseResult.price) +
+          "\\nСредства зачислены на твой баланс.");
+      } catch (notifyError) {
+        console.log("MARKETPLACE SELLER NOTIFICATION WARNING:", notifyError?.message || notifyError);
+      }
+    }
+
     // Messaging happens only after the database transaction has committed.
     // A Telegram send failure must never be reported as a failed purchase.
     if (purchaseResult.duplicate) {
