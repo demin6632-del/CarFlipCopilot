@@ -27,5 +27,10 @@ assert.ok(purchaseStart >= 0 && purchaseCatch > purchaseStart && purchaseOutcome
 const failureReply = gameSource.indexOf('"Покупка не выполнена. Деньги и автомобиль не изменены."', purchaseCatch);
 assert.ok(failureReply > purchaseCatch && failureReply < purchaseOutcome,
   "Only transaction errors may produce a failed-purchase message");
+const sellerNotice = gameSource.indexOf("MARKETPLACE SELLER NOTIFICATION WARNING:", purchaseCatch);
+assert.ok(sellerNotice > purchaseCatch && sellerNotice < purchaseOutcome,
+  "Seller notification must happen after settlement and before the buyer outcome");
+assert.match(gameSource.slice(purchaseCatch, purchaseOutcome), /if \(purchaseResult\.ok && purchaseResult\.sellerChatId\)[\s\S]*?try \{[\s\S]*?sendFn\(purchaseResult\.sellerChatId[\s\S]*?catch \(notifyError\)/,
+  "Seller notification delivery errors must be isolated from the committed purchase result");
 
 console.log("Marketplace purchase UI callback tests: OK");
