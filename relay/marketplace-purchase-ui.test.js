@@ -34,5 +34,7 @@ assert.match(gameSource.slice(purchaseCatch, purchaseOutcome), /COMMIT_OUTCOME_U
   "Ambiguous commit outcomes must never claim that the purchase definitely failed");
 assert.match(gameSource.slice(purchaseCatch, purchaseOutcome), /if \(purchaseResult\.ok && purchaseResult\.sellerChatId\)[\s\S]*?try \{[\s\S]*?sendFn\(purchaseResult\.sellerChatId[\s\S]*?catch \(notifyError\)/,
   "Seller notification delivery errors must be isolated from the committed purchase result");
+assert.doesNotMatch(gameSource, /УКАЖИ ЦЕНУ\\\\n/, "Marketplace listing price prompt must contain real line breaks");
+assert.doesNotMatch(gameSource, /ОБЪЯВЛЕНИЕ СНЯТО\\\\n/, "Marketplace cancellation confirmation must contain real line breaks");
 
 console.log("Marketplace purchase UI callback tests: OK");
