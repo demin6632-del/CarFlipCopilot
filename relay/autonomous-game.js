@@ -2229,6 +2229,7 @@ async function handleCallback(chat,data,firstName,sendFn,answerFn,callbackId) {
       const bits=String(id||"").split("|");
       const donor=state.garage.find(x=>String(x.id)===String(bits[1]));
       if(!donor)return {text:"⚠️ Автомобиль-донор не найден.",markup:sandboxWarehouseKeyboard(c,state)};
+      if(donor.marketplaceListingId)return {text:"🔒 Автомобиль-донор выставлен на общий рынок. Сначала отмени его объявление.",markup:sandboxWarehouseKeyboard(c,state)};
       sandbox.buildCar(c); sandbox.buildCar(donor);
       return {text:"🚘 АВТОМОБИЛЬ-ДОНОР\n\n"+donor.model+"\nVIN: "+donor.sandbox.vin+"\n\nВыбери установленную деталь. Она будет снята и передана на склад целевого автомобиля.",markup:sandboxDonorKeyboard(c,donor)};
     }
