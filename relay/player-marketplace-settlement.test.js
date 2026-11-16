@@ -124,6 +124,42 @@ class FakePool {
   }
 }
 
+class CommitAckLostPool extends FakePool {
+  async connect() {
+    const client = await super.connect();
+    const originalQuery = client.query.bind(client);
+    client.query = async (sql, params) => {
+      const result = await originalQuery(sql, params);
+      if (sql === "COMMIT") throw new Error("simulated lost COMMIT acknowledgement");
+      return result;
+    };
+    return client;
+  }
+
+  async query(sql, params) {
+    if (!sql.includes("FROM autonomous_processed_callbacks c")) {
+      throw new Error("Unexpected recovery SQL: " + sql);
+    }
+    const receiptKey = params[0] + ":" + params[2];
+    if (!this.receipts.has(receiptKey) || this.listing.status !== "sold" ||
+        this.listing.sold_to_chat_id !== params[0]) {
+      return { rowCount: 0, rows: [] };
+    }
+    return {
+      rowCount: 1,
+      rows: [{
+        vehicle_uid: UID,
+        gross_amount: this.listing.asking_price,
+        seller_chat_id: SELLER,
+        status: "sold",
+        sold_to_chat_id: BUYER,
+        plate: this.registry.plate,
+        state: structuredClone(this.states.get(BUYER))
+      }]
+    };
+  }
+}
+
 async function test(name, fn) {
   await fn();
   console.log("PASS:", name);
@@ -168,6 +204,25 @@ async function test(name, fn) {
     assert.equal(pool.marketTransactions.length, 0);
     assert.equal(pool.receipts.size, 0);
     assert.equal(pool.commits, 0);
+  });
+
+  await test("lost COMMIT acknowledgement is recovered from the durable receipt without a second settlement", async () => {
+    const pool = new CommitAckLostPool();
+    const result = await purchaseMarketplaceListing(pool, {
+      buyerChatId: BUYER, listingId: LISTING, callbackId: CALLBACK
+    });
+    assert.equal(result.ok, true);
+    assert.equal(result.recovered, true);
+    assert.equal(result.price, 850000);
+    assert.equal(result.sellerChatId, SELLER);
+    assert.equal(pool.states.get(BUYER).player.balance, 1150000);
+    assert.equal(pool.states.get(SELLER).player.balance, 1350000);
+    assert.equal(pool.registry.owner_chat_id, BUYER);
+    assert.equal(pool.listing.status, "sold");
+    assert.equal(pool.ledger.length, 1);
+    assert.equal(pool.marketTransactions.length, 1);
+    assert.equal(pool.receipts.size, 1);
+    assert.equal(pool.commits, 1);
   });
 
   await test("same callback replay is rejected without a second debit", async () => {
