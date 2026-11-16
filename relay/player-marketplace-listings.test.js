@@ -105,6 +105,46 @@ async function test(name, fn) {
 }
 
 (async () => {
+  await test("buyer listing lookup exposes neither seller Telegram ID nor internal vehicle UID", async () => {
+    const row = {
+      id: LISTING_ID, seller_chat_id: SELLER, asking_price: 850000, status: "active",
+      vehicle_snapshot: { model: "Lada Vesta 1.6", plate: "А123ВС 77", year: 2019, mileage: 65000, condition: 92, damage: 1 },
+      created_at: new Date("2026-11-16T10:00:00Z"),
+      expires_at: new Date("2026-11-23T10:00:00Z")
+    };
+    const readPool = {
+      async query(sql, params) {
+        assert.match(sql, /SELECT id,seller_chat_id,asking_price,status,vehicle_snapshot,created_at,expires_at/);
+        assert.deepEqual(params, [LISTING_ID]);
+        return { rowCount: 1, rows: [row] };
+      }
+    };
+    const result = await marketplace.getActiveMarketplaceListingForBuyer(readPool, LISTING_ID, OTHER);
+    assert.equal(result.isSeller, false);
+    assert.equal(result.askingPrice, 850000);
+    assert.equal(result.vehicle.plate, "А123ВС 77");
+    assert.equal("sellerChatId" in result, false);
+    assert.equal("seller_chat_id" in result, false);
+    assert.equal("vehicleUid" in result, false);
+    assert.equal("vehicle_uid" in result, false);
+  });
+
+  await test("listing detail identifies the owner without disclosing the owner's Telegram ID", async () => {
+    const readPool = {
+      async query() {
+        return { rowCount: 1, rows: [{
+          id: LISTING_ID, seller_chat_id: SELLER, asking_price: 850000, status: "active",
+          vehicle_snapshot: { model: "Lada Vesta 1.6", plate: "А123ВС 77" },
+          created_at: new Date(), expires_at: new Date(Date.now() + 3600000)
+        }] };
+      }
+    };
+    const result = await marketplace.getActiveMarketplaceListingForBuyer(readPool, LISTING_ID, SELLER);
+    assert.equal(result.isSeller, true);
+    assert.equal("sellerChatId" in result, false);
+    assert.equal("seller_chat_id" in result, false);
+  });
+
   await test("listing creation follows settlement lock order before locking the global registry", async () => {
     const source = fs.readFileSync(require.resolve("./player-marketplace-listings"), "utf8");
     const duplicateLock = source.indexOf("SELECT id FROM autonomous_marketplace_listings WHERE vehicle_uid=$1::uuid AND status='active' FOR UPDATE");
