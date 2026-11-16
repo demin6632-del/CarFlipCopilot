@@ -26,8 +26,9 @@ async function resolveCommittedMarketplacePurchase(pool, { buyerChatId, listingI
     "r.plate,s.state " +
     "FROM autonomous_processed_callbacks c " +
     "JOIN autonomous_marketplace_transactions t ON t.listing_id=$2::uuid AND t.buyer_chat_id=$1 " +
-    "JOIN autonomous_marketplace_listings l ON l.id=t.listing_id " +
-    "JOIN vehicle_plate_registry r ON r.vehicle_uid=t.vehicle_uid " +
+    "JOIN autonomous_marketplace_listings l ON l.id=t.listing_id AND l.vehicle_uid=t.vehicle_uid " +
+    "AND l.seller_chat_id=t.seller_chat_id AND l.asking_price=t.gross_amount " +
+    "JOIN vehicle_plate_registry r ON r.vehicle_uid=t.vehicle_uid AND r.owner_chat_id=$1 AND r.retired_at IS NULL " +
     "JOIN autonomous_game_state s ON s.chat_id=$1 " +
     "WHERE c.chat_id=$1 AND c.callback_id=$3 AND l.status='sold' AND l.sold_to_chat_id=$1 " +
     "LIMIT 1",
