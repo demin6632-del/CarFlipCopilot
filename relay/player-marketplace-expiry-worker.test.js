@@ -36,6 +36,8 @@ for (const value of ["0", "501", "-1", "1.5", "abc", " 5"]) {
     await new Promise(resolve => setImmediate(resolve));
     await timerCallback();
     assert.equal(calls, 2, "a later tick runs after the previous batch finishes");
+    releaseRun({ expiredCount: 0 });
+    await new Promise(resolve => setImmediate(resolve));
     stop();
     stop();
     assert.equal(cleared, true, "stop clears the interval and is idempotent");
