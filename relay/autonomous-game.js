@@ -2028,6 +2028,7 @@ async function handleCallback(chat,data,firstName,sendFn,answerFn,callbackId) {
     if(action==="rollback"){
       const car=state.garage.find(x=>String(x.id)===String(id));
       if(!car)return {text:"⚠️ Машина уже не в гараже.",markup:garageKeyboard(state)};
+      if(car.marketplaceListingId)return {text:"🔒 Автомобиль выставлен на общий рынок. Сначала отмени объявление, затем сможешь корректировать пробег.",markup:carKeyboard(car)};
       if(car.mileageRolledBack)return {text:"⚠️ Пробег уже корректировался.",markup:carKeyboard(car)};
       const original=Math.max(0,Number(car.mileage)||0), cost=25000;
       if(original<30000)return {text:"⚠️ На таком пробеге корректировка недоступна.",markup:carKeyboard(car)};
