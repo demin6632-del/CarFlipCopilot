@@ -117,6 +117,18 @@ async function test(name, fn) {
     assert.equal("marketplaceListingId" in pool.listings.get(LISTING_ID).vehicle_snapshot, false);
   });
 
+  await test("a vehicle with an active ordinary-sale negotiation cannot be listed", async () => {
+    const pool = new FakePool();
+    pool.state.pendingDeal = { carId: "car-1", amount: 800000 };
+    await assert.rejects(
+      () => marketplace.createMarketplaceListing(pool, { sellerChatId: SELLER, vehicleId: "car-1", askingPrice: 850000 }),
+      error => error.code === "PENDING_DEAL_ACTIVE"
+    );
+    assert.equal(pool.listings.size, 0);
+    assert.equal("marketplaceListingId" in pool.state.garage[0], false);
+    assert.deepEqual(pool.state.pendingDeal, { carId: "car-1", amount: 800000 });
+  });
+
   await test("a second active listing for the same physical vehicle is rejected", async () => {
     const pool = new FakePool();
     await marketplace.createMarketplaceListing(pool, { sellerChatId: SELLER, vehicleId: "car-1", askingPrice: 850000 });
