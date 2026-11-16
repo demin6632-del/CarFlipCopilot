@@ -2,7 +2,7 @@ const { Pool } = require("pg");
 const { randomUUID } = require("node:crypto");
 const sandbox = require("./car-sandbox");
 const { syncVehiclePlateRegistry } = require("./vehicle-plate-registry");
-const { listActiveMarketplaceListings, getActiveMarketplaceListingForBuyer, listMarketplaceListingsForSeller, createMarketplaceListing, cancelMarketplaceListing } = require("./player-marketplace-listings");
+const { listActiveMarketplaceListings, getActiveMarketplaceListingForBuyer, listMarketplaceListingsForSeller, createMarketplaceListing, cancelMarketplaceListing, expireMarketplaceListings: expireMarketplaceListingsInDb } = require("./player-marketplace-listings");
 const { purchaseMarketplaceListing } = require("./player-marketplace-settlement");
 
 const VERSION = 2;
@@ -87,6 +87,19 @@ function db() {
     poolPromise = Promise.resolve(pool);
   }
   return poolPromise;
+}
+
+async function processExpiredMarketplaceListings(options = {}) {
+  const poolRef = db();
+  if (!poolRef) return { ok: false, skipped: "DATABASE_UNAVAILABLE", expiredCount: 0 };
+  const pool = await poolRef;
+  // The marketplace schema is intentionally installed only by the reviewed
+  // migration sequence. A bot deployed before that sequence must remain healthy.
+  const schema = await pool.query("SELECT to_regclass('public.autonomous_marketplace_listings') AS table_name");
+  if (!schema.rows?.[0]?.table_name) {
+    return { ok: true, skipped: "SCHEMA_NOT_INSTALLED", expiredCount: 0 };
+  }
+  return expireMarketplaceListingsInDb(pool, options);
 }
 
 async function init() {
@@ -2488,4 +2501,4 @@ async function handleCallback(chat,data,firstName,sendFn,answerFn,callbackId) {
   return true;
 }
 
-module.exports={init,load,save,open,handleText,handleCallback,leaderboardText,isMarketplaceListingActionBlocked,parseMarketplacePrice,marketplacePurchaseConfirmCallback,CATALOG,CAR_PHOTOS,BUYER_TYPES,newState,refreshMarket,createListing,createUniqueVehiclePlate,ensureVehiclePlates,addTx,scoreListing,bestDeal,recommendation,addProgress,updateContracts,buyerOffer,buyerOfferDetails,buyerProfile,negotiation,dealRisk,runDiagnostic,vehicleCost,purchaseListing,repairVehicle,prepareVehicle,buyPlate,sellPlate,acceptPendingSale,parsePurchaseOfferInput,negotiatePurchase,streetDuelPower,STREET_DUEL_STAKE};
+module.exports={init,processExpiredMarketplaceListings,load,save,open,handleText,handleCallback,leaderboardText,isMarketplaceListingActionBlocked,parseMarketplacePrice,marketplacePurchaseConfirmCallback,CATALOG,CAR_PHOTOS,BUYER_TYPES,newState,refreshMarket,createListing,createUniqueVehiclePlate,ensureVehiclePlates,addTx,scoreListing,bestDeal,recommendation,addProgress,updateContracts,buyerOffer,buyerOfferDetails,buyerProfile,negotiation,dealRisk,runDiagnostic,vehicleCost,purchaseListing,repairVehicle,prepareVehicle,buyPlate,sellPlate,acceptPendingSale,parsePurchaseOfferInput,negotiatePurchase,streetDuelPower,STREET_DUEL_STAKE};
