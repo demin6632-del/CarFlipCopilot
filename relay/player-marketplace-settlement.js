@@ -46,7 +46,8 @@ async function resolveCommittedMarketplacePurchase(pool, { buyerChatId, listingI
   // A durable receipt alone is not enough to report success: verify that the
   // purchased vehicle is actually present in the buyer's persisted garage
   // and that the recovered accounting values are safe to display.
-  if (!car || !row.plate || !sellerChatId || sellerChatId === buyerChatId ||
+  if (!car || !row.plate || String(car.plate || "") !== String(row.plate) ||
+      !sellerChatId || sellerChatId === buyerChatId ||
       !Number.isSafeInteger(price) || price <= 0 ||
       !Number.isSafeInteger(buyerBalance) || buyerBalance < 0) {
     return null;
