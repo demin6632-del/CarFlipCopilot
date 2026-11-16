@@ -2039,7 +2039,10 @@ async function handleCallback(chat,data,firstName,sendFn,answerFn,callbackId) {
   }
   const run=await withState(chat,firstName,state=>{
     const advancesTurn = new Set(["refresh","diagnose","diagnose_deep","offer","buy","repair","prep","sell","negotiate","reject","accept","plate_refresh","platebuy","platesell","pmrefresh","pmbuy","borrow","repay","rollback","crate_open","part_sell"]).has(action);
-    if(advancesTurn) state.meta.turn=(Number(state.meta.turn)||0)+1;
+    const callbackVehicleId = String(id || "").split("|")[0];
+    const callbackVehicle = state.garage.find(car => String(car.id) === callbackVehicleId);
+    const blockedListedVehicleAction = isMarketplaceListingActionBlocked(action, callbackVehicle);
+    if(advancesTurn && !blockedListedVehicleAction) state.meta.turn=(Number(state.meta.turn)||0)+1;
     if(callbackId) {
       state.processedCallbacks.push(String(callbackId));
       state.processedCallbacks=state.processedCallbacks.slice(-100);
