@@ -4,6 +4,7 @@ const https = require("https");
 const sharp = require("sharp");
 const { acquireTelegramPollLock, releaseTelegramPollLock } = require("./telegram-poll-lock");
 const autonomousGame = require("./autonomous-game");
+const { startMarketplaceExpiryScheduler } = require("./marketplace-expiry-scheduler");
 
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || "";
 const API = "https://api.telegram.org/bot" + BOT_TOKEN;
@@ -257,6 +258,7 @@ async function setupTelegramDelivery(){
   }catch(e){console.log("Telegram delivery setup error:",e.stack||e.message||e);return false;}
 }
 async function pollBotUpdates(){
+  let stopMarketplaceExpiryScheduler = null;
   if(!BOT_TOKEN)return false;
   const lock=await acquireTelegramPollLock();
   if(!lock){
@@ -271,6 +273,18 @@ async function pollBotUpdates(){
     }
     await registerBotCommands();
     await loadTelegramOffset();
+    // Only the instance holding the Telegram polling lock runs maintenance.
+    // This avoids duplicate schedulers when Render has overlapping instances.
+    stopMarketplaceExpiryScheduler = startMarketplaceExpiryScheduler({
+      run: () => autonomousGame.processExpiredMarketplaceListings({ batchSize: 50 }),
+      intervalMs: 5 * 60 * 1000,
+      onResult: result => {
+        if (result?.expiredCount > 0) {
+          console.log("MARKETPLACE EXPIRY COMPLETED:", JSON.stringify(result));
+        }
+      },
+      onError: error => console.error("MARKETPLACE EXPIRY WARNING:", error?.stack || error?.message || error)
+    });
     while(polling){
       try{
         const updates=await tgLongPoll({offset,timeout:20,limit:100,allowed_updates:["message","callback_query"]});
@@ -282,7 +296,10 @@ async function pollBotUpdates(){
         await new Promise(r=>setTimeout(r,1500));
       }
     }
-  }finally{await releaseTelegramPollLock();}
+  }finally{
+    try{stopMarketplaceExpiryScheduler?.();}catch(error){console.error("MARKETPLACE EXPIRY SCHEDULER STOP WARNING:",error?.message||error);}
+    await releaseTelegramPollLock();
+  }
   return true;
 }
 async function loop(){
