@@ -82,6 +82,11 @@ const partsRefresh = gameSource.indexOf('if(action==="pmrefresh")', turnGuardSta
 const partsBuy = gameSource.indexOf('if(action==="pmbuy")', turnGuardStart);
 assert.ok(actionGuard > turnGuardStart && partsRefresh > actionGuard && partsBuy > actionGuard,
   "Listed-vehicle mutation guard must execute before either parts-market refresh or parts purchase");
+const donorHandler = gameSource.indexOf('if(action==="donor"){');
+const donorBuild = gameSource.indexOf("sandbox.buildCar(c); sandbox.buildCar(donor);", donorHandler);
+const donorListingGuard = gameSource.indexOf("if(donor.marketplaceListingId)", donorHandler);
+assert.ok(donorHandler >= 0 && donorListingGuard > donorHandler && donorListingGuard < donorBuild,
+  "A listed secondary donor vehicle must be blocked before sandbox initialization");
 assert.match(gameSource.slice(actionGuard, partsRefresh), /return \{text:"🔒 Автомобиль выставлен на общий рынок/,
   "Blocked listed-car actions must return a clear refusal before any parts-market mutation");
 
