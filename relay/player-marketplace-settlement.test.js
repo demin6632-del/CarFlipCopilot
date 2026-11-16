@@ -30,7 +30,7 @@ class FakePool {
     ]);
     this.listing = {
       id: LISTING, vehicle_uid: UID, seller_chat_id: SELLER,
-      asking_price: 850000, status: "active",
+      asking_price: 850000, status: "active", is_unexpired: true,
       expires_at: new Date(Date.now() + 3600000)
     };
     this.registry = { owner_chat_id: SELLER, plate: "А123ВС 77", retired_at: null };
@@ -330,8 +330,23 @@ async function test(name, fn) {
     assert.equal(pool.receipts.size, 0);
   });
 
+  await test("database expiry decision is authoritative even when application clock differs", async () => {
+    const pool = new FakePool();
+    pool.listing.expires_at = new Date(Date.now() + 3600000);
+    pool.listing.is_unexpired = false;
+    await assert.rejects(
+      () => purchaseMarketplaceListing(pool, { buyerChatId: BUYER, listingId: LISTING, callbackId: CALLBACK }),
+      error => error.code === "LISTING_NOT_ACTIVE"
+    );
+    assert.equal(pool.states.get(BUYER).player.balance, 2000000);
+    assert.equal(pool.registry.owner_chat_id, SELLER);
+    assert.equal(pool.listing.status, "active");
+    assert.equal(pool.ledger.length, 0);
+  });
+
   await test("expired listing cannot be purchased", async () => {
     const pool = new FakePool();
+    pool.listing.is_unexpired = false;
     pool.listing.expires_at = new Date(Date.now() - 1000);
     await assert.rejects(
       () => purchaseMarketplaceListing(pool, { buyerChatId: BUYER, listingId: LISTING, callbackId: CALLBACK }),
