@@ -36,6 +36,15 @@ assert.match(gameSource.slice(purchaseCatch, purchaseOutcome), /if \(purchaseRes
   "Seller notification delivery errors must be isolated from the committed purchase result");
 assert.doesNotMatch(gameSource, /УКАЖИ ЦЕНУ\\\\n/, "Marketplace listing price prompt must contain real line breaks");
 assert.doesNotMatch(gameSource, /ОБЪЯВЛЕНИЕ СНЯТО\\\\n/, "Marketplace cancellation confirmation must contain real line breaks");
+assert.doesNotMatch(gameSource, /АВТОМОБИЛЬ ВЫСТАВЛЕН НА ОБЩИЙ РЫНОК\\\\n/, "Marketplace listing success message must contain real line breaks");
+const listingCreateStart = gameSource.indexOf("listingResult = await createMarketplaceListing");
+const listingCreateCatch = gameSource.indexOf("} catch (error) {", listingCreateStart);
+const listingCreateOutcome = gameSource.indexOf("PLAYER MARKETPLACE SUCCESS NOTIFICATION WARNING:", listingCreateCatch);
+assert.ok(listingCreateStart >= 0 && listingCreateCatch > listingCreateStart && listingCreateOutcome > listingCreateCatch,
+  "Marketplace listing success notification must be outside the listing transaction error handler");
+assert.match(gameSource.slice(listingCreateOutcome - 1200, listingCreateOutcome), /PLAYER MARKETPLACE PENDING CLEANUP WARNING/,
+  "Pending-listing cleanup errors must be isolated after a committed listing");
+
 const rollbackStart = gameSource.indexOf('if(action==="rollback"){');
 const rollbackEnd = gameSource.indexOf('if(action==="garage")', rollbackStart);
 const rollbackBlock = gameSource.slice(rollbackStart, rollbackEnd);
