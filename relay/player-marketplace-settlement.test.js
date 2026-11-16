@@ -145,6 +145,8 @@ class CommitAckLostPool extends FakePool {
         this.listing.sold_to_chat_id !== params[0]) {
       return { rowCount: 0, rows: [] };
     }
+    const recoveredState = structuredClone(this.states.get(BUYER));
+    if (this.omitRecoveredVehicle) recoveredState.garage = [];
     return {
       rowCount: 1,
       rows: [{
@@ -154,7 +156,7 @@ class CommitAckLostPool extends FakePool {
         status: "sold",
         sold_to_chat_id: BUYER,
         plate: this.registry.plate,
-        state: structuredClone(this.states.get(BUYER))
+        state: recoveredState
       }]
     };
   }
@@ -223,6 +225,19 @@ async function test(name, fn) {
     assert.equal(pool.marketTransactions.length, 1);
     assert.equal(pool.receipts.size, 1);
     assert.equal(pool.commits, 1);
+  });
+
+  await test("recovery refuses to claim success when the vehicle is missing from the buyer garage", async () => {
+    const pool = new CommitAckLostPool();
+    pool.omitRecoveredVehicle = true;
+    await assert.rejects(
+      () => purchaseMarketplaceListing(pool, {
+        buyerChatId: BUYER, listingId: LISTING, callbackId: CALLBACK
+      }),
+      error => error.code === "COMMIT_OUTCOME_UNKNOWN"
+    );
+    assert.equal(pool.listing.status, "sold", "the simulated database commit still happened");
+    assert.equal(pool.registry.owner_chat_id, BUYER);
   });
 
   await test("same callback replay is rejected without a second debit", async () => {
