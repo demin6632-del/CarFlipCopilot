@@ -30,6 +30,8 @@ assert.ok(failureReply > purchaseCatch && failureReply < purchaseOutcome,
 const sellerNotice = gameSource.indexOf("MARKETPLACE SELLER NOTIFICATION WARNING:", purchaseCatch);
 assert.ok(sellerNotice > purchaseCatch && sellerNotice < purchaseOutcome,
   "Seller notification must happen after settlement and before the buyer outcome");
+assert.match(gameSource.slice(purchaseCatch, purchaseOutcome), /COMMIT_OUTCOME_UNKNOWN:[^\n]*Покупка могла завершиться/,
+  "Ambiguous commit outcomes must never claim that the purchase definitely failed");
 assert.match(gameSource.slice(purchaseCatch, purchaseOutcome), /if \(purchaseResult\.ok && purchaseResult\.sellerChatId\)[\s\S]*?try \{[\s\S]*?sendFn\(purchaseResult\.sellerChatId[\s\S]*?catch \(notifyError\)/,
   "Seller notification delivery errors must be isolated from the committed purchase result");
 
