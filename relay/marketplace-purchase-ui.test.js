@@ -74,5 +74,12 @@ const turnGuardStart = gameSource.indexOf("const blockedListedVehicleAction = is
 const turnAdvance = gameSource.indexOf("if(advancesTurn && !blockedListedVehicleAction)", turnGuardStart);
 assert.ok(turnGuardStart >= 0 && turnAdvance > turnGuardStart,
   "Blocked actions on listed vehicles must not advance the game turn");
+const actionGuard = gameSource.indexOf("if(isMarketplaceListingActionBlocked(action,c)) {", turnGuardStart);
+const partsRefresh = gameSource.indexOf('if(action==="pmrefresh")', turnGuardStart);
+const partsBuy = gameSource.indexOf('if(action==="pmbuy")', turnGuardStart);
+assert.ok(actionGuard > turnGuardStart && partsRefresh > actionGuard && partsBuy > actionGuard,
+  "Listed-vehicle mutation guard must execute before either parts-market refresh or parts purchase");
+assert.match(gameSource.slice(actionGuard, partsRefresh), /return \{text:"🔒 Автомобиль выставлен на общий рынок/,
+  "Blocked listed-car actions must return a clear refusal before any parts-market mutation");
 
 console.log("Marketplace purchase UI callback tests: OK");
