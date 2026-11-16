@@ -174,6 +174,74 @@ async function test(name, fn) {
       assert.equal(replayLedger.rows[0].count, 2);
     });
 
+    await test("PostgreSQL recovers a committed purchase when the COMMIT acknowledgement is lost", async () => {
+      const recoveryUid = crypto.randomUUID();
+      const recoveryListing = crypto.randomUUID();
+      const recoveryPlate = "К" + String(100 + Math.floor(Math.random() * 900)) + "РС " + String(10 + Math.floor(Math.random() * 90));
+      const recoveryCar = {
+        id: "commit-recovery-car-" + suffix, vehicleUid: recoveryUid, plate: recoveryPlate,
+        model: "Commit Recovery Integration Car", year: 2025, mileage: 800, condition: 100,
+        marketplaceListingId: recoveryListing
+      };
+      const sellerBefore = await pool.query("SELECT state FROM autonomous_game_state WHERE chat_id=$1", [seller]);
+      const buyerBefore = await pool.query("SELECT state FROM autonomous_game_state WHERE chat_id=$1", [buyerB]);
+      const sellerState = sellerBefore.rows[0].state;
+      sellerState.garage.push(recoveryCar);
+      await pool.query("UPDATE autonomous_game_state SET state=$2::jsonb WHERE chat_id=$1", [seller, JSON.stringify(sellerState)]);
+      await pool.query(
+        "INSERT INTO vehicle_plate_registry(plate,vehicle_uid,owner_chat_id,source) VALUES($1,$2::uuid,$3,'commit-recovery-test')",
+        [recoveryPlate, recoveryUid, seller]
+      );
+      await pool.query(
+        "INSERT INTO autonomous_marketplace_listings(id,vehicle_uid,seller_chat_id,asking_price,status,vehicle_snapshot,expires_at) " +
+        "VALUES($1::uuid,$2::uuid,$3,225000,'active',$4::jsonb,now()+interval '1 day')",
+        [recoveryListing, recoveryUid, seller, JSON.stringify({ model: recoveryCar.model, plate: recoveryPlate, year: 2025, mileage: 800, condition: 100, damage: 0 })]
+      );
+
+      const callbackId = "commit-ack-lost-" + suffix;
+      const acknowledgementLossPool = {
+        query: (...args) => pool.query(...args),
+        connect: async () => {
+          const client = await pool.connect();
+          const originalQuery = client.query.bind(client);
+          client.query = async (sql, params) => {
+            const result = await originalQuery(sql, params);
+            if (sql === "COMMIT") throw new Error("simulated lost COMMIT acknowledgement after server commit");
+            return result;
+          };
+          return client;
+        }
+      };
+      const result = await purchaseMarketplaceListing(acknowledgementLossPool, {
+        buyerChatId: buyerB, listingId: recoveryListing, callbackId
+      });
+      assert.equal(result.ok, true);
+      assert.equal(result.recovered, true);
+      assert.equal(result.sellerChatId, seller);
+      assert.equal(result.plate, recoveryPlate);
+      assert.equal(result.price, 225000);
+
+      const states = await pool.query(
+        "SELECT chat_id,state FROM autonomous_game_state WHERE chat_id=ANY($1::text[])",
+        [[seller, buyerB]]
+      );
+      const byId = new Map(states.rows.map(row => [row.chat_id, row.state]));
+      assert.equal(byId.get(buyerB).player.balance, buyerBefore.rows[0].state.player.balance - 225000);
+      assert.equal(byId.get(seller).player.balance, sellerBefore.rows[0].state.player.balance + 225000);
+      assert.equal(byId.get(buyerB).garage.filter(item => item.vehicleUid === recoveryUid).length, 1);
+      assert.equal(byId.get(seller).garage.some(item => item.vehicleUid === recoveryUid), false);
+      const receipt = await pool.query(
+        "SELECT count(*)::int AS count FROM autonomous_processed_callbacks WHERE chat_id=$1 AND callback_id=$2",
+        [buyerB, callbackId]
+      );
+      assert.equal(receipt.rows[0].count, 1);
+      const transaction = await pool.query(
+        "SELECT count(*)::int AS count FROM autonomous_marketplace_transactions WHERE listing_id=$1::uuid",
+        [recoveryListing]
+      );
+      assert.equal(transaction.rows[0].count, 1);
+    });
+
     await test("two buyers racing for one listing cannot both complete the purchase", async () => {
       const secondUid = crypto.randomUUID();
       const secondListing = crypto.randomUUID();
