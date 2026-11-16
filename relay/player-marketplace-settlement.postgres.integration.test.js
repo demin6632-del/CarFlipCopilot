@@ -203,13 +203,17 @@ async function test(name, fn) {
         query: (...args) => pool.query(...args),
         connect: async () => {
           const client = await pool.connect();
-          const originalQuery = client.query.bind(client);
-          client.query = async (sql, params) => {
-            const result = await originalQuery(sql, params);
-            if (sql === "COMMIT") throw new Error("simulated lost COMMIT acknowledgement after server commit");
-            return result;
+          // Wrap the client instead of replacing client.query itself. The real
+          // pool may reuse this client after release; mutating it would make
+          // later, unrelated transactions inherit the simulated lost ACK.
+          return {
+            query: async (sql, params) => {
+              const result = await client.query(sql, params);
+              if (sql === "COMMIT") throw new Error("simulated lost COMMIT acknowledgement after server commit");
+              return result;
+            },
+            release: () => client.release()
           };
-          return client;
         }
       };
       const result = await purchaseMarketplaceListing(acknowledgementLossPool, {
