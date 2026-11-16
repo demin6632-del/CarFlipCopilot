@@ -40,16 +40,27 @@ async function resolveCommittedMarketplacePurchase(pool, { buyerChatId, listingI
   const vehicleUid = String(row.vehicle_uid);
   const car = (Array.isArray(buyerState.garage) ? buyerState.garage : [])
     .find(item => String(item.vehicleUid) === vehicleUid);
+  const price = Number(row.gross_amount);
+  const buyerBalance = Number(buyerState.player?.balance);
+  const sellerChatId = String(row.seller_chat_id || "");
+  // A durable receipt alone is not enough to report success: verify that the
+  // purchased vehicle is actually present in the buyer's persisted garage
+  // and that the recovered accounting values are safe to display.
+  if (!car || !row.plate || !sellerChatId || sellerChatId === buyerChatId ||
+      !Number.isSafeInteger(price) || price <= 0 ||
+      !Number.isSafeInteger(buyerBalance) || buyerBalance < 0) {
+    return null;
+  }
   return {
     ok: true,
     recovered: true,
     listingId,
     vehicleUid,
-    model: String(car?.model || "Автомобиль"),
+    model: String(car.model || "Автомобиль"),
     plate: String(row.plate),
-    price: Number(row.gross_amount),
-    sellerChatId: String(row.seller_chat_id),
-    buyerBalance: Number(buyerState.player?.balance)
+    price,
+    sellerChatId,
+    buyerBalance
   };
 }
 
