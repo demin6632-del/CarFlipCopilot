@@ -147,6 +147,7 @@ class CommitAckLostPool extends FakePool {
     }
     const recoveredState = structuredClone(this.states.get(BUYER));
     if (this.omitRecoveredVehicle) recoveredState.garage = [];
+    if (this.mismatchRecoveredPlate && recoveredState.garage[0]) recoveredState.garage[0].plate = "Х999ХХ 99";
     return {
       rowCount: 1,
       rows: [{
@@ -230,6 +231,19 @@ async function test(name, fn) {
   await test("recovery refuses to claim success when the vehicle is missing from the buyer garage", async () => {
     const pool = new CommitAckLostPool();
     pool.omitRecoveredVehicle = true;
+    await assert.rejects(
+      () => purchaseMarketplaceListing(pool, {
+        buyerChatId: BUYER, listingId: LISTING, callbackId: CALLBACK
+      }),
+      error => error.code === "COMMIT_OUTCOME_UNKNOWN"
+    );
+    assert.equal(pool.listing.status, "sold", "the simulated database commit still happened");
+    assert.equal(pool.registry.owner_chat_id, BUYER);
+  });
+
+  await test("recovery refuses success when the buyer vehicle plate differs from the registry", async () => {
+    const pool = new CommitAckLostPool();
+    pool.mismatchRecoveredPlate = true;
     await assert.rejects(
       () => purchaseMarketplaceListing(pool, {
         buyerChatId: BUYER, listingId: LISTING, callbackId: CALLBACK
