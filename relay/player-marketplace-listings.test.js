@@ -2,6 +2,7 @@
 
 const assert = require("node:assert/strict");
 const marketplace = require("./player-marketplace-listings");
+const fs = require("node:fs");
 
 const SELLER = "10001";
 const OTHER = "20002";
@@ -104,6 +105,14 @@ async function test(name, fn) {
 }
 
 (async () => {
+  await test("listing creation follows settlement lock order before locking the global registry", async () => {
+    const source = fs.readFileSync(require.resolve("./player-marketplace-listings"), "utf8");
+    const duplicateLock = source.indexOf("SELECT id FROM autonomous_marketplace_listings WHERE vehicle_uid=$1::uuid AND status='active' FOR UPDATE");
+    const registryLock = source.indexOf("SELECT plate, owner_chat_id, retired_at FROM vehicle_plate_registry WHERE vehicle_uid=$1::uuid FOR UPDATE");
+    assert.ok(duplicateLock >= 0 && registryLock > duplicateLock,
+      "Listing rows must be locked before registry rows to match purchase settlement and avoid lock inversion");
+  });
+
   await test("listing creation locks the owned car and stores a sanitized snapshot", async () => {
     const pool = new FakePool();
     const result = await marketplace.createMarketplaceListing(pool, {
