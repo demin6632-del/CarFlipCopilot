@@ -67,6 +67,16 @@ async function createMarketplaceListing(pool, input) {
       throw marketplaceError("ALREADY_LISTED", "Vehicle already has an active marketplace listing");
     }
 
+    // Match settlement's lock order: player state -> listing row -> registry row.
+    // A copied/stale vehicle UID from another account must not lock the registry
+    // first and then wait on a listing row while a purchase holds that listing
+    // and waits for the registry (a PostgreSQL deadlock cycle).
+    const duplicate = await client.query(
+      "SELECT id FROM autonomous_marketplace_listings WHERE vehicle_uid=$1::uuid AND status='active' FOR UPDATE",
+      [String(car.vehicleUid)]
+    );
+    if (duplicate.rowCount) throw marketplaceError("ALREADY_LISTED", "Vehicle already has an active marketplace listing");
+
     const registry = await client.query(
       "SELECT plate, owner_chat_id, retired_at FROM vehicle_plate_registry WHERE vehicle_uid=$1::uuid FOR UPDATE",
       [String(car.vehicleUid)]
@@ -76,12 +86,6 @@ async function createMarketplaceListing(pool, input) {
         String(registry.rows[0].plate) !== String(car.plate)) {
       throw marketplaceError("REGISTRY_OWNERSHIP_MISMATCH", "Global vehicle registry does not confirm this seller's ownership");
     }
-
-    const duplicate = await client.query(
-      "SELECT id FROM autonomous_marketplace_listings WHERE vehicle_uid=$1::uuid AND status='active' FOR UPDATE",
-      [String(car.vehicleUid)]
-    );
-    if (duplicate.rowCount) throw marketplaceError("ALREADY_LISTED", "Vehicle already has an active marketplace listing");
 
     const inserted = await client.query(
       "INSERT INTO autonomous_marketplace_listings(vehicle_uid,seller_chat_id,asking_price,status,vehicle_snapshot,expires_at) " +
