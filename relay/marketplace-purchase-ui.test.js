@@ -70,5 +70,9 @@ assert.ok(readOnlyBlock, "Marketplace listed-vehicle read-only action allowlist 
 assert.match(readOnlyBlock[1], /"pmsrc"/, "Source browsing remains available for listed vehicles");
 assert.doesNotMatch(readOnlyBlock[1], /"pmrefresh"/, "Refreshing a per-car parts market must be blocked while listed");
 assert.doesNotMatch(readOnlyBlock[1], /"pmbuy"/, "Buying parts and changing inventory must be blocked while listed");
+const turnGuardStart = gameSource.indexOf("const blockedListedVehicleAction = isMarketplaceListingActionBlocked(action, callbackVehicle);");
+const turnAdvance = gameSource.indexOf("if(advancesTurn && !blockedListedVehicleAction)", turnGuardStart);
+assert.ok(turnGuardStart >= 0 && turnAdvance > turnGuardStart,
+  "Blocked actions on listed vehicles must not advance the game turn");
 
 console.log("Marketplace purchase UI callback tests: OK");
