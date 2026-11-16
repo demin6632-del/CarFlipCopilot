@@ -398,6 +398,49 @@ async function test(name, fn) {
     });
 
 
+    await test("expiry worker racing seller cancellation leaves one unlocked vehicle and one terminal status", async () => {
+      const raceUid = crypto.randomUUID();
+      const raceListing = crypto.randomUUID();
+      const racePlate = "П" + String(100 + Math.floor(Math.random() * 900)) + "СХ " + String(10 + Math.floor(Math.random() * 90));
+      const raceCar = {
+        id: "expiry-cancel-race-car-" + suffix, vehicleUid: raceUid, plate: racePlate,
+        model: "Expiry Cancellation Race Car", year: 2020, mileage: 45000, condition: 88,
+        marketplaceListingId: raceListing
+      };
+      await pool.query(
+        "INSERT INTO vehicle_plate_registry(plate,vehicle_uid,owner_chat_id,source) VALUES($1,$2::uuid,$3,'settlement-expiry-cancel-race-test')",
+        [racePlate, raceUid, seller]
+      );
+      const currentSeller = await pool.query("SELECT state FROM autonomous_game_state WHERE chat_id=$1", [seller]);
+      const nextSellerState = currentSeller.rows[0].state;
+      nextSellerState.garage.push(raceCar);
+      await pool.query("UPDATE autonomous_game_state SET state=$2::jsonb WHERE chat_id=$1", [seller, JSON.stringify(nextSellerState)]);
+      await pool.query(
+        "INSERT INTO autonomous_marketplace_listings(id,vehicle_uid,seller_chat_id,asking_price,status,vehicle_snapshot,created_at,expires_at) " +
+        "VALUES($1::uuid,$2::uuid,$3,95000,'active',$4::jsonb,now()-interval '2 days',now()-interval '1 second')",
+        [raceListing, raceUid, seller, JSON.stringify({ model: raceCar.model, plate: racePlate, year: 2020, mileage: 45000, condition: 88, damage: 0 })]
+      );
+
+      const outcomes = await Promise.allSettled([
+        cancelMarketplaceListing(pool, { sellerChatId: seller, listingId: raceListing }),
+        expireMarketplaceListings(pool, { batchSize: 1 })
+      ]);
+      const cancelWon = outcomes[0].status === "fulfilled" && outcomes[0].value.ok === true;
+      const expiryWon = outcomes[1].status === "fulfilled" && outcomes[1].value.expiredCount === 1;
+      assert.equal(Number(cancelWon) + Number(expiryWon), 1, "exactly one operation closes the active listing");
+
+      const listing = await pool.query("SELECT status FROM autonomous_marketplace_listings WHERE id=$1::uuid", [raceListing]);
+      assert.equal(listing.rows[0].status, cancelWon ? "cancelled" : "expired");
+      const states = await pool.query("SELECT state FROM autonomous_game_state WHERE chat_id=$1", [seller]);
+      const unlockedCar = states.rows[0].state.garage.find(item => item.vehicleUid === raceUid);
+      assert.ok(unlockedCar, "seller retains the physical vehicle");
+      assert.equal(unlockedCar.marketplaceListingId, undefined, "terminal listing releases the vehicle lock");
+      const registry = await pool.query("SELECT owner_chat_id,plate,retired_at FROM vehicle_plate_registry WHERE vehicle_uid=$1::uuid", [raceUid]);
+      assert.equal(registry.rows[0].owner_chat_id, seller);
+      assert.equal(registry.rows[0].plate, racePlate);
+      assert.equal(registry.rows[0].retired_at, null);
+    });
+
     await test("expired-listing worker racing a purchase never transfers an expired vehicle", async () => {
       const raceUid = crypto.randomUUID();
       const raceListing = crypto.randomUUID();
