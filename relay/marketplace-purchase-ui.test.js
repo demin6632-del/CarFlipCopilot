@@ -67,9 +67,12 @@ assert.ok(
 
 const readOnlyBlock = gameSource.match(/const MARKETPLACE_READ_ONLY_ACTIONS = new Set\(\[([\s\S]*?)\]\);/);
 assert.ok(readOnlyBlock, "Marketplace listed-vehicle read-only action allowlist must exist");
-assert.match(readOnlyBlock[1], /"pmsrc"/, "Source browsing remains available for listed vehicles");
-assert.doesNotMatch(readOnlyBlock[1], /"pmrefresh"/, "Refreshing a per-car parts market must be blocked while listed");
-assert.doesNotMatch(readOnlyBlock[1], /"pmbuy"/, "Buying parts and changing inventory must be blocked while listed");
+const allowedListedActions = [...readOnlyBlock[1].matchAll(/"([^"]+)"/g)].map(match => match[1]);
+assert.deepEqual(allowedListedActions, ["car", "contracts", "plates", "stats"],
+  "Only non-mutating vehicle summary and player-level screens may remain available while listed");
+for (const action of ["pmsrc", "pmrefresh", "pmbuy", "warehouse", "winfo", "parts", "system", "assembly", "part", "fasteners", "fa", "pa", "winstall", "wsell", "extract", "install", "repair", "prep", "rollback", "diag"]) {
+  assert.ok(!allowedListedActions.includes(action), "Listed vehicles must block sandbox/mutation action: " + action);
+}
 const turnGuardStart = gameSource.indexOf("const blockedListedVehicleAction = isMarketplaceListingActionBlocked(action, callbackVehicle);");
 const turnAdvance = gameSource.indexOf("if(advancesTurn && !blockedListedVehicleAction)", turnGuardStart);
 assert.ok(turnGuardStart >= 0 && turnAdvance > turnGuardStart,
