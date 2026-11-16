@@ -54,6 +54,9 @@ async function createMarketplaceListing(pool, input) {
     state.garage = Array.isArray(state.garage) ? state.garage : [];
     const car = state.garage.find(item => String(item.id) === vehicleId);
     if (!car) throw marketplaceError("VEHICLE_NOT_OWNED", "Vehicle is not in the seller's garage");
+    if (state.pendingDeal && String(state.pendingDeal.carId) === vehicleId) {
+      throw marketplaceError("PENDING_DEAL_ACTIVE", "Finish or cancel the active negotiation before listing this vehicle");
+    }
     if (!UUID_RE.test(String(car.vehicleUid || ""))) {
       throw marketplaceError("REGISTRY_NOT_READY", "Vehicle has no stable global registry ID yet");
     }
