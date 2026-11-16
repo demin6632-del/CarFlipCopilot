@@ -60,7 +60,7 @@ async function resolveCommittedMarketplacePurchase(pool, { buyerChatId, listingI
  * Lock order is always player states (ascending chat_id), then listing,
  * then registry row. The callback receipt, both player states, both ledger
  * rows, registry ownership and listing status commit in one transaction.
-
+ */
 async function purchaseMarketplaceListing(pool, input) {
   const buyerChatId = String(input?.buyerChatId ?? "").trim();
   const listingId = String(input?.listingId ?? "");
