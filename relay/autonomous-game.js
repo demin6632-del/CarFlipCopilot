@@ -1553,6 +1553,7 @@ async function handleText(chat,text,firstName,sendFn) {
           const message = error?.code === "REGISTRY_NOT_READY" || error?.code === "REGISTRY_OWNERSHIP_MISMATCH"
             ? "Не удалось подтвердить глобальный номер и владельца автомобиля. Объявление не создано."
             : error?.code === "VEHICLE_NOT_OWNED" ? "Автомобиль больше не находится в твоём гараже."
+            : error?.code === "PENDING_DEAL_ACTIVE" ? "Сначала заверши или отмени переговоры по этому автомобилю, затем выставляй его на общий рынок."
             : "Не удалось создать объявление. Проверь цену и попробуй ещё раз позже.";
           await sendFn(chat, "⚠️ " + message, { reply_markup: { inline_keyboard: [[{ text: "❌ Отмена", callback_data: "ag:pmarket_cancel_pending" }]] } });
         }
@@ -1801,9 +1802,19 @@ async function marketplaceMineScreen(chat, sendFn) {
 
 async function marketplaceSellScreen(chat, firstName, sendFn) {
   const state = await load(chat, firstName);
-  const available = (Array.isArray(state.garage) ? state.garage : []).filter(car => !car.marketplaceListingId);
+  const pendingDealCarId = state.pendingDeal?.carId == null ? "" : String(state.pendingDeal.carId);
+  const available = (Array.isArray(state.garage) ? state.garage : []).filter(car =>
+    !car.marketplaceListingId && String(car.id) !== pendingDealCarId
+  );
   if (!available.length) {
-    await sendFn(chat, "🚘 ВЫСТАВЛЕНИЕ АВТОМОБИЛЯ\n\nВ гараже нет автомобилей, доступных для размещения.", { reply_markup: { inline_keyboard: [[{ text: "📋 Мои объявления", callback_data: "ag:pmarket_mine" }], [{ text: "⬅️ Общий рынок", callback_data: "ag:pmarket:0" }]] } });
+    const hasNegotiationConflict = pendingDealCarId &&
+      (Array.isArray(state.garage) ? state.garage : []).some(car =>
+        !car.marketplaceListingId && String(car.id) === pendingDealCarId
+      );
+    const message = hasNegotiationConflict
+      ? "🚘 ВЫСТАВЛЕНИЕ АВТОМОБИЛЯ\n\nСначала заверши или отмени переговоры по этому автомобилю. После этого его можно будет выставить на общий рынок."
+      : "🚘 ВЫСТАВЛЕНИЕ АВТОМОБИЛЯ\n\nВ гараже нет автомобилей, доступных для размещения.";
+    await sendFn(chat, message, { reply_markup: { inline_keyboard: [[{ text: "📋 Мои объявления", callback_data: "ag:pmarket_mine" }], [{ text: "⬅️ Общий рынок", callback_data: "ag:pmarket:0" }]] } });
     return true;
   }
   const buttons = available.slice(0, 20).map(car => [{
@@ -1892,6 +1903,9 @@ async function handleCallback(chat,data,firstName,sendFn,answerFn,callbackId) {
       const car = (Array.isArray(state.garage) ? state.garage : []).find(item => String(item.id) === String(id));
       if (!car) return { ok: false, reason: "missing" };
       if (car.marketplaceListingId) return { ok: false, reason: "listed" };
+      if (state.pendingDeal && String(state.pendingDeal.carId) === String(car.id)) {
+        return { ok: false, reason: "pending_deal" };
+      }
       state.pendingMarketplaceListing = { vehicleId: String(car.id), model: String(car.model || "Автомобиль") };
       return { ok: true, model: String(car.model || "Автомобиль") };
     }, callbackId);
@@ -1900,7 +1914,12 @@ async function handleCallback(chat,data,firstName,sendFn,answerFn,callbackId) {
       return true;
     }
     if (!selected.result?.ok) {
-      await sendFn(chat, selected.result?.reason === "listed" ? "🔒 Эта машина уже выставлена на общий рынок." : "⚠️ Автомобиль не найден в твоём гараже.", { reply_markup: { inline_keyboard: [[{ text: "🚘 Мои автомобили", callback_data: "ag:pmarket_sell" }]] } });
+      const message = selected.result?.reason === "listed"
+        ? "🔒 Эта машина уже выставлена на общий рынок."
+        : selected.result?.reason === "pending_deal"
+          ? "🤝 Сначала заверши или отмени переговоры по этому автомобилю, затем выставляй его на общий рынок."
+          : "⚠️ Автомобиль не найден в твоём гараже.";
+      await sendFn(chat, message, { reply_markup: { inline_keyboard: [[{ text: "🚘 Мои автомобили", callback_data: "ag:pmarket_sell" }]] } });
       return true;
     }
     await sendFn(chat, "💰 УКАЖИ ЦЕНУ\n\nАвтомобиль: " + selected.result.model + "\nСрок размещения: 7 дней.\n\nОтправь одним сообщением цену в рублях, только цифры. Например: 850000.\nДеньги сейчас не списываются.", { reply_markup: { inline_keyboard: [[{ text: "❌ Отмена", callback_data: "ag:pmarket_cancel_pending" }]] } });
