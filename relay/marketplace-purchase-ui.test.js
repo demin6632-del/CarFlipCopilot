@@ -36,5 +36,14 @@ assert.match(gameSource.slice(purchaseCatch, purchaseOutcome), /if \(purchaseRes
   "Seller notification delivery errors must be isolated from the committed purchase result");
 assert.doesNotMatch(gameSource, /УКАЖИ ЦЕНУ\\\\n/, "Marketplace listing price prompt must contain real line breaks");
 assert.doesNotMatch(gameSource, /ОБЪЯВЛЕНИЕ СНЯТО\\\\n/, "Marketplace cancellation confirmation must contain real line breaks");
+const rollbackStart = gameSource.indexOf('if(action==="rollback"){');
+const rollbackEnd = gameSource.indexOf('if(action==="garage")', rollbackStart);
+const rollbackBlock = gameSource.slice(rollbackStart, rollbackEnd);
+assert.ok(rollbackStart >= 0 && rollbackEnd > rollbackStart, "Mileage rollback handler must remain present");
+assert.ok(
+  rollbackBlock.indexOf("if(car.marketplaceListingId)") >= 0 &&
+  rollbackBlock.indexOf("if(car.marketplaceListingId)") < rollbackBlock.indexOf("car.mileageRolledBack"),
+  "Listed vehicles must be blocked before mileage rollback can mutate the odometer"
+);
 
 console.log("Marketplace purchase UI callback tests: OK");
