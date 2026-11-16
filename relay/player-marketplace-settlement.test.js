@@ -30,7 +30,7 @@ class FakePool {
     ]);
     this.listing = {
       id: LISTING, vehicle_uid: UID, seller_chat_id: SELLER,
-      asking_price: 850000, status: "active",
+      asking_price: 850000, status: "active", is_unexpired: true,
       expires_at: new Date(Date.now() + 3600000)
     };
     this.registry = { owner_chat_id: SELLER, plate: "А123ВС 77", retired_at: null };
@@ -124,6 +124,45 @@ class FakePool {
   }
 }
 
+class CommitAckLostPool extends FakePool {
+  async connect() {
+    const client = await super.connect();
+    const originalQuery = client.query.bind(client);
+    client.query = async (sql, params) => {
+      const result = await originalQuery(sql, params);
+      if (sql === "COMMIT") throw new Error("simulated lost COMMIT acknowledgement");
+      return result;
+    };
+    return client;
+  }
+
+  async query(sql, params) {
+    if (!sql.includes("FROM autonomous_processed_callbacks c")) {
+      throw new Error("Unexpected recovery SQL: " + sql);
+    }
+    const receiptKey = params[0] + ":" + params[2];
+    if (!this.receipts.has(receiptKey) || this.listing.status !== "sold" ||
+        this.listing.sold_to_chat_id !== params[0]) {
+      return { rowCount: 0, rows: [] };
+    }
+    const recoveredState = structuredClone(this.states.get(BUYER));
+    if (this.omitRecoveredVehicle) recoveredState.garage = [];
+    if (this.mismatchRecoveredPlate && recoveredState.garage[0]) recoveredState.garage[0].plate = "Х999ХХ 99";
+    return {
+      rowCount: 1,
+      rows: [{
+        vehicle_uid: UID,
+        gross_amount: this.listing.asking_price,
+        seller_chat_id: SELLER,
+        status: "sold",
+        sold_to_chat_id: BUYER,
+        plate: this.registry.plate,
+        state: recoveredState
+      }]
+    };
+  }
+}
+
 async function test(name, fn) {
   await fn();
   console.log("PASS:", name);
@@ -137,6 +176,7 @@ async function test(name, fn) {
     });
     assert.equal(result.ok, true);
     assert.equal(result.price, 850000);
+    assert.equal(result.sellerChatId, SELLER, "private settlement result identifies the seller for post-commit notification");
     assert.equal(pool.states.get(BUYER).player.balance, 1150000);
     assert.equal(pool.states.get(SELLER).player.balance, 1350000);
     assert.equal(pool.states.get(BUYER).garage[0].vehicleUid, UID);
@@ -149,6 +189,69 @@ async function test(name, fn) {
     assert.equal(pool.marketTransactions.length, 1);
     assert.deepEqual(pool.lastStateLockOrder, [BUYER, SELLER].sort());
     assert.equal(pool.commits, 1);
+  });
+
+  await test("stale confirmation price aborts without debiting or transferring the vehicle", async () => {
+    const pool = new FakePool();
+    await assert.rejects(
+      () => purchaseMarketplaceListing(pool, {
+        buyerChatId: BUYER, listingId: LISTING, callbackId: CALLBACK, expectedPrice: 840000
+      }),
+      error => error.code === "PRICE_CHANGED"
+    );
+    assert.equal(pool.states.get(BUYER).player.balance, 2000000);
+    assert.equal(pool.states.get(SELLER).player.balance, 500000);
+    assert.equal(pool.registry.owner_chat_id, SELLER);
+    assert.equal(pool.listing.status, "active");
+    assert.equal(pool.ledger.length, 0);
+    assert.equal(pool.marketTransactions.length, 0);
+    assert.equal(pool.receipts.size, 0);
+    assert.equal(pool.commits, 0);
+  });
+
+  await test("lost COMMIT acknowledgement is recovered from the durable receipt without a second settlement", async () => {
+    const pool = new CommitAckLostPool();
+    const result = await purchaseMarketplaceListing(pool, {
+      buyerChatId: BUYER, listingId: LISTING, callbackId: CALLBACK
+    });
+    assert.equal(result.ok, true);
+    assert.equal(result.recovered, true);
+    assert.equal(result.price, 850000);
+    assert.equal(result.sellerChatId, SELLER);
+    assert.equal(pool.states.get(BUYER).player.balance, 1150000);
+    assert.equal(pool.states.get(SELLER).player.balance, 1350000);
+    assert.equal(pool.registry.owner_chat_id, BUYER);
+    assert.equal(pool.listing.status, "sold");
+    assert.equal(pool.ledger.length, 1);
+    assert.equal(pool.marketTransactions.length, 1);
+    assert.equal(pool.receipts.size, 1);
+    assert.equal(pool.commits, 1);
+  });
+
+  await test("recovery refuses to claim success when the vehicle is missing from the buyer garage", async () => {
+    const pool = new CommitAckLostPool();
+    pool.omitRecoveredVehicle = true;
+    await assert.rejects(
+      () => purchaseMarketplaceListing(pool, {
+        buyerChatId: BUYER, listingId: LISTING, callbackId: CALLBACK
+      }),
+      error => error.code === "COMMIT_OUTCOME_UNKNOWN"
+    );
+    assert.equal(pool.listing.status, "sold", "the simulated database commit still happened");
+    assert.equal(pool.registry.owner_chat_id, BUYER);
+  });
+
+  await test("recovery refuses success when the buyer vehicle plate differs from the registry", async () => {
+    const pool = new CommitAckLostPool();
+    pool.mismatchRecoveredPlate = true;
+    await assert.rejects(
+      () => purchaseMarketplaceListing(pool, {
+        buyerChatId: BUYER, listingId: LISTING, callbackId: CALLBACK
+      }),
+      error => error.code === "COMMIT_OUTCOME_UNKNOWN"
+    );
+    assert.equal(pool.listing.status, "sold", "the simulated database commit still happened");
+    assert.equal(pool.registry.owner_chat_id, BUYER);
   });
 
   await test("same callback replay is rejected without a second debit", async () => {
@@ -227,8 +330,23 @@ async function test(name, fn) {
     assert.equal(pool.receipts.size, 0);
   });
 
+  await test("database expiry decision is authoritative even when application clock differs", async () => {
+    const pool = new FakePool();
+    pool.listing.expires_at = new Date(Date.now() + 3600000);
+    pool.listing.is_unexpired = false;
+    await assert.rejects(
+      () => purchaseMarketplaceListing(pool, { buyerChatId: BUYER, listingId: LISTING, callbackId: CALLBACK }),
+      error => error.code === "LISTING_NOT_ACTIVE"
+    );
+    assert.equal(pool.states.get(BUYER).player.balance, 2000000);
+    assert.equal(pool.registry.owner_chat_id, SELLER);
+    assert.equal(pool.listing.status, "active");
+    assert.equal(pool.ledger.length, 0);
+  });
+
   await test("expired listing cannot be purchased", async () => {
     const pool = new FakePool();
+    pool.listing.is_unexpired = false;
     pool.listing.expires_at = new Date(Date.now() - 1000);
     await assert.rejects(
       () => purchaseMarketplaceListing(pool, { buyerChatId: BUYER, listingId: LISTING, callbackId: CALLBACK }),

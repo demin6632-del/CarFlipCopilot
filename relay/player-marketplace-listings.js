@@ -54,6 +54,9 @@ async function createMarketplaceListing(pool, input) {
     state.garage = Array.isArray(state.garage) ? state.garage : [];
     const car = state.garage.find(item => String(item.id) === vehicleId);
     if (!car) throw marketplaceError("VEHICLE_NOT_OWNED", "Vehicle is not in the seller's garage");
+    if (state.pendingDeal && String(state.pendingDeal.carId) === vehicleId) {
+      throw marketplaceError("PENDING_DEAL_ACTIVE", "Finish or cancel the active negotiation before listing this vehicle");
+    }
     if (!UUID_RE.test(String(car.vehicleUid || ""))) {
       throw marketplaceError("REGISTRY_NOT_READY", "Vehicle has no stable global registry ID yet");
     }
@@ -64,6 +67,16 @@ async function createMarketplaceListing(pool, input) {
       throw marketplaceError("ALREADY_LISTED", "Vehicle already has an active marketplace listing");
     }
 
+    // Match settlement's lock order: player state -> listing row -> registry row.
+    // A copied/stale vehicle UID from another account must not lock the registry
+    // first and then wait on a listing row while a purchase holds that listing
+    // and waits for the registry (a PostgreSQL deadlock cycle).
+    const duplicate = await client.query(
+      "SELECT id FROM autonomous_marketplace_listings WHERE vehicle_uid=$1::uuid AND status='active' FOR UPDATE",
+      [String(car.vehicleUid)]
+    );
+    if (duplicate.rowCount) throw marketplaceError("ALREADY_LISTED", "Vehicle already has an active marketplace listing");
+
     const registry = await client.query(
       "SELECT plate, owner_chat_id, retired_at FROM vehicle_plate_registry WHERE vehicle_uid=$1::uuid FOR UPDATE",
       [String(car.vehicleUid)]
@@ -73,12 +86,6 @@ async function createMarketplaceListing(pool, input) {
         String(registry.rows[0].plate) !== String(car.plate)) {
       throw marketplaceError("REGISTRY_OWNERSHIP_MISMATCH", "Global vehicle registry does not confirm this seller's ownership");
     }
-
-    const duplicate = await client.query(
-      "SELECT id FROM autonomous_marketplace_listings WHERE vehicle_uid=$1::uuid AND status='active' FOR UPDATE",
-      [String(car.vehicleUid)]
-    );
-    if (duplicate.rowCount) throw marketplaceError("ALREADY_LISTED", "Vehicle already has an active marketplace listing");
 
     const inserted = await client.query(
       "INSERT INTO autonomous_marketplace_listings(vehicle_uid,seller_chat_id,asking_price,status,vehicle_snapshot,expires_at) " +
@@ -288,6 +295,22 @@ async function getActiveMarketplaceListing(pool, listingId) {
   return result.rowCount ? publicListingRow(result.rows[0]) : null;
 }
 
+async function getActiveMarketplaceListingForBuyer(pool, listingId, buyerChatId) {
+  const id = String(listingId || "");
+  const buyer = String(buyerChatId ?? "").trim();
+  if (!UUID_RE.test(id)) throw marketplaceError("INVALID_LISTING_ID", "Marketplace listing ID is invalid");
+  if (!buyer) throw marketplaceError("INVALID_BUYER", "Buyer account is required");
+  const result = await pool.query(
+    "SELECT id,seller_chat_id,asking_price,status,vehicle_snapshot,created_at,expires_at " +
+    "FROM autonomous_marketplace_listings WHERE id=$1::uuid AND status='active' AND expires_at>now()",
+    [id]
+  );
+  if (!result.rowCount) return null;
+  // The seller's Telegram ID is used only for this comparison and is never
+  // included in the public object returned to the Telegram UI.
+  return { ...publicListingRow(result.rows[0]), isSeller: String(result.rows[0].seller_chat_id) === buyer };
+}
+
 async function listMarketplaceListingsForSeller(pool, sellerChatId, options = {}) {
   if (sellerChatId == null || !String(sellerChatId).trim()) {
     throw marketplaceError("INVALID_SELLER", "Seller account is required");
@@ -313,5 +336,6 @@ module.exports = {
   normalizeBrowseOptions,
   listActiveMarketplaceListings,
   getActiveMarketplaceListing,
+  getActiveMarketplaceListingForBuyer,
   listMarketplaceListingsForSeller
 };

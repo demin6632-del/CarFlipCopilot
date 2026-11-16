@@ -64,6 +64,29 @@ CREATE TABLE IF NOT EXISTS autonomous_marketplace_transactions (
   CONSTRAINT autonomous_marketplace_one_settlement_per_listing UNIQUE (listing_id)
 );
 
+-- Completed marketplace transactions are permanent financial history.
+CREATE OR REPLACE FUNCTION reject_autonomous_marketplace_transaction_mutation()
+RETURNS trigger LANGUAGE plpgsql AS $func$
+BEGIN
+  RAISE EXCEPTION 'autonomous_marketplace_transactions is append-only';
+END;
+$func$;
+
+DO $do$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_trigger
+    WHERE tgname = 'autonomous_marketplace_transactions_immutable_trg'
+      AND tgrelid = 'autonomous_marketplace_transactions'::regclass
+      AND NOT tgisinternal
+  ) THEN
+    CREATE TRIGGER autonomous_marketplace_transactions_immutable_trg
+    BEFORE UPDATE OR DELETE ON autonomous_marketplace_transactions
+    FOR EACH ROW EXECUTE FUNCTION reject_autonomous_marketplace_transaction_mutation();
+  END IF;
+END;
+$do$;
+
 CREATE INDEX IF NOT EXISTS autonomous_marketplace_transactions_buyer_time_idx
   ON autonomous_marketplace_transactions(buyer_chat_id, completed_at DESC);
 CREATE INDEX IF NOT EXISTS autonomous_marketplace_transactions_seller_time_idx

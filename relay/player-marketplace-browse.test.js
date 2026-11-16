@@ -4,6 +4,7 @@ const assert = require("node:assert/strict");
 const {
   listActiveMarketplaceListings,
   getActiveMarketplaceListing,
+  getActiveMarketplaceListingForBuyer,
   listMarketplaceListingsForSeller
 } = require("./player-marketplace-listings");
 
@@ -66,6 +67,20 @@ const sample = {
   );
   const unavailablePool = { async query() { return { rowCount: 0, rows: [] }; } };
   assert.equal(await getActiveMarketplaceListing(unavailablePool, sample.id), null);
+
+  const buyerDetail = await getActiveMarketplaceListingForBuyer(detailPool, sample.id, "buyer-9");
+  assert.equal(buyerDetail.isSeller, false);
+  assert.equal("sellerChatId" in buyerDetail, false);
+  assert.equal("seller_chat_id" in buyerDetail, false);
+  assert.equal(buyerDetail.id, sample.id);
+  assert.deepEqual(captured.params, [sample.id]);
+  const sellerDetail = await getActiveMarketplaceListingForBuyer(detailPool, sample.id, "seller-7");
+  assert.equal(sellerDetail.isSeller, true);
+  assert.equal("sellerChatId" in sellerDetail, false);
+  await assert.rejects(
+    () => getActiveMarketplaceListingForBuyer(detailPool, sample.id, ""),
+    error => error.code === "INVALID_BUYER"
+  );
 
   await listMarketplaceListingsForSeller(pool, "seller-7", { limit: 20, offset: 40 });
   assert.match(captured.sql, /WHERE seller_chat_id=\$1/);

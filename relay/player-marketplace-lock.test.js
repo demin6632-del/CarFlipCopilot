@@ -41,11 +41,12 @@ for (const action of [
   "pmrefresh", "pmbuy", "winstall", "wsell", "donor", "extract",
   "diag", "fa", "pa", "global", "repair", "prep", "sell",
   "negotiate", "reject", "accept", "rollback", "plate_refresh",
-  "platebuy", "platesell", "part_sell", "crate_open"
+  "platebuy", "platesell", "part_sell", "crate_open",
+  "pmsrc", "warehouse", "winfo", "parts", "system", "assembly", "part", "fasteners"
 ]) {
   assert.equal(game.isMarketplaceListingActionBlocked(action, listedCar), true, action + " must be blocked");
 }
-for (const action of ["pmsrc", "warehouse", "winfo", "parts", "system", "assembly", "part", "fasteners", "car", "contracts", "plates", "stats"]) {
+for (const action of ["car", "contracts", "plates", "stats"]) {
   assert.equal(game.isMarketplaceListingActionBlocked(action, listedCar), false, action + " is read-only");
 }
 assert.equal(game.isMarketplaceListingActionBlocked("repair", { id: "car-2" }), false);
