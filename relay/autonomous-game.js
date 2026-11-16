@@ -1374,9 +1374,10 @@ function prepareVehicle(state, id) {
   return {ok:true,car:c,cost};
 }
 
+// Only actions that are genuinely read-only and do not initialize/mutate
+// per-vehicle sandbox state may be used while a car is listed.
 const MARKETPLACE_READ_ONLY_ACTIONS = new Set([
-  "pmsrc", "warehouse", "winfo", "parts", "system", "assembly",
-  "part", "fasteners", "car", "contracts", "plates", "stats"
+  "car", "contracts", "plates", "stats"
 ]);
 
 function isMarketplaceListingActionBlocked(action, car) {
