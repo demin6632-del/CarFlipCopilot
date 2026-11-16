@@ -65,7 +65,7 @@ assert.ok(
   "Listed vehicles must be blocked before mileage rollback can mutate the odometer"
 );
 
-const readOnlyBlock = gameSource.match(/const MARKETPLACE_READ_ONLY_ACTIONS = new Set\\(\\[([\\s\\S]*?)\\]\\);/);
+const readOnlyBlock = gameSource.match(/const MARKETPLACE_READ_ONLY_ACTIONS = new Set\(\[([\s\S]*?)\]\);/);
 assert.ok(readOnlyBlock, "Marketplace listed-vehicle read-only action allowlist must exist");
 assert.match(readOnlyBlock[1], /"pmsrc"/, "Source browsing remains available for listed vehicles");
 assert.doesNotMatch(readOnlyBlock[1], /"pmrefresh"/, "Refreshing a per-car parts market must be blocked while listed");
