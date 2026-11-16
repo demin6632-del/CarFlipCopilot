@@ -20,8 +20,46 @@ function safeMoney(value) {
   return number;
 }
 
+async function resolveCommittedMarketplacePurchase(pool, { buyerChatId, listingId, callbackId }) {
+  const result = await pool.query(
+    "SELECT t.vehicle_uid,t.gross_amount,t.seller_chat_id,l.status,l.sold_to_chat_id," +
+    "r.plate,s.state " +
+    "FROM autonomous_processed_callbacks c " +
+    "JOIN autonomous_marketplace_transactions t ON t.listing_id=$2::uuid AND t.buyer_chat_id=$1 " +
+    "JOIN autonomous_marketplace_listings l ON l.id=t.listing_id " +
+    "JOIN vehicle_plate_registry r ON r.vehicle_uid=t.vehicle_uid " +
+    "JOIN autonomous_game_state s ON s.chat_id=$1 " +
+    "WHERE c.chat_id=$1 AND c.callback_id=$3 AND l.status='sold' AND l.sold_to_chat_id=$1 " +
+    "LIMIT 1",
+    [buyerChatId, listingId, callbackId]
+  );
+  if (!result.rowCount) return null;
+  const row = result.rows[0];
+  const buyerState = row.state && typeof row.state === "object" ? row.state : {};
+  const vehicleUid = String(row.vehicle_uid);
+  const car = (Array.isArray(buyerState.garage) ? buyerState.garage : [])
+    .find(item => String(item.vehicleUid) === vehicleUid);
+  return {
+    ok: true,
+    recovered: true,
+    listingId,
+    vehicleUid,
+    model: String(car?.model || "Автомобиль"),
+    plate: String(row.plate),
+    price: Number(row.gross_amount),
+    sellerChatId: String(row.seller_chat_id),
+    buyerBalance: Number(buyerState.player?.balance)
+  };
+}
+
 /**
  * Settle one fixed-price player listing. Requires the additive settlement
+ * migration and the PR #45 global vehicle registry.
+ *
+ * Lock order is always player states (ascending chat_id), then listing,
+ * then registry row. The callback receipt, both player states, both ledger
+ * rows, registry ownership and listing status commit in one transaction.
+ */ Requires the additive settlement
  * migration and the PR #45 global vehicle registry.
  *
  * Lock order is always player states (ascending chat_id), then listing,
@@ -43,6 +81,8 @@ async function purchaseMarketplaceListing(pool, input) {
   }
 
   const client = await pool.connect();
+  let commitAttempted = false;
+  let released = false;
   try {
     await client.query("BEGIN");
 
@@ -182,6 +222,7 @@ async function purchaseMarketplaceListing(pool, input) {
       [listingId, String(listing.vehicle_uid), buyerChatId, sellerChatId, price]
     );
 
+    commitAttempted = true;
     await client.query("COMMIT");
     return {
       ok: true, listingId, vehicleUid: String(listing.vehicle_uid),
@@ -191,10 +232,30 @@ async function purchaseMarketplaceListing(pool, input) {
     };
   } catch (error) {
     await client.query("ROLLBACK").catch(() => {});
+    if (commitAttempted) {
+      // COMMIT may have reached PostgreSQL even if the connection failed
+      // before its acknowledgement reached this process. Release the
+      // original connection, then verify the durable receipt and settlement
+      // from a fresh connection before reporting an outcome.
+      client.release();
+      released = true;
+      try {
+        const recovered = await resolveCommittedMarketplacePurchase(pool, {
+          buyerChatId, listingId, callbackId
+        });
+        if (recovered) return recovered;
+      } catch (recoveryError) {
+        error.recoveryError = recoveryError;
+      }
+      throw settlementError(
+        "COMMIT_OUTCOME_UNKNOWN",
+        "Purchase commit acknowledgement was lost; verify the durable settlement before retrying"
+      );
+    }
     throw error;
   } finally {
-    client.release();
+    if (!released) client.release();
   }
 }
 
-module.exports = { purchaseMarketplaceListing };
+module.exports = { purchaseMarketplaceListing, resolveCommittedMarketplacePurchase };
