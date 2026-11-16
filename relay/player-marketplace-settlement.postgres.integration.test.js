@@ -441,6 +441,61 @@ async function test(name, fn) {
       assert.equal(registry.rows[0].retired_at, null);
     });
 
+    await test("expiry processing resumes across bounded batches and repeated runs are idempotent", async () => {
+      const entries = Array.from({ length: 3 }, (_, index) => ({
+        uid: crypto.randomUUID(),
+        listingId: crypto.randomUUID(),
+        plate: "У" + String(100 + index) + "РК " + String(20 + index),
+        carId: "expiry-batch-car-" + index + "-" + suffix,
+        model: "Expiry Batch Vehicle " + index
+      }));
+      const currentSeller = await pool.query("SELECT state FROM autonomous_game_state WHERE chat_id=$1", [seller]);
+      const nextSellerState = currentSeller.rows[0].state;
+      for (const entry of entries) {
+        nextSellerState.garage.push({
+          id: entry.carId, vehicleUid: entry.uid, plate: entry.plate,
+          model: entry.model, year: 2019, mileage: 70000, condition: 80,
+          marketplaceListingId: entry.listingId
+        });
+        await pool.query(
+          "INSERT INTO vehicle_plate_registry(plate,vehicle_uid,owner_chat_id,source) VALUES($1,$2::uuid,$3,'settlement-expiry-batch-test')",
+          [entry.plate, entry.uid, seller]
+        );
+        await pool.query(
+          "INSERT INTO autonomous_marketplace_listings(id,vehicle_uid,seller_chat_id,asking_price,status,vehicle_snapshot,created_at,expires_at) " +
+          "VALUES($1::uuid,$2::uuid,$3,70000,'active',$4::jsonb,now()-interval '3 days',now()-interval '1 day')",
+          [entry.listingId, entry.uid, seller, JSON.stringify({ model: entry.model, plate: entry.plate, year: 2019, mileage: 70000, condition: 80, damage: 0 })]
+        );
+      }
+      await pool.query("UPDATE autonomous_game_state SET state=$2::jsonb WHERE chat_id=$1", [seller, JSON.stringify(nextSellerState)]);
+
+      const firstBatch = await expireMarketplaceListings(pool, { batchSize: 2 });
+      assert.equal(firstBatch.expiredCount, 2, "first pass respects its batch limit");
+      const secondBatch = await expireMarketplaceListings(pool, { batchSize: 2 });
+      assert.equal(secondBatch.expiredCount, 1, "second pass resumes with the remaining expired listing");
+      const thirdBatch = await expireMarketplaceListings(pool, { batchSize: 2 });
+      assert.equal(thirdBatch.expiredCount, 0, "repeated pass does not process terminal listings again");
+
+      const listingRows = await pool.query(
+        "SELECT id,status FROM autonomous_marketplace_listings WHERE id=ANY($1::uuid[])",
+        [entries.map(entry => entry.listingId)]
+      );
+      assert.equal(listingRows.rowCount, 3);
+      assert.ok(listingRows.rows.every(row => row.status === "expired"));
+      const sellerAfter = await pool.query("SELECT state FROM autonomous_game_state WHERE chat_id=$1", [seller]);
+      for (const entry of entries) {
+        const retainedCar = sellerAfter.rows[0].state.garage.find(item => item.vehicleUid === entry.uid);
+        assert.ok(retainedCar, "expired vehicle remains in seller garage");
+        assert.equal(retainedCar.marketplaceListingId, undefined, "each completed batch releases the vehicle lock");
+      }
+      const registryRows = await pool.query(
+        "SELECT vehicle_uid,owner_chat_id,plate,retired_at FROM vehicle_plate_registry WHERE vehicle_uid=ANY($1::uuid[])",
+        [entries.map(entry => entry.uid)]
+      );
+      assert.equal(registryRows.rowCount, 3);
+      assert.ok(registryRows.rows.every(row => row.owner_chat_id === seller && row.retired_at === null));
+    });
+
     await test("expired-listing worker racing a purchase never transfers an expired vehicle", async () => {
       const raceUid = crypto.randomUUID();
       const raceListing = crypto.randomUUID();
