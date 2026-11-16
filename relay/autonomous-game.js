@@ -1532,26 +1532,22 @@ async function handleText(chat,text,firstName,sendFn) {
         });
         return true;
       }
+      let listingResult;
       try {
         const p = db();
         if (!p) throw new Error("DATABASE_UNAVAILABLE");
-        const result = await createMarketplaceListing(await p, {
+        listingResult = await createMarketplaceListing(await p, {
           sellerChatId: String(chat), vehicleId: String(pendingListing.vehicleId),
           askingPrice, expiresInHours: 168
-        });
-        await withState(chat, firstName, state => {
-          if (String(state.pendingMarketplaceListing?.vehicleId || "") === String(pendingListing.vehicleId)) state.pendingMarketplaceListing = null;
-          return { ok: true };
-        });
-        await sendFn(chat, "✅ АВТОМОБИЛЬ ВЫСТАВЛЕН НА ОБЩИЙ РЫНОК\\n\\n🚘 " + pendingListing.model +
-          "\\n💰 Цена: " + fmt(result.listing.asking_price) +
-          "\\n⌛ Срок: 7 дней\\n\\nДеньги не списаны. Автомобиль заблокирован от продажи и изменений до снятия объявления.", {
-          reply_markup: { inline_keyboard: [[{ text: "📋 Мои объявления", callback_data: "ag:pmarket_mine" }], [{ text: "🌐 Общий рынок", callback_data: "ag:pmarket:0" }]] }
         });
       } catch (error) {
         console.log("PLAYER MARKETPLACE CREATE ERROR:", error?.stack || error?.message || error);
         if (error?.code === "ALREADY_LISTED") {
-          await withState(chat, firstName, state => { state.pendingMarketplaceListing = null; return { ok: true }; });
+          try {
+            await withState(chat, firstName, state => { state.pendingMarketplaceListing = null; return { ok: true }; });
+          } catch (cleanupError) {
+            console.log("PLAYER MARKETPLACE PENDING CLEANUP WARNING:", cleanupError?.message || cleanupError);
+          }
           await sendFn(chat, "⚠️ Этот автомобиль уже выставлен. Открой раздел «Мои объявления».", { reply_markup: { inline_keyboard: [[{ text: "📋 Мои объявления", callback_data: "ag:pmarket_mine" }]] } });
         } else {
           const message = error?.code === "REGISTRY_NOT_READY" || error?.code === "REGISTRY_OWNERSHIP_MISMATCH"
@@ -1560,6 +1556,27 @@ async function handleText(chat,text,firstName,sendFn) {
             : "Не удалось создать объявление. Проверь цену и попробуй ещё раз позже.";
           await sendFn(chat, "⚠️ " + message, { reply_markup: { inline_keyboard: [[{ text: "❌ Отмена", callback_data: "ag:pmarket_cancel_pending" }]] } });
         }
+        return true;
+      }
+
+      // The listing is already committed. Cleanup or Telegram delivery failures
+      // must never be reported as a failed listing creation.
+      try {
+        await withState(chat, firstName, state => {
+          if (String(state.pendingMarketplaceListing?.vehicleId || "") === String(pendingListing.vehicleId)) state.pendingMarketplaceListing = null;
+          return { ok: true };
+        });
+      } catch (cleanupError) {
+        console.log("PLAYER MARKETPLACE PENDING CLEANUP WARNING:", cleanupError?.stack || cleanupError?.message || cleanupError);
+      }
+      try {
+        await sendFn(chat, "✅ АВТОМОБИЛЬ ВЫСТАВЛЕН НА ОБЩИЙ РЫНОК\n\n🚘 " + pendingListing.model +
+          "\n💰 Цена: " + fmt(listingResult.listing.asking_price) +
+          "\n⌛ Срок: 7 дней\n\nДеньги не списаны. Автомобиль заблокирован от продажи и изменений до снятия объявления.", {
+          reply_markup: { inline_keyboard: [[{ text: "📋 Мои объявления", callback_data: "ag:pmarket_mine" }], [{ text: "🌐 Общий рынок", callback_data: "ag:pmarket:0" }]] }
+        });
+      } catch (notifyError) {
+        console.log("PLAYER MARKETPLACE SUCCESS NOTIFICATION WARNING:", notifyError?.stack || notifyError?.message || notifyError);
       }
       return true;
     }
