@@ -1886,7 +1886,7 @@ async function handleCallback(chat,data,firstName,sendFn,answerFn,callbackId) {
       await sendFn(chat, selected.result?.reason === "listed" ? "🔒 Эта машина уже выставлена на общий рынок." : "⚠️ Автомобиль не найден в твоём гараже.", { reply_markup: { inline_keyboard: [[{ text: "🚘 Мои автомобили", callback_data: "ag:pmarket_sell" }]] } });
       return true;
     }
-    await sendFn(chat, "💰 УКАЖИ ЦЕНУ\\n\\nАвтомобиль: " + selected.result.model + "\\nСрок размещения: 7 дней.\\n\\nОтправь одним сообщением цену в рублях, только цифры. Например: 850000.\\nДеньги сейчас не списываются.", { reply_markup: { inline_keyboard: [[{ text: "❌ Отмена", callback_data: "ag:pmarket_cancel_pending" }]] } });
+    await sendFn(chat, "💰 УКАЖИ ЦЕНУ\n\nАвтомобиль: " + selected.result.model + "\nСрок размещения: 7 дней.\n\nОтправь одним сообщением цену в рублях, только цифры. Например: 850000.\nДеньги сейчас не списываются.", { reply_markup: { inline_keyboard: [[{ text: "❌ Отмена", callback_data: "ag:pmarket_cancel_pending" }]] } });
     return true;
   }
   if(action==="pmarket_cancel_pending") {
@@ -1899,7 +1899,7 @@ async function handleCallback(chat,data,firstName,sendFn,answerFn,callbackId) {
       const p = db();
       if (!p) throw new Error("DATABASE_UNAVAILABLE");
       await cancelMarketplaceListing(await p, { sellerChatId: String(chat), listingId: id });
-      await sendFn(chat, "✅ ОБЪЯВЛЕНИЕ СНЯТО\\n\\nАвтомобиль снова доступен в твоём гараже для других операций.", { reply_markup: { inline_keyboard: [[{ text: "📋 Мои объявления", callback_data: "ag:pmarket_mine" }], [{ text: "🌐 Общий рынок", callback_data: "ag:pmarket:0" }]] } });
+      await sendFn(chat, "✅ ОБЪЯВЛЕНИЕ СНЯТО\n\nАвтомобиль снова доступен в твоём гараже для других операций.", { reply_markup: { inline_keyboard: [[{ text: "📋 Мои объявления", callback_data: "ag:pmarket_mine" }], [{ text: "🌐 Общий рынок", callback_data: "ag:pmarket:0" }]] } });
     } catch (error) {
       const message = error?.code === "NOT_SELLER" ? "Это объявление принадлежит другому игроку." :
         error?.code === "LISTING_NOT_ACTIVE" ? "Это объявление уже не активно." :
