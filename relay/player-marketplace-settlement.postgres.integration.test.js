@@ -154,6 +154,19 @@ async function test(name, fn) {
       ].sort((a,b)=>a[0].localeCompare(b[0])));
       const history = await pool.query("SELECT count(*)::int AS count FROM autonomous_marketplace_transactions WHERE listing_id=$1::uuid", [listingId]);
       assert.equal(history.rows[0].count, 1);
+      await assert.rejects(
+        pool.query("UPDATE autonomous_marketplace_transactions SET gross_amount=0 WHERE listing_id=$1::uuid", [listingId]),
+        /autonomous_marketplace_transactions is append-only/
+      );
+      await assert.rejects(
+        pool.query("DELETE FROM autonomous_marketplace_transactions WHERE listing_id=$1::uuid", [listingId]),
+        /autonomous_marketplace_transactions is append-only/
+      );
+      const immutableHistory = await pool.query(
+        "SELECT count(*)::int AS count FROM autonomous_marketplace_transactions WHERE listing_id=$1::uuid",
+        [listingId]
+      );
+      assert.equal(immutableHistory.rows[0].count, 1);
 
       const replay = await purchaseMarketplaceListing(pool, {
         buyerChatId: buyerA, listingId, callbackId: "pg-settlement-" + suffix
@@ -634,6 +647,9 @@ async function test(name, fn) {
 
     console.log("Player marketplace settlement PostgreSQL integration: OK");
   } finally {
+    // Remove the test database's append-only trigger only for isolated fixture cleanup.
+    await pool.query("DROP TRIGGER IF EXISTS autonomous_marketplace_transactions_immutable_trg ON autonomous_marketplace_transactions").catch(() => {});
+    await pool.query("DROP FUNCTION IF EXISTS reject_autonomous_marketplace_transaction_mutation()").catch(() => {});
     await pool.query("DELETE FROM autonomous_marketplace_transactions WHERE listing_id IN (SELECT id FROM autonomous_marketplace_listings WHERE seller_chat_id=$1)", [seller]).catch(() => {});
     await pool.query("DELETE FROM autonomous_marketplace_listings WHERE seller_chat_id=$1", [seller]).catch(() => {});
     await pool.query("DELETE FROM autonomous_economy_ledger WHERE chat_id=ANY($1::text[])", [[seller, buyerA, buyerB]]).catch(() => {});
