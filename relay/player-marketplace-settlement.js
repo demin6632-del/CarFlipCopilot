@@ -114,7 +114,7 @@ async function purchaseMarketplaceListing(pool, input) {
     }
 
     const listingResult = await client.query(
-      "SELECT id,vehicle_uid,seller_chat_id,asking_price,status,vehicle_snapshot,expires_at " +
+      "SELECT id,vehicle_uid,seller_chat_id,asking_price,status,vehicle_snapshot,expires_at,(expires_at>now()) AS is_unexpired " +
       "FROM autonomous_marketplace_listings WHERE id=$1::uuid FOR UPDATE",
       [listingId]
     );
@@ -132,7 +132,7 @@ async function purchaseMarketplaceListing(pool, input) {
       await client.query("ROLLBACK");
       return { ok: false, duplicate: true };
     }
-    if (listing.status !== "active" || new Date(listing.expires_at).getTime() <= Date.now()) {
+    if (listing.status !== "active" || listing.is_unexpired !== true) {
       throw settlementError("LISTING_NOT_ACTIVE", "This listing is no longer available");
     }
 
