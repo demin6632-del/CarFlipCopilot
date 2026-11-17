@@ -33,7 +33,7 @@ test("normalizes code without changing its identity", () => {
 
 test("generated one-time codes have sufficient random material and valid alphabet", () => {
   const code = createLinkCode();
-  assert.match(code, /^[A-Z0-9_-]{11}$/);
+  assert.match(code, /^[A-F0-9]{16}$/g);
   assert.equal(new Set(Array.from({ length: 20 }, createLinkCode)).size > 1, true);
 });
 
