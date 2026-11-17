@@ -1,6 +1,6 @@
 # AUTOFLIP web API — security boundary and integration notes
 
-Status: architecture notes based on the current integration branch. No API endpoint is implemented by this document.
+Status: an isolated Telegram Mini App initData validator and regression tests now exist. No API endpoint, session, account mapping, or browser authorization is enabled by this work.
 
 ## Important finding from the current server
 
@@ -14,6 +14,23 @@ The existing `relay/server.js` is the Android companion relay, not a multi-user 
 Therefore, a browser website must **not** be given `COPILOT_TOKEN`, must not call these endpoints as its account API, and must not reuse the shared WebSocket. Doing so could expose another connected player's latest game state and would not provide user-scoped authorization.
 
 The Telegram bot's health server only exposes health status. The game module persists player state in `autonomous_game_state` keyed by `chat_id`; its exported `load(chat, firstName)` function creates/normalizes state and synchronizes the plate registry, so it is not a pure read-only query suitable for a page GET request.
+
+## Isolated Telegram identity verification helper
+
+File: `relay/telegram-webapp-auth.js`
+
+- Validates raw `Telegram.WebApp.initData` with Telegram's documented HMAC-SHA-256 bot-token algorithm.
+- Uses Node's built-in `crypto`; no new runtime dependency.
+- Compares signatures with `timingSafeEqual`.
+- Rejects duplicate query keys, malformed hashes, missing required fields, oversized payloads, stale timestamps (default maximum age: 15 minutes), and timestamps more than 30 seconds in the future.
+- Parses the signed user object and returns a minimal identity DTO (`id`, first name, username, language code).
+- Does not return the raw initData or hash, read the database, map Telegram users to game chats, issue cookies, or create sessions.
+
+Regression tests: `relay/telegram-webapp-auth.test.js`; included in the relay's `npm test` script.
+
+This helper is **not connected to an HTTP route or the live bot**. The caller must provide the bot token from a server-only environment variable. Never place it in frontend JavaScript, HTML, build-time public variables, or logs.
+
+Official reference: https://core.telegram.org/bots/webapps#validating-data-received-via-the-mini-app
 
 ## Recommended browser-facing boundary
 
