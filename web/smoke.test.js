@@ -11,10 +11,10 @@ const accountLink = fs.readFileSync(path.join(root, "account-link.js"), "utf8");
 const accountLinkCss = fs.readFileSync(path.join(root, "account-link.css"), "utf8");
 
 test("web shell references its local stylesheets and scripts", () => {
-  assert.match(html, /href="\\.\\/styles\\.css"/);
-  assert.match(html, /href="\\.\\/account-link\\.css"/);
-  assert.match(html, /src="\\.\\/app\\.js"/);
-  assert.match(html, /src="\\.\\/account-link\\.js"/);
+  assert.ok(html.includes('href="./styles.css"'));
+  assert.ok(html.includes('href="./account-link.css"'));
+  assert.ok(html.includes('src="./app.js"'));
+  assert.ok(html.includes('src="./account-link.js"'));
   assert.ok(css.length > 1000);
   assert.ok(accountLinkCss.length > 100);
   assert.ok(js.length > 100);
@@ -22,18 +22,18 @@ test("web shell references its local stylesheets and scripts", () => {
 });
 
 test("all internal navigation anchors resolve to an element id", () => {
-  const ids = new Set([...html.matchAll(/\\bid="([^"]+)"/g)].map((match) => match[1]));
-  const hrefs = [...html.matchAll(/\\bhref="#([^"]+)"/g)].map((match) => match[1]);
+  const ids = new Set([...html.matchAll(/\bid="([^"]+)"/g)].map((match) => match[1]));
+  const hrefs = [...html.matchAll(/\bhref="#([^"]+)"/g)].map((match) => match[1]);
   assert.ok(hrefs.length > 0);
-  for (const href of hrefs) assert.ok(ids.has(href), `Missing target for #${href}`);
+  for (const href of hrefs) assert.ok(ids.has(href), "Missing target for #" + href);
 });
 
 test("mobile navigation has accessible control semantics", () => {
   assert.match(html, /class="menu-toggle"[^>]*aria-expanded="false"/);
   assert.match(html, /aria-controls="primary-nav"/);
   assert.match(html, /id="primary-nav"/);
-  assert.match(js, /addEventListener\\("keydown"/);
-  assert.match(js, /event\\.key === "Escape"/);
+  assert.match(js, /addEventListener\("keydown"/);
+  assert.match(js, /event\.key === "Escape"/);
 });
 
 test("prototype labels preview data and keeps market purchases disabled", () => {
@@ -47,9 +47,9 @@ test("account linking is gated behind Telegram and same-origin API configuration
   assert.match(html, /data-account-link/);
   assert.match(html, /data-link-issue/);
   assert.match(html, /data-link-verify/);
-  assert.match(accountLink, /Telegram\\.WebApp/);
+  assert.match(accountLink, /Telegram\.WebApp/);
   assert.match(accountLink, /AUTOFLIP_WEB_API_BASE/);
-  assert.match(accountLink, /url\\.origin !== window\\.location\\.origin/);
+  assert.match(accountLink, /url\.origin !== window\.location\.origin/);
   assert.match(accountLink, /credentials: "same-origin"/);
   assert.match(accountLink, /textContent/);
   assert.doesNotMatch(accountLink, /localStorage|sessionStorage/);
