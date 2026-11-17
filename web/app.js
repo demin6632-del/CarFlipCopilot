@@ -74,3 +74,36 @@
     sections.forEach((section) => observer.observe(section));
   }
 })();
+
+  const profileTabs = [...document.querySelectorAll("[data-profile-tab]")];
+  const profilePanels = [...document.querySelectorAll(".profile-panel")];
+
+  const activateProfileTab = (tab, moveFocus = false) => {
+    const name = tab.dataset.profileTab;
+    profileTabs.forEach((item) => {
+      const active = item === tab;
+      item.classList.toggle("is-active", active);
+      item.setAttribute("aria-selected", String(active));
+      item.tabIndex = active ? 0 : -1;
+    });
+    profilePanels.forEach((panel) => {
+      const active = panel.id === `profile-panel-${name}`;
+      panel.hidden = !active;
+      panel.classList.toggle("is-active", active);
+    });
+    if (moveFocus) tab.focus();
+  };
+
+  profileTabs.forEach((tab, index) => {
+    tab.addEventListener("click", () => activateProfileTab(tab));
+    tab.addEventListener("keydown", (event) => {
+      if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+      event.preventDefault();
+      let next = index;
+      if (event.key === "ArrowRight") next = (index + 1) % profileTabs.length;
+      if (event.key === "ArrowLeft") next = (index - 1 + profileTabs.length) % profileTabs.length;
+      if (event.key === "Home") next = 0;
+      if (event.key === "End") next = profileTabs.length - 1;
+      activateProfileTab(profileTabs[next], true);
+    });
+  });
