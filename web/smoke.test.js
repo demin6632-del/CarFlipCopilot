@@ -51,3 +51,34 @@ test("document has a language, viewport and main landmark", () => {
   assert.match(html, /name="viewport"/);
   assert.match(html, /<main id="main">/);
 });
+
+test("mobile menu supports outside click, focus handling and active section state", () => {
+  const app = fs.readFileSync(path.join(root, "app.js"), "utf8");
+  assert.match(app, /document\.addEventListener\("click"/);
+  assert.match(app, /event\.key === "Tab"/);
+  assert.match(app, /IntersectionObserver/);
+  assert.match(app, /aria-current/);
+  assert.match(css, /:focus-visible/);
+  assert.match(css, /body\.menu-open/);
+});
+
+test("garage showcase is clearly marked as a preview with no fabricated player data", () => {
+  assert.match(html, /id="garage"[^>]*aria-labelledby="garage-title"/);
+  assert.match(html, /КОНЦЕПТ ИНТЕРФЕЙСА/);
+  assert.match(html, /Реальные автомобили, номера, пробег и стоимость появятся после подключения игровых данных/);
+  assert.match(html, /ГОСНОМЕР/);
+  assert.match(css, /\.garage-cars\{display:grid/);
+});
+
+test("marketplace cards are illustrative and cannot be mistaken for live listings", () => {
+  assert.match(html, /НЕ АКТИВНЫЕ ОБЪЯВЛЕНИЯ/);
+  assert.match(html, /РЫНОК В РАЗРАБОТКЕ/);
+  assert.match(html, /Купить здесь пока нельзя/);
+  assert.match(html, /class="listing-grid"/);
+  assert.match(css, /\.listing-grid\{display:grid/);
+});
+
+test("all element ids are unique", () => {
+  const ids = [...html.matchAll(/\bid="([^"]+)"/g)].map((match) => match[1]);
+  assert.equal(ids.length, new Set(ids).size, "Duplicate HTML id found");
+});
