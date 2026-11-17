@@ -31,13 +31,15 @@ function harness({ telegram = true, apiBase = "/", fetchImpl = async () => ({ ok
     "[data-link-copy]": element(),
     "[data-link-expiry]": element()
   };
+  nodes["[data-link-issue]"].disabled = true;
+  nodes["[data-link-verify]"].disabled = true;
   const root = { querySelector(selector) { return nodes[selector]; } };
   const timers = new Map();
   let timerId = 0;
   const calls = [];
   const webApp = telegram ? { initData: "signed-init-data", readyCalled: false, ready() { this.readyCalled = true; } } : null;
   const window = {
-    location: { href },
+    location: { href, origin: new URL(href).origin },
     Telegram: webApp ? { WebApp: webApp } : undefined,
     AUTOFLIP_WEB_API_BASE: apiBase
   };
