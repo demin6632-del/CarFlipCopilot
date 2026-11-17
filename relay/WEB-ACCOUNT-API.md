@@ -27,6 +27,10 @@ Required environment variables:
 Session cookie: __Host-autoflip_session, HttpOnly, Secure, SameSite=Strict, Path=/.
 Only a SHA-256 digest of the random cookie token is stored in PostgreSQL.
 
+## Expired session maintenance
+
+Run a bounded cleanup batch from `relay/` with `npm run web:sessions:cleanup`. It requires `DATABASE_URL`, deletes only rows whose `expires_at` is at or before the PostgreSQL clock, and defaults to at most 200 rows per run. Set `SESSION_CLEANUP_BATCH_SIZE` to an integer from 1 to 1000 to change the batch size. The query uses `FOR UPDATE SKIP LOCKED`, so overlapping maintenance runs do not wait on rows another worker has locked. Schedule this command externally only after the web API rollout is explicitly approved; it is not started automatically by the API server. Re-run it on a schedule to drain larger backlogs gradually.
+
 ## Database rollout
 
 Apply, in order, only after an explicitly approved deployment plan:
