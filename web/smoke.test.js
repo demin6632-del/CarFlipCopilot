@@ -51,3 +51,13 @@ test("document has a language, viewport and main landmark", () => {
   assert.match(html, /name="viewport"/);
   assert.match(html, /<main id="main">/);
 });
+
+test("mobile menu supports outside click, focus handling and active section state", () => {
+  const app = fs.readFileSync(path.join(root, "app.js"), "utf8");
+  assert.match(app, /document\.addEventListener\("click"/);
+  assert.match(app, /event\.key === "Tab"/);
+  assert.match(app, /IntersectionObserver/);
+  assert.match(app, /aria-current/);
+  assert.match(css, /:focus-visible/);
+  assert.match(css, /body\.menu-open/);
+});
