@@ -33,7 +33,7 @@ test("normalizes code without changing its identity", () => {
 
 test("generated one-time codes have sufficient random material and valid alphabet", () => {
   const code = createLinkCode();
-  assert.match(code, /^[A-F0-9]{16}$/g);
+  assert.match(code, /^[A-F0-9]{32}$/);
   assert.equal(new Set(Array.from({ length: 20 }, createLinkCode)).size > 1, true);
 });
 
@@ -55,7 +55,7 @@ test("challenge creation stores only a digest and commits atomically", async () 
     { rowCount: 1, rows: [{ expires_at: "2030-01-01T00:05:00.000Z" }] }
   ]);
   const result = await issueTelegramLinkChallenge(pool, 123456789, { now: 0 });
-  assert.match(result.code, /^[A-F0-9]{16}$/);
+  assert.match(result.code, /^[A-F0-9]{32}$/);
   assert.equal(pool.calls.at(-1).params[1], hashLinkCode(result.code));
   assert.equal(pool.calls.some(call => call.params.includes(result.code)), false);
   assert.equal(pool.calls.at(-1).sql.includes("now()+"), true);
