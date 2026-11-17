@@ -55,7 +55,7 @@ test("challenge creation stores only a digest and commits atomically", async () 
     { rowCount: 1, rows: [{ expires_at: "2030-01-01T00:05:00.000Z" }] }
   ]);
   const result = await issueTelegramLinkChallenge(pool, 123456789, { now: 0 });
-  assert.match(result.code, /^[A-Z0-9_-]{11}$/);
+  assert.match(result.code, /^[A-F0-9]{16}$/);
   assert.equal(pool.calls.at(-1).params[1], hashLinkCode(result.code));
   assert.equal(pool.calls.some(call => call.params.includes(result.code)), false);
   assert.equal(pool.calls.at(-1).sql.includes("now()+"), true);
