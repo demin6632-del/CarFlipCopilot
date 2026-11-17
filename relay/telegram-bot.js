@@ -4,6 +4,7 @@ const https = require("https");
 const sharp = require("sharp");
 const { acquireTelegramPollLock, releaseTelegramPollLock } = require("./telegram-poll-lock");
 const autonomousGame = require("./autonomous-game");
+const { handleTelegramLinkCommand } = require("./telegram-link-command");
 
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || "";
 const API = "https://api.telegram.org/bot" + BOT_TOKEN;
@@ -164,7 +165,8 @@ async function registerBotCommands(){
     {command:"start",description:"Начать игру AUTOFLIP"},
     {command:"game",description:"Открыть AUTOFLIP"},
     {command:"perekup",description:"Открыть игру"},
-    {command:"help",description:"Помощь и правила"}
+    {command:"help",description:"Помощь и правила"},
+    {command:"link",description:"Привязать игровой профиль"}
   ];
   for(let attempt=1;attempt<=5;attempt++){
     try{
@@ -193,7 +195,19 @@ async function handleMessage(m){
   const command=text.split(/\s/,1)[0].split("@")[0].toLowerCase();
   const controlActions={"🚗 Рынок":"market","🌐 Общий рынок":"pmarket","🚘 Мои объявления":"pmarket_mine","🏠 Гараж":"garage","📅 Сегодня":"day","📋 Контракты":"contracts","🔢 Номера":"plates","📊 Статистика":"stats","🏦 Банк":"finance","🏆 Рейтинг игроков":"leaderboard","📦 Контейнеры":"containers","⚔️ Сражения":"battle","🏁 Уличные дуэли":"duel","🏆 Чемпионат":"championship","🏠 Главное меню":"home","⬅️ В меню":"home"};
   if(controlActions[text]) return autonomousGame.handleCallback(chat,"ag:"+controlActions[text],m.from?.first_name||"Перекуп",(c,t,extra)=>send(c,t,extra));
-  if(command==="/help") return send(chat,"🧭 AUTOFLIP — ПОМОЩЬ\n\n/start — начать\n/game — открыть игру\n/perekup — открыть игру\n/help — эта помощь\n\nИспользуй кнопки внутри игры.",{reply_markup:{inline_keyboard:[[{text:"🎮 Открыть AUTOFLIP",callback_data:"ag:home"}]]}});
+  if(command==="/help") return send(chat,"🧭 AUTOFLIP — ПОМОЩЬ\n\n/start — начать\n/game — открыть игру\n/perekup — открыть игру\n/link КОД — привязать профиль\n/help — эта помощь\n\nИспользуй кнопки внутри игры.",{reply_markup:{inline_keyboard:[[{text:"🎮 Открыть AUTOFLIP",callback_data:"ag:home"}]]}});
+  if(command==="/link"){
+    const poolPromise=pollStateDb();
+    if(!poolPromise){
+      return send(chat,"⚠️ Сервис привязки временно недоступен. Попробуй позже.");
+    }
+    const pool=await poolPromise;
+    return handleTelegramLinkCommand(m,{
+      pool,
+      send,
+      onError:error=>console.error("TELEGRAM ACCOUNT LINK ERROR:",error?.message||error)
+    });
+  }
   if(command==="/start"||command==="/game"||command==="/perekup"){
     await tg("sendMessage",{chat_id:chat,text:"🎮 КНОПКИ УПРАВЛЕНИЯ AUTOFLIP\nВыбирай раздел кнопками внизу. Вводить команды вручную не нужно.",reply_markup:{keyboard:[[{text:"🚗 Рынок"},{text:"🌐 Общий рынок"}],[{text:"🚘 Мои объявления"}],[{text:"🏠 Гараж"}],[{text:"📅 Сегодня"},{text:"📋 Контракты"}],[{text:"🔢 Номера"},{text:"📊 Статистика"}],[{text:"🏦 Банк"},{text:"🏆 Рейтинг игроков"}],[{text:"📦 Контейнеры"}],[{text:"⚔️ Сражения"}],[{text:"🏁 Уличные дуэли"}],[{text:"🏆 Чемпионат"}],[{text:"🏠 Главное меню"}]],resize_keyboard:true,is_persistent:true}});
     return autonomousGame.handleText(chat,"/perekup",m.from?.first_name||"Перекуп",(c,t,extra)=>send(c,t,extra));
