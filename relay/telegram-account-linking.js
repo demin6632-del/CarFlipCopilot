@@ -17,7 +17,7 @@ function hashLinkCode(value) {
 }
 
 function createLinkCode() {
-  return crypto.randomBytes(CODE_BYTES).toString("base64url").toUpperCase();
+  return crypto.randomBytes(CODE_BYTES).toString("hex").toUpperCase();
 }
 
 function validTelegramId(value) {
