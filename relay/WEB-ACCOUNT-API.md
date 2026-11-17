@@ -42,4 +42,4 @@ Both migrations are additive. The application does not run migrations on startup
 - The HTTP server is intentionally separate from the existing Android companion relay and Telegram polling process.
 - No Telegram /link command or account-link challenge has been wired into the live bot.
 - No production migration, Render service creation, deployment, or live bot change is authorized by this code.
-- Before public exposure, add issuance rate limiting and expired-session cleanup, configure the exact allowed origin, verify the account-link flow end-to-end, and review operational monitoring.
+- Session issuance is limited to 10 successful-initData attempts per linked Telegram account per rolling hour. Before public exposure, add expired-session cleanup, configure the exact allowed origin, verify the account-link flow end-to-end, and review operational monitoring.
