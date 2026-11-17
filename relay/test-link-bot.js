@@ -1,0 +1,108 @@
+"use strict";
+
+const http = require("node:http");
+const { Pool } = require("pg");
+const { handleTelegramLinkCommand } = require("./telegram-link-command");
+
+const TOKEN = process.env.TELEGRAM_BOT_TOKEN || "";
+const PORT = Number(process.env.PORT || 10000);
+const API = "https://api.telegram.org/bot" + TOKEN;
+let offset = 0;
+let stopping = false;
+let pool;
+
+function health(res) {
+  res.writeHead(200, { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" });
+  res.end(JSON.stringify({ ok: true, service: "autoflip-test-link-bot" }));
+}
+
+const server = http.createServer((req, res) => {
+  if (req.url === "/" || req.url === "/health") return health(res);
+  res.writeHead(404);
+  res.end("Not found");
+});
+
+async function telegram(method, body) {
+  const response = await fetch(API + "/" + method, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(body),
+    signal: AbortSignal.timeout(30000)
+  });
+  const payload = await response.json();
+  if (!response.ok || !payload.ok) throw new Error("TELEGRAM_API_ERROR");
+  return payload.result;
+}
+
+async function send(chatId, message) {
+  await telegram("sendMessage", { chat_id: chatId, text: String(message), disable_web_page_preview: true });
+}
+
+async function handleUpdate(update) {
+  const message = update && update.message;
+  if (!message || typeof message.text !== "string") return;
+  const command = message.text.trim().split(/\s/, 1)[0].split("@")[0].toLowerCase();
+  if (command !== "/link") return;
+  await handleTelegramLinkCommand(message, {
+    pool,
+    send,
+    onError: () => console.error("TEST ACCOUNT LINK DATABASE OPERATION FAILED")
+  });
+}
+
+async function poll() {
+  while (!stopping) {
+    try {
+      const updates = await telegram("getUpdates", {
+        offset,
+        timeout: 20,
+        limit: 50,
+        allowed_updates: ["message"]
+      });
+      for (const update of updates) {
+        await handleUpdate(update);
+        offset = Math.max(offset, Number(update.update_id) + 1);
+      }
+    } catch (_) {
+      if (!stopping) {
+        console.error("TEST TELEGRAM POLLING ERROR; retrying shortly");
+        await new Promise(resolve => setTimeout(resolve, 3000));
+      }
+    }
+  }
+}
+
+async function start() {
+  if (!TOKEN) throw new Error("TELEGRAM_BOT_TOKEN_REQUIRED");
+  if (!process.env.DATABASE_URL) throw new Error("DATABASE_URL_REQUIRED");
+  pool = new Pool({
+    connectionString: process.env.DATABASE_URL,
+    ssl: { rejectUnauthorized: true },
+    max: 2,
+    connectionTimeoutMillis: 5000,
+    query_timeout: 7000,
+    statement_timeout: 7000
+  });
+  await pool.query("SELECT 1");
+  await telegram("getMe", {});
+  server.listen(PORT, "0.0.0.0", () => {
+    console.log("AUTOFLIP isolated test link bot health server listening on port " + PORT);
+  });
+  await poll();
+}
+
+async function shutdown() {
+  if (stopping) return;
+  stopping = true;
+  server.close();
+  if (pool) await pool.end().catch(() => {});
+  process.exit(0);
+}
+process.once("SIGTERM", shutdown);
+process.once("SIGINT", shutdown);
+
+start().catch(async () => {
+  console.error("AUTOFLIP test link bot startup failed; check test environment variables");
+  if (pool) await pool.end().catch(() => {});
+  process.exitCode = 1;
+});
