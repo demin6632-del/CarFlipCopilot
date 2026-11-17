@@ -33,7 +33,7 @@ test("mobile navigation has accessible control semantics", () => {
 test("the preview does not expose credentials or imply live account features", () => {
   assert.doesNotMatch(html, /DATABASE_URL|TELEGRAM_BOT_TOKEN|COPILOT_TOKEN/);
   assert.match(html, /после подключения и проверки безопасного серверного API/i);
-  assert.match(html, /веб-покупки пока не открыты/i);
+  assert.match(html, /Купить здесь пока нельзя/i);
   assert.match(html, /ИНТЕРФЕЙС ЛИЧНОГО КАБИНЕТА ГОТОВИТСЯ/i);
 });
 
