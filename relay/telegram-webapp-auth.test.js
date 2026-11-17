@@ -50,6 +50,11 @@ test("rejects an expired initData payload", () => {
   assert.equal(validateTelegramWebAppInitData(raw, BOT_TOKEN, { now: NOW }).reason, "INIT_DATA_EXPIRED");
 });
 
+test("accepts the exact maximum-age boundary", () => {
+  const raw = makeInitData({ auth_date: String(NOW - 900) });
+  assert.equal(validateTelegramWebAppInitData(raw, BOT_TOKEN, { now: NOW }).ok, true);
+});
+
 test("rejects a timestamp too far in the future", () => {
   const raw = makeInitData({ auth_date: String(NOW + 31) });
   assert.equal(validateTelegramWebAppInitData(raw, BOT_TOKEN, { now: NOW }).reason, "AUTH_DATE_IN_FUTURE");
@@ -64,6 +69,16 @@ test("rejects malformed and missing input", () => {
   assert.equal(validateTelegramWebAppInitData("", BOT_TOKEN).reason, "MISSING_INIT_DATA");
   assert.equal(validateTelegramWebAppInitData("auth_date=1&user=%7B%7D", BOT_TOKEN).reason, "INVALID_HASH_FORMAT");
   assert.equal(validateTelegramWebAppInitData(makeInitData(), "").reason, "BOT_TOKEN_NOT_CONFIGURED");
+});
+
+test("rejects a signed payload with malformed auth_date", () => {
+  const raw = makeInitData({ auth_date: "not-a-timestamp" });
+  assert.equal(validateTelegramWebAppInitData(raw, BOT_TOKEN, { now: NOW }).reason, "AUTH_DATE_INVALID");
+});
+
+test("rejects a signed payload with malformed user JSON", () => {
+  const raw = makeInitData({ user: "{not-json" });
+  assert.equal(validateTelegramWebAppInitData(raw, BOT_TOKEN, { now: NOW }).reason, "USER_JSON_INVALID");
 });
 
 test("rejects a signed payload without a valid positive safe-integer Telegram user ID", () => {
