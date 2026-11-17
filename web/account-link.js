@@ -15,6 +15,7 @@
   let expiryTimer = null;
   let busy = false;
   let linked = false;
+  let authFailed = false;
 
   function setStatus(message, isError = false) {
     status.textContent = message;
@@ -22,8 +23,8 @@
   }
   function setBusy(value) {
     busy = value;
-    issueButton.disabled = value || linked || !telegram || !apiBase;
-    verifyButton.disabled = value || linked || !telegram || !apiBase || codePanel.hidden;
+    issueButton.disabled = value || linked || authFailed || !telegram || !apiBase;
+    verifyButton.disabled = value || linked || authFailed || !telegram || !apiBase || codePanel.hidden;
     issueButton.textContent = value ? "ПОДОЖДИ…" : "ПОЛУЧИТЬ КОД";
   }
   function apiUrl(path) {
@@ -49,8 +50,61 @@
       : "Срок действия кода истёк. Получи новый код.";
     if (!seconds) clearInterval(expiryTimer);
   }
-  async function issueCode() {
+  function markLinked(profile) {
+    codePanel.hidden = true;
+    clearInterval(expiryTimer);
+    linked = true;
+    const player = profile && profile.profile && profile.profile.player && profile.profile.player.displayName;
+    setStatus("Аккаунт успешно привязан. Защищённая сессия активна." + (player ? " Игрок: " + player : ""));
+    issueButton.disabled = true;
+    verifyButton.disabled = true;
+  }
+
+  async function loadProfile() {
+    const response = await fetch(apiUrl("/api/web/profile"), {
+      method: "GET", credentials: "same-origin", headers: { Accept: "application/json" }
+    });
+    if (!response.ok) throw new Error("Не удалось загрузить профиль после входа.");
+    return response.json();
+  }
+
+  async function restoreAccount() {
     if (busy) return;
+    setBusy(true);
+    setStatus("Проверяем сохранённую сессию AUTOFLIP…");
+    try {
+      const existing = await fetch(apiUrl("/api/web/profile"), {
+        method: "GET", credentials: "same-origin", headers: { Accept: "application/json" }
+      });
+      if (existing.ok) {
+        markLinked(await existing.json());
+        return;
+      }
+      if (existing.status !== 401) throw new Error("Сервер временно недоступен. Попробуй позже.");
+      const { response, payload } = await post("/api/web/session");
+      if (response.ok) {
+        markLinked(await loadProfile());
+        return;
+      }
+      if (response.status === 403 && payload.error === "TELEGRAM_ACCOUNT_NOT_LINKED") {
+        setStatus("Telegram подтверждён. Аккаунт ещё не привязан — получи одноразовый код.");
+        return;
+      }
+      if (response.status === 401) {
+        authFailed = true;
+        throw new Error("Telegram-сессия недействительна. Закрой и заново открой Mini App.");
+      }
+      if (response.status === 429) throw new Error("Слишком много попыток входа. Попробуй позже.");
+      throw new Error(payload.error || "Не удалось восстановить вход.");
+    } catch (error) {
+      setStatus(error.message || "Не удалось проверить аккаунт.", true);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function issueCode() {
+    if (busy || linked || authFailed) return;
     setBusy(true);
     setStatus("Проверяем Telegram и запрашиваем одноразовый код…");
     try {
@@ -88,16 +142,8 @@
         if (response.status === 401) throw new Error("Telegram-сессия устарела. Перезапусти Mini App.");
         throw new Error(payload.error || "Не удалось создать сессию.");
       }
-      const profileResponse = await fetch(apiUrl("/api/web/profile"), { method: "GET", credentials: "same-origin", headers: { Accept: "application/json" } });
-      if (!profileResponse.ok) throw new Error("Сессия создана, но профиль пока не удалось загрузить.");
-      const profile = await profileResponse.json();
-      codePanel.hidden = true;
-      clearInterval(expiryTimer);
-      const player = profile && profile.profile && profile.profile.player && profile.profile.player.displayName;
-      linked = true;
-      setStatus("Аккаунт успешно привязан. Защищённая сессия создана." + (player ? " Игрок: " + player : ""));
-      verifyButton.disabled = true;
-      issueButton.disabled = true;
+      const profile = await loadProfile();
+      markLinked(profile);
     } catch (error) {
       setStatus(error.message || "Ошибка проверки.", true);
     } finally {
@@ -133,10 +179,8 @@
     return;
   }
   telegram.ready();
-  issueButton.disabled = false;
-  verifyButton.disabled = true;
   issueButton.addEventListener("click", issueCode);
   verifyButton.addEventListener("click", verifyLink);
   copyButton.addEventListener("click", copyCode);
-  setStatus("Telegram подтверждён. Можно запросить одноразовый код привязки.");
+  restoreAccount();
 })();
