@@ -4,6 +4,8 @@ const https = require("https");
 const sharp = require("sharp");
 const { acquireTelegramPollLock, releaseTelegramPollLock } = require("./telegram-poll-lock");
 const autonomousGame = require("./autonomous-game");
+const { handleTelegramLinkCommand } = require("./telegram-account-link-command");
+const ACCOUNT_LINKING_ENABLED = process.env.AUTOFLIP_ACCOUNT_LINKING_ENABLED === "true";
 
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || "";
 const API = "https://api.telegram.org/bot" + BOT_TOKEN;
@@ -166,6 +168,7 @@ async function registerBotCommands(){
     {command:"perekup",description:"Открыть игру"},
     {command:"help",description:"Помощь и правила"}
   ];
+  if(ACCOUNT_LINKING_ENABLED) commands.push({command:"link",description:"Привязать аккаунт AUTOFLIP"});
   for(let attempt=1;attempt<=5;attempt++){
     try{
       await tg("setMyName",{name:"AUTOFLIP"});
