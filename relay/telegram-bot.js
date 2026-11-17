@@ -194,6 +194,17 @@ async function handleMessage(m){
   const chat=m?.chat?.id;if(chat==null)return;
   const text=String(m.text||"").trim();
   const command=text.split(/\s/,1)[0].split("@")[0].toLowerCase();
+  if(command==="/link"){
+    return handleTelegramLinkCommand(m,{
+      enabled:ACCOUNT_LINKING_ENABLED,
+      getPool:async()=>{
+        const pool=await pollStateDb();
+        if(!pool)throw new Error("DATABASE_URL_REQUIRED");
+        return pool;
+      },
+      send
+    });
+  }
   const controlActions={"🚗 Рынок":"market","🌐 Общий рынок":"pmarket","🚘 Мои объявления":"pmarket_mine","🏠 Гараж":"garage","📅 Сегодня":"day","📋 Контракты":"contracts","🔢 Номера":"plates","📊 Статистика":"stats","🏦 Банк":"finance","🏆 Рейтинг игроков":"leaderboard","📦 Контейнеры":"containers","⚔️ Сражения":"battle","🏁 Уличные дуэли":"duel","🏆 Чемпионат":"championship","🏠 Главное меню":"home","⬅️ В меню":"home"};
   if(controlActions[text]) return autonomousGame.handleCallback(chat,"ag:"+controlActions[text],m.from?.first_name||"Перекуп",(c,t,extra)=>send(c,t,extra));
   if(command==="/help") return send(chat,"🧭 AUTOFLIP — ПОМОЩЬ\n\n/start — начать\n/game — открыть игру\n/perekup — открыть игру\n/help — эта помощь\n\nИспользуй кнопки внутри игры.",{reply_markup:{inline_keyboard:[[{text:"🎮 Открыть AUTOFLIP",callback_data:"ag:home"}]]}});
