@@ -57,6 +57,8 @@ function harness({ telegram = true, apiBase = "/", fetchImpl = async () => ({ ok
   return { nodes, context, calls, timers, webApp };
 }
 
+async function ready(app) { await new Promise(resolve => setImmediate(resolve)); }
+
 function reply(status, payload) {
   return { ok: status >= 200 && status < 300, status, async json() { return payload; } };
 }
@@ -84,21 +86,31 @@ test("cross-origin API configuration is rejected before any network request", ()
 
 test("valid challenge displays one-time code and five-minute expiry", async () => {
   const app = harness({
-    fetchImpl: async () => reply(200, { ok: true, code: "A".repeat(32), expiresAt: Math.floor(NOW / 1000) + 300 })
+    fetchImpl: async (url, options) => {
+      if (url.endsWith("/api/web/profile")) return reply(401, { error: "SESSION_REQUIRED" });
+      if (url.endsWith("/api/web/session")) return reply(403, { error: "TELEGRAM_ACCOUNT_NOT_LINKED" });
+      return reply(200, { ok: true, code: "A".repeat(32), expiresAt: Math.floor(NOW / 1000) + 300 });
+    }
   });
+  await ready(app);
   assert.equal(app.webApp.readyCalled, true);
   await app.nodes["[data-link-issue]"].click();
   assert.equal(app.nodes["[data-link-code]"].value, "A".repeat(32));
   assert.equal(app.nodes["[data-link-code-panel]"].hidden, false);
   assert.match(app.nodes["[data-link-status]"].textContent, /Код готов/);
   assert.match(app.nodes["[data-link-expiry]"].textContent, /Код истекает через 5:00/);
-  assert.equal(app.calls.length, 1);
-  assert.equal(app.calls[0][0], "https://preview.autoflip.example/api/web/link-challenge");
-  assert.equal(JSON.parse(app.calls[0][1].body).initData, "signed-init-data");
+  assert.equal(app.calls.length, 3);
+  assert.equal(app.calls[2][0], "https://preview.autoflip.example/api/web/link-challenge");
+  assert.equal(JSON.parse(app.calls[2][1].body).initData, "signed-init-data");
 });
 
 test("rate limit is shown as a safe user-facing message", async () => {
-  const app = harness({ fetchImpl: async () => reply(429, { error: "LINK_RATE_LIMITED" }) });
+  const app = harness({ fetchImpl: async (url) => {
+    if (url.endsWith("/api/web/profile")) return reply(401, { error: "SESSION_REQUIRED" });
+    if (url.endsWith("/api/web/session")) return reply(403, { error: "TELEGRAM_ACCOUNT_NOT_LINKED" });
+    return reply(429, { error: "LINK_RATE_LIMITED" });
+  } });
+  await ready(app);
   await app.nodes["[data-link-issue]"].click();
   assert.match(app.nodes["[data-link-status]"].textContent, /Лимит запросов исчерпан/);
   assert.equal(app.nodes["[data-link-code-panel]"].hidden, true);
@@ -109,16 +121,19 @@ test("successful bot confirmation creates session and loads player DTO", async (
   const app = harness({
     fetchImpl: async (url, options) => {
       count++;
-      if (count === 1) return reply(200, { ok: true, code: "B".repeat(32), expiresAt: Math.floor(NOW / 1000) + 300 });
-      if (count === 2) return reply(200, { ok: true, expiresAt: Math.floor(NOW / 1000) + 604800 });
+      if (url.endsWith("/api/web/profile") && count === 1) return reply(401, { error: "SESSION_REQUIRED" });
+      if (url.endsWith("/api/web/session") && count === 2) return reply(403, { error: "TELEGRAM_ACCOUNT_NOT_LINKED" });
+      if (url.endsWith("/api/web/link-challenge")) return reply(200, { ok: true, code: "B".repeat(32), expiresAt: Math.floor(NOW / 1000) + 300 });
+      if (url.endsWith("/api/web/session")) return reply(200, { ok: true, expiresAt: Math.floor(NOW / 1000) + 604800 });
       return reply(200, { ok: true, profile: { player: { displayName: "Tester" }, garage: [] } });
     }
   });
+  await ready(app);
   await app.nodes["[data-link-issue]"].click();
   await app.nodes["[data-link-verify]"].click();
-  assert.equal(count, 3);
-  assert.equal(app.calls[1][0], "https://preview.autoflip.example/api/web/session");
-  assert.equal(app.calls[2][0], "https://preview.autoflip.example/api/web/profile");
+  assert.equal(count, 5);
+  assert.equal(app.calls[3][0], "https://preview.autoflip.example/api/web/session");
+  assert.equal(app.calls[4][0], "https://preview.autoflip.example/api/web/profile");
   assert.match(app.nodes["[data-link-status]"].textContent, /Аккаунт успешно привязан.*Tester/);
   assert.equal(app.nodes["[data-link-code-panel]"].hidden, true);
   assert.equal(app.nodes["[data-link-issue]"].disabled, true);
@@ -128,12 +143,15 @@ test("successful bot confirmation creates session and loads player DTO", async (
 test("unconfirmed link keeps the code visible and offers retry", async () => {
   let count = 0;
   const app = harness({
-    fetchImpl: async () => {
+    fetchImpl: async (url) => {
       count++;
-      if (count === 1) return reply(200, { ok: true, code: "C".repeat(32), expiresAt: Math.floor(NOW / 1000) + 300 });
+      if (url.endsWith("/api/web/profile")) return reply(401, { error: "SESSION_REQUIRED" });
+      if (url.endsWith("/api/web/session") && count === 2) return reply(403, { error: "TELEGRAM_ACCOUNT_NOT_LINKED" });
+      if (url.endsWith("/api/web/link-challenge")) return reply(200, { ok: true, code: "C".repeat(32), expiresAt: Math.floor(NOW / 1000) + 300 });
       return reply(403, { error: "TELEGRAM_ACCOUNT_NOT_LINKED" });
     }
   });
+  await ready(app);
   await app.nodes["[data-link-issue]"].click();
   await app.nodes["[data-link-verify]"].click();
   assert.match(app.nodes["[data-link-status]"].textContent, /Привязка пока не найдена/);
@@ -143,8 +161,13 @@ test("unconfirmed link keeps the code visible and offers retry", async () => {
 
 test("copy button copies the one-time code without persisting it", async () => {
   const app = harness({
-    fetchImpl: async () => reply(200, { ok: true, code: "D".repeat(32), expiresAt: Math.floor(NOW / 1000) + 300 })
+    fetchImpl: async (url) => {
+      if (url.endsWith("/api/web/profile")) return reply(401, { error: "SESSION_REQUIRED" });
+      if (url.endsWith("/api/web/session")) return reply(403, { error: "TELEGRAM_ACCOUNT_NOT_LINKED" });
+      return reply(200, { ok: true, code: "D".repeat(32), expiresAt: Math.floor(NOW / 1000) + 300 });
+    }
   });
+  await ready(app);
   await app.nodes["[data-link-issue]"].click();
   await app.nodes["[data-link-copy]"].click();
   assert.equal(app.context.copied, "D".repeat(32));
