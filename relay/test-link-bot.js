@@ -73,8 +73,9 @@ async function poll() {
 }
 
 async function start() {
-  if (!TOKEN) throw new Error("TELEGRAM_BOT_TOKEN_REQUIRED");
-  if (!process.env.DATABASE_URL) throw new Error("DATABASE_URL_REQUIRED");
+  let stage = "environment_check";
+  if (!TOKEN) throw Object.assign(new Error("Required test bot token is missing"), { stage });
+  if (!process.env.DATABASE_URL) throw Object.assign(new Error("Required test database URL is missing"), { stage });
   pool = new Pool({
     connectionString: process.env.DATABASE_URL,
     ssl: { rejectUnauthorized: true },
@@ -83,7 +84,9 @@ async function start() {
     query_timeout: 7000,
     statement_timeout: 7000
   });
+  stage = "database_connection";
   await pool.query("SELECT 1");
+  stage = "telegram_token_validation";
   await telegram("getMe", {});
   server.listen(PORT, "0.0.0.0", () => {
     console.log("AUTOFLIP isolated test link bot health server listening on port " + PORT);
@@ -101,8 +104,11 @@ async function shutdown() {
 process.once("SIGTERM", shutdown);
 process.once("SIGINT", shutdown);
 
-start().catch(async () => {
-  console.error("AUTOFLIP test link bot startup failed; check test environment variables");
+start().catch(async (error) => {
+  const safeCode = typeof error?.code === "string" ? error.code.replace(/[^A-Z0-9_:-]/gi, "").slice(0, 40) : "none";
+  const safeName = typeof error?.name === "string" ? error.name.replace(/[^A-Z0-9_]/gi, "").slice(0, 30) : "Error";
+  const failedStage = typeof error?.stage === "string" ? error.stage : "unknown";
+  console.error("AUTOFLIP_TEST_STARTUP_FAILURE stage=" + failedStage + " name=" + safeName + " code=" + safeCode);
   if (pool) await pool.end().catch(() => {});
   process.exitCode = 1;
 });
