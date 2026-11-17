@@ -101,6 +101,38 @@ function createWebAccountApi(options = {}) {
           return true;
         }
 
+        const telegramUserId = String(auth.user.id);
+        const rate = await pool.query(
+          `INSERT INTO autonomous_web_session_rate_limits AS current_limit
+             (telegram_user_id, window_started_at, attempts)
+           SELECT l.telegram_user_id, now(), 1
+             FROM autonomous_telegram_account_links AS l
+            WHERE l.telegram_user_id = $1
+           ON CONFLICT (telegram_user_id) DO UPDATE
+             SET attempts = CASE
+                   WHEN current_limit.window_started_at <= now() - interval '1 hour' THEN 1
+                   ELSE current_limit.attempts + 1
+                 END,
+                 window_started_at = CASE
+                   WHEN current_limit.window_started_at <= now() - interval '1 hour' THEN now()
+                   ELSE current_limit.window_started_at
+                 END
+           RETURNING attempts, window_started_at`,
+          [telegramUserId]
+        );
+        if (!rate?.rowCount) {
+          send(res, 403, { error: "TELEGRAM_ACCOUNT_NOT_LINKED" });
+          return true;
+        }
+        if (Number(rate.rows[0].attempts) > 10) {
+          const windowStart = new Date(rate.rows[0].window_started_at).getTime();
+          const retryAfter = Number.isFinite(windowStart)
+            ? Math.max(1, Math.ceil((windowStart + 60 * 60 * 1000 - now()) / 1000))
+            : 3600;
+          send(res, 429, { error: "SESSION_RATE_LIMITED" }, { "retry-after": String(retryAfter) });
+          return true;
+        }
+
         const token = crypto.randomBytes(32).toString("base64url");
         const expiresAt = Math.floor(now() / 1000) + ttlSeconds;
         const result = await pool.query(
@@ -109,7 +141,7 @@ function createWebAccountApi(options = {}) {
              FROM autonomous_telegram_account_links AS l
             WHERE l.telegram_user_id = $3
            RETURNING telegram_user_id`,
-          [sessionHash(token), expiresAt, String(auth.user.id)]
+          [sessionHash(token), expiresAt, telegramUserId]
         );
         if (!result?.rowCount) {
           send(res, 403, { error: "TELEGRAM_ACCOUNT_NOT_LINKED" });
