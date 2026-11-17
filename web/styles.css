@@ -30,3 +30,105 @@
 @media(prefers-reduced-motion:reduce){
   .menu-toggle span{transition:none}
 }
+
+/* Garage and marketplace product surfaces */
+.garage-showcase{margin-top:54px;border:1px solid var(--line);background:#191b1d;padding:24px}
+.showcase-heading,.market-heading{display:flex;align-items:end;justify-content:space-between;gap:24px}
+.showcase-heading h3{font-size:clamp(20px,3vw,31px);letter-spacing:-.045em;margin:10px 0 0}
+.preview-label,.market-demo{font-size:8px;font-weight:900;letter-spacing:.13em;color:#a7a69f}
+.garage-panel{margin-top:24px;background:#111315;border:1px solid var(--line);padding:20px}
+.garage-summary{display:grid;grid-template-columns:repeat(3,1fr);gap:15px;padding-bottom:18px;border-bottom:1px solid var(--line)}
+.garage-summary small,.garage-summary b{display:block}
+.garage-summary small{font-size:7px;letter-spacing:.12em;color:#898a84}
+.garage-summary b{font-size:17px;margin-top:7px}
+.garage-summary b span{font-size:11px;color:#858680}
+.garage-summary>div:last-child b{font-size:10px;letter-spacing:.06em;color:#d0cec8}
+.garage-cars{display:grid;grid-template-columns:1fr 1fr .72fr;gap:12px;margin-top:18px}
+.garage-car{min-width:0;background:#202224;border:1px solid var(--line)}
+.garage-car>img{display:block;width:100%;height:145px;object-fit:cover;filter:saturate(.78)}
+.garage-car-info{padding:14px}
+.garage-car-info>span{font-size:7px;color:#f18a66;font-weight:900;letter-spacing:.14em}
+.garage-car-info h4{font-size:13px;margin:7px 0}
+.garage-car-info p{font-size:8px;color:#92938d;margin:0 0 13px}
+.garage-car-info p b{color:#d5d3cd}
+.garage-car-info>div{display:flex;justify-content:space-between;padding-top:10px;border-top:1px solid var(--line)}
+.garage-car-info>div span{font-size:7px;color:#92938d;letter-spacing:.1em}
+.garage-car-info>div strong{font-size:9px}
+.garage-empty{display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:18px;border-style:dashed;color:#b4b2ac}
+.empty-plus{width:42px;height:42px;border:1px solid rgba(240,90,40,.6);display:grid;place-items:center;color:var(--orange);font-size:25px;margin-bottom:15px}
+.garage-empty>b{font-size:9px;line-height:1.6}
+.garage-empty>span{font-size:7px;color:#81827c;line-height:1.7;margin-top:8px}
+.showcase-disclaimer{font-size:8px;color:#858680;line-height:1.7;margin:17px 0 0}
+.market-section{background:#e9e7e1;color:#171819;padding-block:100px}
+.market-heading{align-items:end;margin-bottom:36px}
+.market-heading h2{font-size:clamp(39px,5.2vw,68px);font-weight:900;letter-spacing:-.065em;line-height:.99;margin:17px 0 0}
+.market-heading h2 em{font-style:normal;color:#c74920}
+.market-heading>p{max-width:360px;margin:0 0 4px;color:#555650;font-size:12px;line-height:1.9}
+.market-toolbar{display:flex;align-items:center;gap:20px;flex-wrap:wrap;padding:15px 0;border-block:1px solid rgba(23,24,25,.2)}
+.market-tab{font-size:8px;font-weight:900;letter-spacing:.12em;color:#77766f}
+.market-tab.active{color:#bd421c}
+.market-demo{margin-left:auto;color:#77766f;font-size:7px}
+.listing-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-top:20px}
+.listing-card{background:#f5f3ee;border:1px solid rgba(23,24,25,.12);min-width:0}
+.listing-photo{height:190px;position:relative;background:#252729;overflow:hidden}
+.listing-photo img{width:100%;height:100%;object-fit:cover;display:block;filter:saturate(.78);transition:transform .45s}
+.listing-card:hover .listing-photo img{transform:scale(1.04)}
+.listing-photo>span{position:absolute;left:12px;top:12px;padding:7px 9px;background:#171819;color:#fff;font-size:7px;font-weight:900;letter-spacing:.1em}
+.listing-body{padding:16px}
+.listing-top,.listing-footer{display:flex;justify-content:space-between;align-items:center;gap:10px}
+.listing-top>span{font-size:7px;font-weight:900;letter-spacing:.12em;color:#77766f}
+.listing-top>b{font-size:14px}
+.listing-body h3{font-size:13px;line-height:1.4;margin:12px 0}
+.listing-specs{display:grid;grid-template-columns:repeat(3,1fr);gap:7px;padding:12px 0;border-block:1px solid rgba(23,24,25,.13)}
+.listing-specs span,.listing-specs b{display:block}
+.listing-specs span{font-size:6px;letter-spacing:.08em;color:#77766f}
+.listing-specs b{font-size:10px;color:#171819;margin-top:5px}
+.listing-footer{padding-top:12px}
+.listing-footer span{font-size:7px;font-weight:900;letter-spacing:.08em;color:#77766f}
+.listing-footer b{color:#171819}
+.listing-footer span:last-child{color:#bd421c}
+.market-bottom{display:flex;align-items:center;justify-content:space-between;gap:18px;margin-top:25px}
+.market-bottom .market-status{margin:0;background:#dedcd5}
+.market-bottom .text-link{color:#b8421d}
+@media(max-width:900px){
+ .garage-cars{grid-template-columns:1fr 1fr}
+ .garage-empty{grid-column:1/-1;min-height:130px}
+ .listing-photo{height:150px}
+}
+@media(max-width:680px){
+ .garage-showcase{margin-top:34px;padding:14px}
+ .showcase-heading{align-items:flex-start;flex-direction:column;gap:10px}
+ .garage-panel{padding:12px;margin-top:16px}
+ .garage-summary{grid-template-columns:1fr 1fr}
+ .garage-summary>div:last-child{grid-column:1/-1}
+ .garage-cars{grid-template-columns:1fr;gap:10px}
+ .garage-car{display:grid;grid-template-columns:42% 1fr}
+ .garage-car>img{height:100%;min-height:150px}
+ .garage-car-info{padding:12px 10px}
+ .garage-car-info h4{font-size:11px}
+ .garage-empty{grid-column:auto;min-height:150px}
+ .market-section{padding-block:68px}
+ .market-heading{display:block;margin-bottom:24px}
+ .market-heading h2{font-size:clamp(37px,10vw,52px)}
+ .market-heading>p{margin-top:18px}
+ .market-toolbar{gap:12px}
+ .market-demo{width:100%;margin:3px 0 0}
+ .listing-grid{grid-template-columns:1fr;gap:12px}
+ .listing-card{display:grid;grid-template-columns:40% 1fr}
+ .listing-photo{height:100%;min-height:200px}
+ .listing-body{padding:12px}
+ .listing-body h3{font-size:11px;margin:9px 0}
+ .listing-top>span{font-size:6px}
+ .listing-top>b{font-size:12px}
+ .listing-specs{gap:4px}
+ .listing-specs span{font-size:5px}
+ .listing-specs b{font-size:9px}
+ .listing-footer span{font-size:6px}
+ .market-bottom{align-items:flex-start;flex-direction:column}
+}
+@media(max-width:390px){
+ .listing-card{grid-template-columns:1fr}
+ .listing-photo{height:175px;min-height:0}
+ .garage-car{grid-template-columns:1fr}
+ .garage-car>img{height:160px;min-height:0}
+}
