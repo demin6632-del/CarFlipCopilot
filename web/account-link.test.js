@@ -33,6 +33,7 @@ function harness({ telegram = true, apiBase = "/", fetchImpl = async () => ({ ok
   };
   nodes["[data-link-issue]"].disabled = true;
   nodes["[data-link-verify]"].disabled = true;
+  nodes["[data-link-code-panel]"].hidden = true;
   const root = { querySelector(selector) { return nodes[selector]; } };
   const timers = new Map();
   let timerId = 0;
