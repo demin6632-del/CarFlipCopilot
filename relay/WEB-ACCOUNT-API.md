@@ -43,3 +43,32 @@ Both migrations are additive. The application does not run migrations on startup
 - No Telegram /link command or account-link challenge has been wired into the live bot.
 - No production migration, Render service creation, deployment, or live bot change is authorized by this code.
 - Session issuance is limited to 10 successful-initData attempts per linked Telegram account per rolling hour. Before public exposure, add expired-session cleanup, configure the exact allowed origin, verify the account-link flow end-to-end, and review operational monitoring.
+
+## Mini App account-link UI
+
+The static client includes an account-link panel in `web/index.html` and the isolated
+`web/account-link.js` module. It requires the official Telegram WebApp SDK and a verified
+`Telegram.WebApp.initData` value; it never accepts a Telegram user ID from the browser.
+
+Before enabling requests, the hosting page must define the API base **on the same origin**
+before loading `account-link.js`, for example:
+
+```html
+<script>window.AUTOFLIP_WEB_API_BASE = "/";</script>
+```
+
+The separate web API must be reverse-proxied under that same site origin. Cross-origin API
+hosts are rejected by the client because the session cookie is host-only (`__Host-`) and
+must not be sent to another origin. If the setting is absent, the panel remains informational
+and sends no requests.
+
+Flow:
+1. Mini App requests `POST /api/web/link-challenge` with Telegram `initData`.
+2. Player sends the one-time code to the bot in a private chat using `/link CODE`.
+3. Player returns to the Mini App and presses “Я отправил код — проверить”.
+4. The client requests `POST /api/web/session`, then `GET /api/web/profile`.
+
+The challenge is valid for five minutes. The UI does not persist `initData` or the one-time
+code in browser storage. Do not enable the API base setting until the web API, both additive
+migrations, exact `WEB_APP_ORIGIN`, and private bot command have passed an approved end-to-end
+rollout. No production settings are changed by this branch.
