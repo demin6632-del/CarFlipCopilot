@@ -93,7 +93,7 @@
       const profile = await profileResponse.json();
       codePanel.hidden = true;
       clearInterval(expiryTimer);
-      const player = profile && profile.profile && profile.profile.username;
+      const player = profile && profile.profile && profile.profile.player && profile.profile.player.displayName;
       linked = true;
       setStatus("Аккаунт успешно привязан. Защищённая сессия создана." + (player ? " Игрок: " + player : ""));
       verifyButton.disabled = true;
