@@ -91,7 +91,7 @@ function createWebAccountApi(options = {}) {
           send(res, 405, { error: "METHOD_NOT_ALLOWED" }, { allow: "POST" });
           return true;
         }
-        if (!/^application\\/json(?:\\s*;|$)/i.test(String(req.headers?.["content-type"] || ""))) {
+        if (!/^application\/json(?:\s*;|$)/i.test(String(req.headers?.["content-type"] || ""))) {
           send(res, 415, { error: "JSON_REQUIRED" });
           return true;
         }
