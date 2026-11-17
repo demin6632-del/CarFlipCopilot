@@ -42,7 +42,7 @@ function validateTelegramWebAppInitData(rawInitData, botToken, options = {}) {
 
   const dataCheckString = [...values.entries()]
     .filter(([key]) => key !== "hash")
-    .sort(([a], [b]) => a.localeCompare(b))
+    .sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0)
     .map(([key, value]) => key + "=" + value)
     .join("\n");
 
@@ -84,8 +84,7 @@ function validateTelegramWebAppInitData(rawInitData, botToken, options = {}) {
       firstName: typeof user.first_name === "string" ? user.first_name : "",
       username: typeof user.username === "string" ? user.username : null,
       languageCode: typeof user.language_code === "string" ? user.language_code : null
-    },
-    // Preserve only the signed identity and time. Never return raw initData or bot credentials.
+    }
   };
 }
 
