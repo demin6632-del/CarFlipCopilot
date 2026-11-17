@@ -63,6 +63,32 @@ function reply(status, payload) {
   return { ok: status >= 200 && status < 300, status, async json() { return payload; } };
 }
 
+test("existing session restores the linked profile without issuing another session", async () => {
+  const app = harness({
+    fetchImpl: async () => reply(200, { ok: true, profile: { player: { displayName: "Returning Player" }, garage: [] } })
+  });
+  await ready(app);
+  assert.equal(app.calls.length, 1);
+  assert.match(app.nodes["[data-link-status]"].textContent, /Аккаунт успешно привязан.*Returning Player/);
+  assert.equal(app.nodes["[data-link-issue]"].disabled, true);
+});
+
+test("expired browser session is renewed from verified Telegram initData", async () => {
+  let count = 0;
+  const app = harness({
+    fetchImpl: async (url) => {
+      count++;
+      if (count === 1) return reply(401, { error: "SESSION_EXPIRED" });
+      if (count === 2) return reply(200, { ok: true, expiresAt: Math.floor(NOW / 1000) + 604800 });
+      return reply(200, { ok: true, profile: { player: { displayName: "Renewed Player" }, garage: [] } });
+    }
+  });
+  await ready(app);
+  assert.equal(count, 3);
+  assert.equal(app.calls[1][0], "https://preview.autoflip.example/api/web/session");
+  assert.match(app.nodes["[data-link-status]"].textContent, /Аккаунт успешно привязан.*Renewed Player/);
+});
+
 test("outside Telegram Mini App the panel is informational and sends no requests", () => {
   const app = harness({ telegram: false });
   assert.match(app.nodes["[data-link-status]"].textContent, /внутри Telegram Mini App/);
