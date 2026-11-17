@@ -13,7 +13,8 @@
 
 - `relay/telegram-account-linking.js`: изолированный сервис выпуска и подтверждения одноразовых кодов.
 - `relay/telegram-account-linking.sql`: аддитивная миграция двух таблиц.
-- `relay/telegram-account-linking.test.js`: тесты нормализации, хеширования, выпуска кода, приватного чата, транзакционных границ и отказа при несовпадении Telegram user ID.
+- `relay/telegram-account-linking.test.js`: unit tests нормализации, хеширования, выпуска кода, приватного чата, транзакционных границ и отказа при несовпадении Telegram user ID.
+- `relay/telegram-account-linking.postgres.integration.test.js`: PostgreSQL integration tests для invalidation, expiry, replay, mismatch, concurrency, unique chat conflict, rollback и rate limit.
 - Скрипт тестов добавлен в общий `npm test`.
 
 Сервис выпускает 128-битный случайный код (32 hex-символа), сохраняет только SHA-256 digest, ограничивает выпуск пятью кодами в час на Telegram user ID, использует TTL по умолчанию пять минут и инвалидирует предыдущий активный код при выпуске нового. Идентификаторы сохраняются как text, чтобы не зависеть от ограничений JS Number для BIGINT.
