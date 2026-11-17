@@ -65,8 +65,8 @@ test("reader uses a parameterized SELECT and returns null for unlinked users", a
   assert.equal(calls.length, 1);
   assert.deepEqual(calls[0].params, ["12345"]);
   assert.match(calls[0].sql, /^\s*SELECT/i);
-  assert.match(calls[0].sql, /^\s*SELECT/i);
-  assert.match(calls[0].sql, /^\s*SELECT/i);
+  assert.match(calls[0].sql, /autonomous_telegram_account_links/);
+  assert.match(calls[0].sql, /autonomous_game_state/);
   assert.doesNotMatch(calls[0].sql, /INSERT|UPDATE|DELETE|FOR UPDATE/i);
 });
 
