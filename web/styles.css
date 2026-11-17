@@ -12,3 +12,123 @@
 @media(max-width:900px){.primary-nav{gap:16px}.market-layout{gap:38px}.market-visual{height:390px}.world-card{min-height:350px}.world-card-content{inset:auto 18px 20px}.account-layout{gap:40px}}
 @media(max-width:680px){.container{width:calc(100% - 36px)}.site-header{height:68px}.brand-word{font-size:15px}.menu-toggle{display:block}.primary-nav{display:none;position:absolute;top:67px;left:0;right:0;background:#171819;border-bottom:1px solid var(--line);padding:20px 22px;flex-direction:column;align-items:flex-start;gap:18px}.primary-nav.is-open{display:flex}.header-cta{padding:9px 10px;font-size:8px}.header-cta span{margin-left:5px}.hero{height:690px;min-height:0}.hero-photo{background-position:58% center}.hero-shade{background:linear-gradient(90deg,rgba(9,10,11,.87),rgba(9,10,11,.34)),linear-gradient(0deg,rgba(9,10,11,.8),transparent 65%)}.hero-content{justify-content:flex-end;padding-bottom:85px}.hero-kicker{font-size:8px;letter-spacing:.13em}.hero h1{font-size:clamp(54px,14vw,78px);margin:22px 0}.hero-lead{font-size:12px;max-width:340px}.hero-actions{gap:8px}.button{padding:14px 13px;font-size:8px;gap:14px}.hero-side-note{display:none}.hero-bottom{bottom:25px;font-size:7px}.section{padding:72px 0}.section-topline{font-size:7px}.intro-heading,.roadmap-heading{display:block;margin:30px 0}.intro-heading h2,.pillars-heading h2,.roadmap-heading h2,.market-copy h2,.account-layout h2{font-size:clamp(37px,10vw,52px)}.intro-heading p,.roadmap-heading p{margin-top:20px}.world-grid{grid-template-columns:1fr}.world-card{min-height:340px}.world-card-main{min-height:390px}.world-card h3{font-size:24px}.market-section{padding-block:65px}.market-layout{grid-template-columns:1fr;gap:32px}.market-visual{height:300px}.market-copy h2{margin:15px 0}.pillars-grid{grid-template-columns:1fr 1fr}.pillars-grid article{padding:20px 15px 24px 0}.pillars-grid article+article{padding-left:15px}.pillars-grid article:nth-child(2){border-right:0}.pillars-grid article:nth-child(n+3){border-top:1px solid var(--line)}.pillars-grid h3{font-size:11px}.pillars-grid p{font-size:9px}.account-layout{grid-template-columns:1fr;gap:35px}.account-section{padding-block:70px}.profile-mock{padding:19px}.roadmap-item{grid-template-columns:37px 1fr;gap:12px}.roadmap-item>b{grid-column:2;justify-self:start;margin-top:7px}.roadmap-item h3{font-size:16px}.roadmap-item p{font-size:9px}.footer-main{align-items:flex-start;flex-wrap:wrap}.footer-main p{order:3;width:100%;line-height:1.8}.footer-bottom{flex-wrap:wrap;font-size:7px}.footer-bottom span:last-child{width:100%}.ticker-track{justify-content:flex-start}}
 @media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}*,*:before,*:after{transition:none!important;animation:none!important}}
+
+/* Interaction polish and keyboard accessibility */
+:where(a,button):focus-visible{outline:2px solid #ff865f;outline-offset:4px}
+.primary-nav a[aria-current="location"]{color:#fff}
+.primary-nav a[aria-current="location"]::after{content:"";display:block;height:2px;margin-top:5px;background:var(--orange)}
+.menu-toggle{position:relative;z-index:22;cursor:pointer}
+.menu-toggle span{transition:transform .2s,opacity .2s}
+.menu-toggle[aria-expanded="true"] span:first-child{transform:translateY(3.5px) rotate(45deg)}
+.menu-toggle[aria-expanded="true"] span:last-child{transform:translateY(-3.5px) rotate(-45deg)}
+@media(max-width:680px){
+  body.menu-open{overflow:hidden}
+  .primary-nav.is-open{box-shadow:0 18px 28px rgba(0,0,0,.35)}
+  .primary-nav a{width:100%;padding:4px 0}
+  .primary-nav a[aria-current="location"]{color:var(--orange)}
+}
+@media(prefers-reduced-motion:reduce){
+  .menu-toggle span{transition:none}
+}
+
+/* Garage and marketplace product surfaces */
+.garage-showcase{margin-top:54px;border:1px solid var(--line);background:#191b1d;padding:24px}
+.showcase-heading,.market-heading{display:flex;align-items:end;justify-content:space-between;gap:24px}
+.showcase-heading h3{font-size:clamp(20px,3vw,31px);letter-spacing:-.045em;margin:10px 0 0}
+.preview-label,.market-demo{font-size:8px;font-weight:900;letter-spacing:.13em;color:#a7a69f}
+.garage-panel{margin-top:24px;background:#111315;border:1px solid var(--line);padding:20px}
+.garage-summary{display:grid;grid-template-columns:repeat(3,1fr);gap:15px;padding-bottom:18px;border-bottom:1px solid var(--line)}
+.garage-summary small,.garage-summary b{display:block}
+.garage-summary small{font-size:7px;letter-spacing:.12em;color:#898a84}
+.garage-summary b{font-size:17px;margin-top:7px}
+.garage-summary b span{font-size:11px;color:#858680}
+.garage-summary>div:last-child b{font-size:10px;letter-spacing:.06em;color:#d0cec8}
+.garage-cars{display:grid;grid-template-columns:1fr 1fr .72fr;gap:12px;margin-top:18px}
+.garage-car{min-width:0;background:#202224;border:1px solid var(--line)}
+.garage-car>img{display:block;width:100%;height:145px;object-fit:cover;filter:saturate(.78)}
+.garage-car-info{padding:14px}
+.garage-car-info>span{font-size:7px;color:#f18a66;font-weight:900;letter-spacing:.14em}
+.garage-car-info h4{font-size:13px;margin:7px 0}
+.garage-car-info p{font-size:8px;color:#92938d;margin:0 0 13px}
+.garage-car-info p b{color:#d5d3cd}
+.garage-car-info>div{display:flex;justify-content:space-between;padding-top:10px;border-top:1px solid var(--line)}
+.garage-car-info>div span{font-size:7px;color:#92938d;letter-spacing:.1em}
+.garage-car-info>div strong{font-size:9px}
+.garage-empty{display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:18px;border-style:dashed;color:#b4b2ac}
+.empty-plus{width:42px;height:42px;border:1px solid rgba(240,90,40,.6);display:grid;place-items:center;color:var(--orange);font-size:25px;margin-bottom:15px}
+.garage-empty>b{font-size:9px;line-height:1.6}
+.garage-empty>span{font-size:7px;color:#81827c;line-height:1.7;margin-top:8px}
+.showcase-disclaimer{font-size:8px;color:#858680;line-height:1.7;margin:17px 0 0}
+.market-section{background:#e9e7e1;color:#171819;padding-block:100px}
+.market-heading{align-items:end;margin-bottom:36px}
+.market-heading h2{font-size:clamp(39px,5.2vw,68px);font-weight:900;letter-spacing:-.065em;line-height:.99;margin:17px 0 0}
+.market-heading h2 em{font-style:normal;color:#c74920}
+.market-heading>p{max-width:360px;margin:0 0 4px;color:#555650;font-size:12px;line-height:1.9}
+.market-toolbar{display:flex;align-items:center;gap:20px;flex-wrap:wrap;padding:15px 0;border-block:1px solid rgba(23,24,25,.2)}
+.market-tab{font-size:8px;font-weight:900;letter-spacing:.12em;color:#77766f}
+.market-tab.active{color:#bd421c}
+.market-demo{margin-left:auto;color:#77766f;font-size:7px}
+.listing-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-top:20px}
+.listing-card{background:#f5f3ee;border:1px solid rgba(23,24,25,.12);min-width:0}
+.listing-photo{height:190px;position:relative;background:#252729;overflow:hidden}
+.listing-photo img{width:100%;height:100%;object-fit:cover;display:block;filter:saturate(.78);transition:transform .45s}
+.listing-card:hover .listing-photo img{transform:scale(1.04)}
+.listing-photo>span{position:absolute;left:12px;top:12px;padding:7px 9px;background:#171819;color:#fff;font-size:7px;font-weight:900;letter-spacing:.1em}
+.listing-body{padding:16px}
+.listing-top,.listing-footer{display:flex;justify-content:space-between;align-items:center;gap:10px}
+.listing-top>span{font-size:7px;font-weight:900;letter-spacing:.12em;color:#77766f}
+.listing-top>b{font-size:14px}
+.listing-body h3{font-size:13px;line-height:1.4;margin:12px 0}
+.listing-specs{display:grid;grid-template-columns:repeat(3,1fr);gap:7px;padding:12px 0;border-block:1px solid rgba(23,24,25,.13)}
+.listing-specs span,.listing-specs b{display:block}
+.listing-specs span{font-size:6px;letter-spacing:.08em;color:#77766f}
+.listing-specs b{font-size:10px;color:#171819;margin-top:5px}
+.listing-footer{padding-top:12px}
+.listing-footer span{font-size:7px;font-weight:900;letter-spacing:.08em;color:#77766f}
+.listing-footer b{color:#171819}
+.listing-footer span:last-child{color:#bd421c}
+.market-bottom{display:flex;align-items:center;justify-content:space-between;gap:18px;margin-top:25px}
+.market-bottom .market-status{margin:0;background:#dedcd5}
+.market-bottom .text-link{color:#b8421d}
+@media(max-width:900px){
+ .garage-cars{grid-template-columns:1fr 1fr}
+ .garage-empty{grid-column:1/-1;min-height:130px}
+ .listing-photo{height:150px}
+}
+@media(max-width:680px){
+ .garage-showcase{margin-top:34px;padding:14px}
+ .showcase-heading{align-items:flex-start;flex-direction:column;gap:10px}
+ .garage-panel{padding:12px;margin-top:16px}
+ .garage-summary{grid-template-columns:1fr 1fr}
+ .garage-summary>div:last-child{grid-column:1/-1}
+ .garage-cars{grid-template-columns:1fr;gap:10px}
+ .garage-car{display:grid;grid-template-columns:42% 1fr}
+ .garage-car>img{height:100%;min-height:150px}
+ .garage-car-info{padding:12px 10px}
+ .garage-car-info h4{font-size:11px}
+ .garage-empty{grid-column:auto;min-height:150px}
+ .market-section{padding-block:68px}
+ .market-heading{display:block;margin-bottom:24px}
+ .market-heading h2{font-size:clamp(37px,10vw,52px)}
+ .market-heading>p{margin-top:18px}
+ .market-toolbar{gap:12px}
+ .market-demo{width:100%;margin:3px 0 0}
+ .listing-grid{grid-template-columns:1fr;gap:12px}
+ .listing-card{display:grid;grid-template-columns:40% 1fr}
+ .listing-photo{height:100%;min-height:200px}
+ .listing-body{padding:12px}
+ .listing-body h3{font-size:11px;margin:9px 0}
+ .listing-top>span{font-size:6px}
+ .listing-top>b{font-size:12px}
+ .listing-specs{gap:4px}
+ .listing-specs span{font-size:5px}
+ .listing-specs b{font-size:9px}
+ .listing-footer span{font-size:6px}
+ .market-bottom{align-items:flex-start;flex-direction:column}
+}
+@media(max-width:390px){
+ .listing-card{grid-template-columns:1fr}
+ .listing-photo{height:175px;min-height:0}
+ .garage-car{grid-template-columns:1fr}
+ .garage-car>img{height:160px;min-height:0}
+}
