@@ -46,6 +46,11 @@ jobs:
           DATABASE_URL: postgres://autoflip_test:autoflip_test@127.0.0.1:5432/autoflip_test
           DATABASE_SSL: "false"
         run: |
+          node --check telegram-webapp-auth.js
+          node --check telegram-account-linking.js
+          node --check telegram-account-linking.postgres.integration.test.js
+          node telegram-webapp-auth.test.js
+          node telegram-account-linking.test.js
           node --check autonomous-game.js
           node --check autonomous-game.test.js
           node --check player-marketplace-listings.js
@@ -74,6 +79,9 @@ jobs:
               await client.query(fs.readFileSync("vehicle-plate-registry.sql", "utf8"));
               await client.query(fs.readFileSync("player-marketplace-listings.sql", "utf8"));
               await client.query(fs.readFileSync("player-marketplace-settlement.sql", "utf8"));
+              await client.query(fs.readFileSync("telegram-account-linking.sql", "utf8"));
+              // All additive migrations must be safe to reapply during staged rollout.
+              await client.query(fs.readFileSync("telegram-account-linking.sql", "utf8"));
               // Settlement migration must be safe to reapply during staged rollout.
               await client.query(fs.readFileSync("player-marketplace-settlement.sql", "utf8"));
               console.log("Marketplace PostgreSQL schemas (including settlement reapply): OK");
@@ -82,6 +90,7 @@ jobs:
             }
           })().catch(error => { console.error(error); process.exitCode = 1; });
           NODE
+          node telegram-account-linking.postgres.integration.test.js
           node player-marketplace-settlement.postgres.integration.test.js
           node player-marketplace-listings.postgres.integration.test.js
           node autonomous-game-economy.integration.test.js
