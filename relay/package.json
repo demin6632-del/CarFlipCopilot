@@ -9,7 +9,8 @@
     "test:marketplace:settlement:integration": "node player-marketplace-settlement.postgres.integration.test.js",
     "marketplace:expire": "node player-marketplace-expiry-worker.js",
     "test:marketplace-worker": "node player-marketplace-expiry-worker.test.js",
-    "test:economy:integration": "node autonomous-game-economy.integration.test.js"
+    "test:economy:integration": "node autonomous-game-economy.integration.test.js",
+    "test:account-linking:integration": "node telegram-account-linking.postgres.integration.test.js"
   },
   "dependencies": {
     "qrcode": "^1.5.4",
