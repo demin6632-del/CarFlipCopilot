@@ -55,6 +55,8 @@ jobs:
           node telegram-account-profile.test.js
           node --check web-account-api.js
           node web-account-api.test.js
+          node --check web-account-server.js
+          node web-account-server.test.js
           node --check autonomous-game.js
           node --check autonomous-game.test.js
           node --check player-marketplace-listings.js
