@@ -66,7 +66,12 @@ Flow:
 1. Mini App requests `POST /api/web/link-challenge` with Telegram `initData`.
 2. Player sends the one-time code to the bot in a private chat using `/link CODE`.
 3. Player returns to the Mini App and presses “Я отправил код — проверить”.
-4. The client requests `POST /api/web/session`, then `GET /api/web/profile`.
+4. On later visits, the client first tries `GET /api/web/profile` using the existing HttpOnly cookie.
+   If the cookie is missing or expired, it requests `POST /api/web/session` with fresh Telegram
+   `initData`, then loads `GET /api/web/profile`. This restores an already linked account
+   without asking the player to generate another link code.
+5. After the bot confirms a newly issued code, the player presses “Я отправил код — проверить”;
+   the client requests `POST /api/web/session`, then `GET /api/web/profile`.
 
 The challenge is valid for five minutes. The UI does not persist `initData` or the one-time
 code in browser storage. Do not enable the API base setting until the web API, both additive
