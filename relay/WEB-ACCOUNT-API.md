@@ -20,6 +20,7 @@ Required environment variables:
 ## Routes
 
 - GET /health — minimal health check; runs SELECT 1
+- POST /api/web/link-challenge — verifies signed Telegram Mini App initData and issues a one-time code for `/link`; only the SHA-256 digest is stored, with a five-minute TTL and a five-per-hour issuance limit.
 - POST /api/web/session — verifies signed Telegram initData, requires a pre-existing account link, then creates an opaque server-side session
 - GET /api/web/profile — returns an allowlisted player and garage DTO
 - POST /api/web/logout — revokes the session
@@ -40,6 +41,7 @@ Both migrations are additive. The application does not run migrations on startup
 
 - This service does not serve static files and does not expose /state, /ws, /bridge/state, or /attachments.
 - The HTTP server is intentionally separate from the existing Android companion relay and Telegram polling process.
-- No Telegram /link command or account-link challenge has been wired into the live bot.
+- The `/link CODE` handler is prepared in the Telegram bot, but remains disabled unless `AUTOFLIP_ACCOUNT_LINKING_ENABLED=true` is explicitly configured. It accepts private-chat messages only and verifies the sender Telegram user ID.
+- The Mini App challenge endpoint is isolated in the web API; neither endpoint is deployed or connected to the live bot.
 - No production migration, Render service creation, deployment, or live bot change is authorized by this code.
 - Session issuance is limited to 10 successful-initData attempts per linked Telegram account per rolling hour. Before public exposure, add expired-session cleanup, configure the exact allowed origin, verify the account-link flow end-to-end, and review operational monitoring.

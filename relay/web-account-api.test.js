@@ -4,6 +4,7 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const crypto = require("node:crypto");
 const { createWebAccountApi, COOKIE_NAME } = require("./web-account-api");
+const { hashLinkCode } = require("./telegram-account-linking");
 
 const BOT_TOKEN = "123456:unit-test-token";
 const ORIGIN = "https://preview.autoflip.example";
@@ -201,4 +202,75 @@ test("logout requires same Origin and revokes the stored hash", async () => {
 test("unknown routes are left to the hosting application", async () => {
   const api = apiFor(makePool().pool);
   assert.equal(await api(request("GET", "/health"), response()), false);
+});
+
+
+function makeLinkChallengePool({ linked = false, issueCount = 0 } = {}) {
+  const calls = [];
+  const client = {
+    async query(sql, params = []) {
+      calls.push({ sql, params });
+      if (sql === "BEGIN" || sql === "COMMIT" || sql === "ROLLBACK") return { rowCount: 0, rows: [] };
+      if (/pg_advisory_xact_lock/.test(sql)) return { rowCount: 1, rows: [] };
+      if (/SELECT 1 FROM autonomous_telegram_account_links/.test(sql)) {
+        return { rowCount: linked ? 1 : 0, rows: linked ? [{ "?column?": 1 }] : [] };
+      }
+      if (/SELECT count\(\*\)::int AS issue_count/.test(sql)) {
+        return { rowCount: 1, rows: [{ issue_count: issueCount }] };
+      }
+      if (/UPDATE autonomous_telegram_link_challenges/.test(sql)) return { rowCount: 0, rows: [] };
+      if (/INSERT INTO autonomous_telegram_link_challenges/.test(sql)) {
+        return { rowCount: 1, rows: [{ expires_at: new Date(NOW + 5 * 60 * 1000).toISOString() }] };
+      }
+      throw new Error("Unexpected SQL: " + sql);
+    },
+    release() { calls.push({ sql: "RELEASE" }); }
+  };
+  const pool = {
+    async query() { return { rowCount: 1, rows: [] }; },
+    async connect() { return client; }
+  };
+  return { pool, calls };
+}
+
+test("link challenge endpoint issues a one-time code only for signed Telegram initData", async () => {
+  const { pool, calls } = makeLinkChallengePool();
+  const api = apiFor(pool);
+  const res = response();
+  await api(request("POST", "/api/web/link-challenge", {
+    origin: ORIGIN, "content-type": "application/json"
+  }, JSON.stringify({ initData: signedInitData({ id: 123456789, first_name: "Test" }) })), res);
+
+  assert.equal(res.status, 200);
+  assert.equal(res.json().ok, true);
+  assert.match(res.json().code, /^[A-F0-9]{32}$/);
+  assert.ok(Date.parse(res.json().expiresAt) > NOW);
+  const insert = calls.find(call => call.sql.startsWith("INSERT INTO autonomous_telegram_link_challenges"));
+  assert.ok(insert);
+  assert.equal(insert.params[1], hashLinkCode(res.json().code));
+  assert.equal(calls.some(call => call.params.includes(res.json().code)), false);
+});
+
+test("link challenge endpoint rejects an already linked Telegram account", async () => {
+  const { pool, calls } = makeLinkChallengePool({ linked: true });
+  const api = apiFor(pool);
+  const res = response();
+  await api(request("POST", "/api/web/link-challenge", {
+    origin: ORIGIN, "content-type": "application/json"
+  }, JSON.stringify({ initData: signedInitData({ id: 123456789 }) })), res);
+  assert.equal(res.status, 409);
+  assert.equal(res.json().error, "TELEGRAM_ACCOUNT_ALREADY_LINKED");
+  assert.equal(calls.some(call => call.sql.startsWith("INSERT INTO autonomous_telegram_link_challenges")), false);
+});
+
+test("link challenge endpoint enforces its issuance rate limit", async () => {
+  const { pool, calls } = makeLinkChallengePool({ issueCount: 5 });
+  const api = apiFor(pool);
+  const res = response();
+  await api(request("POST", "/api/web/link-challenge", {
+    origin: ORIGIN, "content-type": "application/json"
+  }, JSON.stringify({ initData: signedInitData({ id: 123456789 }) })), res);
+  assert.equal(res.status, 429);
+  assert.equal(res.json().error, "LINK_RATE_LIMITED");
+  assert.equal(calls.some(call => call.sql.startsWith("INSERT INTO autonomous_telegram_link_challenges")), false);
 });

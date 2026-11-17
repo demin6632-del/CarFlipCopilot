@@ -55,6 +55,10 @@ jobs:
           node telegram-account-profile.test.js
           node --check web-account-api.js
           node web-account-api.test.js
+          node --check telegram-account-link-command.js
+          node telegram-account-link-command.test.js
+          node --check web-account-session-cleanup.js
+          node web-account-session-cleanup.test.js
           node --check web-account-server.js
           node web-account-server.test.js
           node --check autonomous-game.js
@@ -110,6 +114,7 @@ jobs:
           const bot = fs.readFileSync('relay/telegram-bot.js','utf8');
           const game = fs.readFileSync('relay/autonomous-game.js','utf8');
           if (!bot.includes('const autonomousGame = require("./autonomous-game");')) throw new Error('autonomous game module is not wired');
+          if (!bot.includes('AUTOFLIP_ACCOUNT_LINKING_ENABLED') || !bot.includes('command==="/link"')) throw new Error('feature-gated /link route missing');
           for (const route of ['command==="/start"','command==="/perekup"','command==="/game"','data.startsWith("ag:")']) {
             if (!bot.includes(route)) throw new Error('missing autonomous route: '+route);
           }
