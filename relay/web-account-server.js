@@ -13,6 +13,19 @@ function json(res, status, payload) {
   res.end(JSON.stringify(payload));
 }
 
+function databasePoolOptions(env = process.env) {
+  return {
+    connectionString: env.DATABASE_URL,
+    // Verify PostgreSQL certificates by default. Only explicitly disable TLS
+    // for isolated local/test databases that do not provide TLS.
+    ssl: env.DATABASE_SSL === "false" ? false : { rejectUnauthorized: true },
+    max: 5,
+    connectionTimeoutMillis: 5000,
+    query_timeout: 7000,
+    statement_timeout: 7000
+  };
+}
+
 function createWebAccountServer(options = {}) {
   const pool = options.pool;
   if (!pool || typeof pool.query !== "function") throw new Error("DATABASE_POOL_REQUIRED");
@@ -59,14 +72,7 @@ async function start() {
     .filter(name => !process.env[name]);
   if (missing.length) throw new Error("Required environment variables are missing: " + missing.join(", "));
 
-  const pool = new Pool({
-    connectionString: process.env.DATABASE_URL,
-    ssl: process.env.DATABASE_SSL === "false" ? false : { rejectUnauthorized: false },
-    max: 5,
-    connectionTimeoutMillis: 5000,
-    query_timeout: 7000,
-    statement_timeout: 7000
-  });
+  const pool = new Pool(databasePoolOptions());
   pool.on("error", error => {
     console.error("AUTOFLIP WEB API DATABASE POOL ERROR:", error?.message || error);
   });
@@ -110,4 +116,4 @@ if (require.main === module) {
   });
 }
 
-module.exports = { createWebAccountServer, start };
+module.exports = { createWebAccountServer, databasePoolOptions, start };
