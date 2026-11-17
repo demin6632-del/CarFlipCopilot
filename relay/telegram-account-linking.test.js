@@ -56,7 +56,8 @@ test("challenge creation stores only a digest and commits atomically", async () 
   ]);
   const result = await issueTelegramLinkChallenge(pool, 123456789, { now: 0 });
   assert.match(result.code, /^[A-F0-9]{32}$/);
-  assert.equal(pool.calls.at(-1).params[1], hashLinkCode(result.code));
+  const insertCall = pool.calls.find(call => call.sql.startsWith("INSERT INTO autonomous_telegram_link_challenges"));
+  assert.equal(insertCall.params[1], hashLinkCode(result.code));
   assert.equal(pool.calls.some(call => call.params.includes(result.code)), false);
   assert.equal(pool.calls.at(-1).sql.includes("now()+"), true);
   assert.equal(pool.calls.some(call => call.sql === "COMMIT"), true);
@@ -64,7 +65,10 @@ test("challenge creation stores only a digest and commits atomically", async () 
 });
 
 test("challenge issuance rolls back when the account is already linked", async () => {
-  const pool = new FakePool([{ rowCount: 1, rows: [{ "?column?": 1 }] }]);
+  const pool = new FakePool([
+    { rowCount: 0, rows: [] },
+    { rowCount: 1, rows: [{ "?column?": 1 }] }
+  ]);
   await assert.rejects(issueTelegramLinkChallenge(pool, "123456789"), /ACCOUNT_ALREADY_LINKED/);
   assert.equal(pool.calls.some(call => call.sql === "ROLLBACK"), true);
   assert.equal(pool.calls.some(call => call.sql === "COMMIT"), false);
@@ -92,9 +96,11 @@ test("confirmation links the matching Telegram identity and consumes the code at
     chatType: "private", code
   });
   assert.deepEqual(result, { ok: true });
-  assert.equal(pool.calls[2].params[0], "123456789");
-  assert.equal(pool.calls[2].params[1], "123456789");
-  assert.equal(pool.calls[3].params[0], "challenge-1");
+  const mappingInsert = pool.calls.find(call => call.sql.startsWith("INSERT INTO autonomous_telegram_account_links"));
+  const consumeUpdate = pool.calls.find(call => call.sql.startsWith("UPDATE autonomous_telegram_link_challenges"));
+  assert.equal(mappingInsert.params[0], "123456789");
+  assert.equal(mappingInsert.params[1], "123456789");
+  assert.equal(consumeUpdate.params[0], "challenge-1");
   assert.equal(pool.calls.some(call => call.sql === "COMMIT"), true);
   assert.equal(pool.released, true);
 });
