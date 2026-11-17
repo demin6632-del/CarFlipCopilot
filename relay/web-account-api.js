@@ -3,6 +3,7 @@
 const crypto = require("node:crypto");
 const { validateTelegramWebAppInitData } = require("./telegram-webapp-auth");
 const { readLinkedTelegramProfile } = require("./telegram-account-profile");
+const { issueTelegramLinkChallenge } = require("./telegram-account-linking");
 
 const COOKIE_NAME = "__Host-autoflip_session";
 const DEFAULT_SESSION_TTL_SECONDS = 7 * 24 * 60 * 60;
@@ -75,7 +76,7 @@ function createWebAccountApi(options = {}) {
 
   return async function handleWebAccountRequest(req, res) {
     const path = String(req.url || "").split("?")[0];
-    if (!["/api/web/session", "/api/web/profile", "/api/web/logout"].includes(path)) return false;
+    if (!["/api/web/session", "/api/web/profile", "/api/web/logout", "/api/web/link-challenge"].includes(path)) return false;
 
     try {
       if (path !== "/api/web/profile") {
@@ -83,6 +84,42 @@ function createWebAccountApi(options = {}) {
           send(res, 403, { error: "ORIGIN_NOT_ALLOWED" });
           return true;
         }
+      }
+
+      if (path === "/api/web/link-challenge") {
+        if (req.method !== "POST") {
+          send(res, 405, { error: "METHOD_NOT_ALLOWED" }, { allow: "POST" });
+          return true;
+        }
+        if (!/^application\\/json(?:\\s*;|$)/i.test(String(req.headers?.["content-type"] || ""))) {
+          send(res, 415, { error: "JSON_REQUIRED" });
+          return true;
+        }
+        const body = await readJsonBody(req);
+        const auth = validateTelegramWebAppInitData(body.initData, botToken, { now: Math.floor(now() / 1000) });
+        if (!auth.ok) {
+          send(res, 401, { error: "TELEGRAM_AUTH_INVALID" });
+          return true;
+        }
+        try {
+          const challenge = await issueTelegramLinkChallenge(pool, String(auth.user.id));
+          send(res, 200, {
+            ok: true,
+            code: challenge.code,
+            expiresAt: Math.floor(new Date(challenge.expiresAt).getTime() / 1000)
+          });
+        } catch (error) {
+          if (error?.message === "ACCOUNT_ALREADY_LINKED") {
+            send(res, 409, { error: "ACCOUNT_ALREADY_LINKED" });
+            return true;
+          }
+          if (error?.message === "LINK_RATE_LIMITED") {
+            send(res, 429, { error: "LINK_RATE_LIMITED" }, { "retry-after": "3600" });
+            return true;
+          }
+          throw error;
+        }
+        return true;
       }
 
       if (path === "/api/web/session") {
