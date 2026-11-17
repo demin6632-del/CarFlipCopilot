@@ -104,11 +104,11 @@ function createWebAccountApi(options = {}) {
         const token = crypto.randomBytes(32).toString("base64url");
         const expiresAt = Math.floor(now() / 1000) + ttlSeconds;
         const result = await pool.query(
-          \`INSERT INTO autonomous_web_sessions(session_hash, telegram_user_id, expires_at)
+          `INSERT INTO autonomous_web_sessions(session_hash, telegram_user_id, expires_at)
            SELECT $1, l.telegram_user_id, to_timestamp($2)
              FROM autonomous_telegram_account_links AS l
             WHERE l.telegram_user_id = $3
-           RETURNING telegram_user_id\`,
+           RETURNING telegram_user_id`,
           [sessionHash(token), String(auth.user.id), expiresAt]
         );
         if (!result?.rowCount) {
@@ -146,10 +146,10 @@ function createWebAccountApi(options = {}) {
         return true;
       }
       const session = await pool.query(
-        \`SELECT telegram_user_id
+        `SELECT telegram_user_id
            FROM autonomous_web_sessions
           WHERE session_hash = $1 AND expires_at > now()
-          LIMIT 1\`,
+          LIMIT 1`,
         [digest]
       );
       if (!session?.rowCount) {
