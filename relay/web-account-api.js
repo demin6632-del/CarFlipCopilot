@@ -109,7 +109,7 @@ function createWebAccountApi(options = {}) {
              FROM autonomous_telegram_account_links AS l
             WHERE l.telegram_user_id = $3
            RETURNING telegram_user_id`,
-          [sessionHash(token), String(auth.user.id), expiresAt]
+          [sessionHash(token), expiresAt, String(auth.user.id)]
         );
         if (!result?.rowCount) {
           send(res, 403, { error: "TELEGRAM_ACCOUNT_NOT_LINKED" });
