@@ -10,6 +10,7 @@ const API = "https://api.telegram.org/bot" + TOKEN;
 let offset = 0;
 let stopping = false;
 let pool;
+let startupStage = "environment_check";
 
 function health(res) {
   res.writeHead(200, { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" });
@@ -73,9 +74,9 @@ async function poll() {
 }
 
 async function start() {
-  let stage = "environment_check";
-  if (!TOKEN) throw Object.assign(new Error("Required test bot token is missing"), { stage });
-  if (!process.env.DATABASE_URL) throw Object.assign(new Error("Required test database URL is missing"), { stage });
+  startupStage = "environment_check";
+  if (!TOKEN) throw new Error("Required test bot token is missing");
+  if (!process.env.DATABASE_URL) throw new Error("Required test database URL is missing");
   pool = new Pool({
     connectionString: process.env.DATABASE_URL,
     ssl: { rejectUnauthorized: true },
@@ -84,10 +85,11 @@ async function start() {
     query_timeout: 7000,
     statement_timeout: 7000
   });
-  stage = "database_connection";
+  startupStage = "database_connection";
   await pool.query("SELECT 1");
-  stage = "telegram_token_validation";
+  startupStage = "telegram_token_validation";
   await telegram("getMe", {});
+  startupStage = "health_server_start";
   server.listen(PORT, "0.0.0.0", () => {
     console.log("AUTOFLIP isolated test link bot health server listening on port " + PORT);
   });
@@ -107,7 +109,7 @@ process.once("SIGINT", shutdown);
 start().catch(async (error) => {
   const safeCode = typeof error?.code === "string" ? error.code.replace(/[^A-Z0-9_:-]/gi, "").slice(0, 40) : "none";
   const safeName = typeof error?.name === "string" ? error.name.replace(/[^A-Z0-9_]/gi, "").slice(0, 30) : "Error";
-  const failedStage = typeof error?.stage === "string" ? error.stage : "unknown";
+  const failedStage = startupStage;
   console.error("AUTOFLIP_TEST_STARTUP_FAILURE stage=" + failedStage + " name=" + safeName + " code=" + safeCode);
   if (pool) await pool.end().catch(() => {});
   process.exitCode = 1;
