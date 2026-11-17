@@ -3,7 +3,7 @@
 const { confirmTelegramAccountLink } = require("./telegram-account-linking");
 
 const MESSAGES = {
-  usage: "Формат команды: /link КОД\n\nОдноразовый код должен быть получен в AUTOFLIP. Выдача кода через Mini App ещё подключается.",
+  usage: "Формат команды: /link КОД\n\nОткрой AUTOFLIP внутри Telegram, получи одноразовый код привязки и отправь его сюда в личном чате.",
   privateOnly: "🔒 Привязка доступна только в личном чате с ботом.",
   invalid: "❌ Код недействителен, истёк или выпущен для другого Telegram-аккаунта. Получи новый код в AUTOFLIP.",
   already: "ℹ️ Этот Telegram-аккаунт уже привязан к игровому профилю.",
