@@ -132,3 +132,14 @@
  .garage-car{grid-template-columns:1fr}
  .garage-car>img{height:160px;min-height:0}
 }
+
+/* Account preview tabs: keyboard-friendly, visibly non-live demo panels */
+.profile-tabs{display:flex;gap:5px;overflow-x:auto;margin-top:20px;border-bottom:1px solid var(--line)}
+.profile-tab{flex:0 0 auto;border:0;border-bottom:2px solid transparent;background:transparent;color:#858680;padding:12px 10px 10px;font-size:7px;font-weight:900;letter-spacing:.1em;cursor:pointer}
+.profile-tab.is-active{border-bottom-color:var(--orange);color:#fff}
+.profile-panels{min-height:116px;padding:18px 0 4px}
+.profile-panel[hidden]{display:none}
+.profile-panel>b{font-size:9px;letter-spacing:.08em}
+.profile-panel>p{font-size:9px;line-height:1.8;color:#a7a69f;margin:8px 0}
+.profile-panel>small{font-size:7px;line-height:1.6;color:#ff9775;letter-spacing:.08em}
+.profile-tab:focus-visible{outline:2px solid #ff865f;outline-offset:-2px}
