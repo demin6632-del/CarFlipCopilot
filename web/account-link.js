@@ -112,7 +112,10 @@
       if (!response.ok) {
         if (response.status === 409) throw new Error("Этот Telegram-аккаунт уже привязан.");
         if (response.status === 429) throw new Error("Лимит запросов исчерпан. Попробуй позже.");
-        if (response.status === 401) throw new Error("Telegram-сессия недействительна. Закрой и заново открой Mini App.");
+        if (response.status === 401) {
+          authFailed = true;
+          throw new Error("Telegram-сессия недействительна. Закрой и заново открой Mini App.");
+        }
         throw new Error(payload.error || "Не удалось получить код привязки.");
       }
       if (!/^[A-F0-9]{32}$/.test(payload.code || "") || !Number.isFinite(payload.expiresAt)) throw new Error("Сервер вернул некорректный ответ.");
@@ -139,7 +142,10 @@
       const { response, payload } = await post("/api/web/session");
       if (!response.ok) {
         if (response.status === 403 || response.status === 404) throw new Error("Привязка пока не найдена. Сначала отправь боту /link КОД, затем повтори проверку.");
-        if (response.status === 401) throw new Error("Telegram-сессия устарела. Перезапусти Mini App.");
+        if (response.status === 401) {
+          authFailed = true;
+          throw new Error("Telegram-сессия устарела. Перезапусти Mini App.");
+        }
         throw new Error(payload.error || "Не удалось создать сессию.");
       }
       const profile = await loadProfile();
