@@ -59,7 +59,7 @@ test("challenge creation stores only a digest and commits atomically", async () 
   const insertCall = pool.calls.find(call => call.sql.startsWith("INSERT INTO autonomous_telegram_link_challenges"));
   assert.equal(insertCall.params[1], hashLinkCode(result.code));
   assert.equal(pool.calls.some(call => call.params.includes(result.code)), false);
-  assert.equal(pool.calls.at(-1).sql.includes("now()+"), true);
+  assert.equal(insertCall.sql.includes("now()+"), true);
   assert.equal(pool.calls.some(call => call.sql === "COMMIT"), true);
   assert.equal(pool.released, true);
 });
