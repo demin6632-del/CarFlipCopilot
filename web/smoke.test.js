@@ -82,3 +82,17 @@ test("all element ids are unique", () => {
   const ids = [...html.matchAll(/\bid="([^"]+)"/g)].map((match) => match[1]);
   assert.equal(ids.length, new Set(ids).size, "Duplicate HTML id found");
 });
+
+\ntest("account preview has accessible overview, garage, finance and security tabs", () => {
+  assert.match(html, /role="tablist"/);
+  assert.match(html, /data-profile-tab="overview"/);
+  assert.match(html, /data-profile-tab="garage"/);
+  assert.match(html, /data-profile-tab="finance"/);
+  assert.match(html, /data-profile-tab="security"/);
+  assert.match(html, /aria-selected="true"/);
+  assert.match(html, /id="profile-panel-security"[^>]*hidden/);
+  assert.match(js, /event\.key === "ArrowRight"/);
+  assert.match(js, /activateProfileTab/);
+  assert.match(css, /\.profile-tab\.is-active/);
+  assert.match(html, /ДЕМОНСТРАЦИОННЫЙ ИНТЕРФЕЙС · БЕЗ ПОДКЛЮЧЕНИЯ К ИГРЕ/);
+});
