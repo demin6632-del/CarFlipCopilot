@@ -2,7 +2,7 @@
 
 function normalizeTelegramUserId(value) {
   const id = String(value ?? "");
-  if (!/^[1-9]\\d{0,19}$/.test(id)) throw new Error("INVALID_TELEGRAM_ID");
+  if (!/^[1-9]\d{0,19}$/.test(id)) throw new Error("INVALID_TELEGRAM_ID");
   return id;
 }
 
