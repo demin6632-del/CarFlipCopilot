@@ -30,10 +30,20 @@ test("mobile navigation has accessible control semantics", () => {
   assert.match(js, /event\.key === "Escape"/);
 });
 
-test("the prototype does not expose credentials or pretend to be connected", () => {
+test("the preview does not expose credentials or imply live account features", () => {
   assert.doesNotMatch(html, /DATABASE_URL|TELEGRAM_BOT_TOKEN|COPILOT_TOKEN/);
-  assert.match(html, /личный кабинет появятся после готовности безопасного серверного API/i);
-  assert.match(html, /веб-покупки ещё не открыты/i);
+  assert.match(html, /после подключения и проверки безопасного серверного API/i);
+  assert.match(html, /веб-покупки пока не открыты/i);
+  assert.match(html, /ИНТЕРФЕЙС ЛИЧНОГО КАБИНЕТА ГОТОВИТСЯ/i);
+});
+
+test("the premium automotive sections and imagery are present", () => {
+  assert.match(html, /class="hero-photo"/);
+  assert.match(html, /id="garage"/);
+  assert.match(html, /id="market"/);
+  assert.match(html, /id="racing"/);
+  assert.match(css, /--orange:#f05a28/);
+  assert.match(css, /@media\(max-width:680px\)/);
 });
 
 test("document has a language, viewport and main landmark", () => {
