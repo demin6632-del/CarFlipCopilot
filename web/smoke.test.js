@@ -1,0 +1,43 @@
+const test = require("node:test");
+const assert = require("node:assert/strict");
+const fs = require("node:fs");
+const path = require("node:path");
+
+const root = __dirname;
+const html = fs.readFileSync(path.join(root, "index.html"), "utf8");
+const css = fs.readFileSync(path.join(root, "styles.css"), "utf8");
+const js = fs.readFileSync(path.join(root, "app.js"), "utf8");
+
+test("web shell references its local stylesheet and script", () => {
+  assert.match(html, /href="\.\/styles\.css"/);
+  assert.match(html, /src="\.\/app\.js"/);
+  assert.ok(css.length > 1000);
+  assert.ok(js.length > 100);
+});
+
+test("all internal navigation anchors resolve to an element id", () => {
+  const ids = new Set([...html.matchAll(/\bid="([^"]+)"/g)].map((match) => match[1]));
+  const hrefs = [...html.matchAll(/\bhref="#([^"]+)"/g)].map((match) => match[1]);
+  assert.ok(hrefs.length > 0);
+  for (const href of hrefs) assert.ok(ids.has(href), `Missing target for #${href}`);
+});
+
+test("mobile navigation has accessible control semantics", () => {
+  assert.match(html, /class="menu-toggle"[^>]*aria-expanded="false"/);
+  assert.match(html, /aria-controls="primary-nav"/);
+  assert.match(html, /id="primary-nav"/);
+  assert.match(js, /addEventListener\("keydown"/);
+  assert.match(js, /event\.key === "Escape"/);
+});
+
+test("the prototype does not expose credentials or pretend to be connected", () => {
+  assert.doesNotMatch(html, /DATABASE_URL|TELEGRAM_BOT_TOKEN|COPILOT_TOKEN/);
+  assert.match(html, /личный кабинет появятся после готовности безопасного серверного API/i);
+  assert.match(html, /веб-покупки ещё не открыты/i);
+});
+
+test("document has a language, viewport and main landmark", () => {
+  assert.match(html, /<html lang="ru">/);
+  assert.match(html, /name="viewport"/);
+  assert.match(html, /<main id="main">/);
+});
