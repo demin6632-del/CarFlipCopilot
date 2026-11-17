@@ -4,7 +4,7 @@ const crypto = require("node:crypto");
 
 const DEFAULT_TTL_SECONDS = 5 * 60;
 const MAX_ISSUES_PER_HOUR = 5;
-const CODE_BYTES = 8;
+const CODE_BYTES = 16;
 
 function normalizeCode(value) {
   return String(value || "").trim().replace(/[\s-]/g, "").toUpperCase();
