@@ -20,6 +20,7 @@ function fakePool(responses) {
     async query(sql, params = []) {
       calls.push({ sql, params });
       if (sql === "BEGIN" || sql === "COMMIT" || sql === "ROLLBACK") return { rowCount: 0, rows: [] };
+      if (/pg_advisory_xact_lock/.test(sql)) return { rowCount: 1, rows: [] };
       const next = responses.shift();
       if (!next) throw new Error("Unexpected SQL: " + sql);
       return next;
@@ -83,7 +84,9 @@ test("link command redeems a valid code for the exact Telegram user in a private
     { rowCount: 1, rows: [] }
   ]);
   const sent = [];
-  const handled = await handleTelegramLinkCommand(makeMessage("/link@" + "CarFlipCopilotBot " + code), {
+  const handled = await handleTelegramLinkCommand(makeMessage("/link@" + "CarFlipCopilotBot " + code, {
+    chat: { id: 777777777, type: "private" }
+  }), {
     enabled: true,
     pool,
     send: async (...args) => sent.push(args)
@@ -91,7 +94,7 @@ test("link command redeems a valid code for the exact Telegram user in a private
   assert.equal(handled, true);
   assert.match(sent[0][1], /успешно привязан/);
   const insert = calls.find(call => call.sql.startsWith("INSERT INTO autonomous_telegram_account_links"));
-  assert.deepEqual(insert.params, ["123456789", "123456789"]);
+  assert.deepEqual(insert.params, ["123456789", "777777777"]);
   assert.equal(calls.some(call => call.params.includes(code)), false);
   assert.equal(calls.some(call => call.params.includes(hashLinkCode(code))), true);
 });
