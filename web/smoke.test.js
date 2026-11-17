@@ -83,7 +83,8 @@ test("all element ids are unique", () => {
   assert.equal(ids.length, new Set(ids).size, "Duplicate HTML id found");
 });
 
-\ntest("account preview has accessible overview, garage, finance and security tabs", () => {
+
+test("account preview has accessible overview, garage, finance and security tabs", () => {
   assert.match(html, /role="tablist"/);
   assert.match(html, /data-profile-tab="overview"/);
   assert.match(html, /data-profile-tab="garage"/);
