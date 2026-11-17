@@ -53,6 +53,10 @@ jobs:
           node telegram-account-linking.test.js
           node --check telegram-account-profile.js
           node telegram-account-profile.test.js
+          node --check web-account-api.js
+          node web-account-api.test.js
+          node --check web-account-server.js
+          node web-account-server.test.js
           node --check autonomous-game.js
           node --check autonomous-game.test.js
           node --check player-marketplace-listings.js
@@ -82,6 +86,9 @@ jobs:
               await client.query(fs.readFileSync("player-marketplace-listings.sql", "utf8"));
               await client.query(fs.readFileSync("player-marketplace-settlement.sql", "utf8"));
               await client.query(fs.readFileSync("telegram-account-linking.sql", "utf8"));
+              await client.query(fs.readFileSync("web-account-sessions.sql", "utf8"));
+              // Web sessions migration must be safe to reapply.
+              await client.query(fs.readFileSync("web-account-sessions.sql", "utf8"));
               // All additive migrations must be safe to reapply during staged rollout.
               await client.query(fs.readFileSync("telegram-account-linking.sql", "utf8"));
               // Settlement migration must be safe to reapply during staged rollout.
