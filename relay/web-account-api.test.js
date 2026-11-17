@@ -40,11 +40,17 @@ function response() {
   };
 }
 
-function makePool({ linked = true, profile = true, session = true } = {}) {
+function makePool({ linked = true, profile = true, session = true, rateAttempts = 1 } = {}) {
   const calls = [];
   const pool = {
     async query(sql, params) {
       calls.push({ sql, params });
+      if (/INSERT INTO autonomous_web_session_rate_limits/.test(sql)) {
+        return {
+          rowCount: linked ? 1 : 0,
+          rows: linked ? [{ attempts: rateAttempts, window_started_at: new Date(NOW - 1000).toISOString() }] : []
+        };
+      }
       if (/INSERT INTO autonomous_web_sessions/.test(sql)) {
         return { rowCount: linked ? 1 : 0, rows: linked ? [{ telegram_user_id: "123456789" }] : [] };
       }
@@ -124,7 +130,9 @@ test("session cookie is secure and profile returns only allowlisted data", async
   assert.match(cookie, /Secure/);
   assert.match(cookie, /SameSite=Strict/);
   assert.match(cookie, /Path=\//);
-  assert.equal(calls[0].params[1], Math.floor(NOW / 1000) + 7 * 24 * 60 * 60);
+  assert.equal(calls[0].params[0], "123456789");
+  assert.equal(calls[1].params[1], Math.floor(NOW / 1000) + 7 * 24 * 60 * 60);
+  assert.equal(calls[1].params[2], "123456789");
 
   const token = cookie.split(";")[0];
   const profile = response();
@@ -135,6 +143,21 @@ test("session cookie is secure and profile returns only allowlisted data", async
   assert.equal(JSON.stringify(profile.json()).includes("telegram_user_id"), false);
   assert.equal(JSON.stringify(profile.json()).includes("hiddenDefects"), false);
   assert.equal(profile.headers["cache-control"], "no-store, private");
+});
+
+
+test("session creation is rate limited per linked Telegram account", async () => {
+  const { pool, calls } = makePool({ rateAttempts: 11 });
+  const api = apiFor(pool);
+  const res = response();
+  await api(request("POST", "/api/web/session", {
+    origin: ORIGIN, "content-type": "application/json"
+  }, JSON.stringify({ initData: signedInitData({ id: 123456789 }) })), res);
+  assert.equal(res.status, 429);
+  assert.equal(res.json().error, "SESSION_RATE_LIMITED");
+  assert.equal(res.headers["retry-after"], "3599");
+  assert.equal(calls.length, 1);
+  assert.match(calls[0].sql, /ON CONFLICT/);
 });
 
 test("profile rejects missing, malformed and expired sessions", async () => {
