@@ -7,7 +7,9 @@
   <meta name="description" content="AUTOFLIP — автомобильный онлайн-мир: гараж, рынок, сделки и соревнование игроков.">
   <title>AUTOFLIP — автомобильный онлайн-мир</title>
   <link rel="stylesheet" href="./styles.css">
+  <link rel="stylesheet" href="./account-link.css">
   <script src="./app.js" defer></script>
+  <script src="./account-link.js" defer></script>
 </head>
 <body>
   <a class="skip-link" href="#main">Перейти к содержимому</a>
@@ -114,7 +116,23 @@
     <section class="section account-section" id="account">
       <div class="container account-card">
         <div><div class="eyebrow">04 / ЕДИНЫЙ АККАУНТ</div><h2>Твой прогресс.<br><span>На всех платформах.</span></h2><p>Сайт и Telegram Mini App будут использовать общий аккаунт AUTOFLIP. Авторизация и личный кабинет появятся после готовности безопасного серверного API.</p></div>
-        <div class="account-preview"><div class="preview-top"><span>ЛИЧНЫЙ КАБИНЕТ</span><span class="preview-tag">ПРЕДПРОСМОТР</span></div><div class="preview-avatar">AF</div><div class="preview-name">ТВОЙ ПРОФИЛЬ</div><div class="preview-muted">Здесь появятся гараж, баланс и прогресс</div><div class="preview-bars"><i></i><i></i><i></i></div><div class="preview-lock">ИНТЕРФЕЙС В РАЗРАБОТКЕ</div></div>
+        <div class="account-preview"><div class="preview-top"><span>ЛИЧНЫЙ КАБИНЕТ</span><span class="preview-tag">ПРЕДПРОСМОТР</span></div><div class="preview-avatar">AF</div><div class="preview-name">ТВОЙ ПРОФИЛЬ</div><div class="preview-muted">Здесь появятся гараж, баланс и прогресс</div><div class="preview-bars"><i></i><i></i><i></i></div><div class="preview-lock">ИНТЕРФЕЙС В РАЗРАБОТКЕ</div>
+          <section class="account-link" data-account-link aria-labelledby="account-link-title">
+            <div class="account-link-heading"><span class="eyebrow">TELEGRAM / ACCOUNT LINK</span><h3 id="account-link-title">ПРИВЯЗКА АККАУНТА</h3></div>
+            <p class="account-link-status" data-link-status role="status" aria-live="polite">Проверяем доступность защищённой привязки…</p>
+            <div class="account-link-actions">
+              <button class="button button-primary" type="button" data-link-issue disabled>ПОЛУЧИТЬ КОД</button>
+              <button class="button button-quiet" type="button" data-link-verify disabled>Я ОТПРАВИЛ КОД — ПРОВЕРИТЬ</button>
+            </div>
+            <div class="account-link-code" data-link-code-panel hidden>
+              <label for="account-link-code">ОДНОРАЗОВЫЙ КОД</label>
+              <div><input id="account-link-code" data-link-code readonly autocomplete="off" spellcheck="false"><button type="button" data-link-copy>КОПИРОВАТЬ</button></div>
+              <p>Отправь боту в личном чате команду <code>/link КОД</code>. Код действует 5 минут и используется один раз.</p>
+              <a href="https://t.me/CarFlipCopilotBot" target="_blank" rel="noopener noreferrer">ОТКРЫТЬ @CarFlipCopilotBot ↗</a>
+              <p class="account-link-expiry" data-link-expiry></p>
+            </div>
+            <p class="account-link-footnote">Привязка подтверждается ботом. Баланс и игровые данные не изменяются.</p>
+          </section></div>
       </div>
     </section>
 
