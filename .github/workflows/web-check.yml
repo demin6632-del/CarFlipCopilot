@@ -24,4 +24,4 @@ jobs:
         with:
           node-version: 20
       - name: Run static web smoke tests
-        run: node --test web/smoke.test.js
+        run: node --test web/smoke.test.js web/account-link.test.js
