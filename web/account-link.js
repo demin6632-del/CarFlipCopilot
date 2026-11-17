@@ -14,6 +14,7 @@
   let expiresAt = 0;
   let expiryTimer = null;
   let busy = false;
+  let linked = false;
 
   function setStatus(message, isError = false) {
     status.textContent = message;
@@ -21,8 +22,8 @@
   }
   function setBusy(value) {
     busy = value;
-    issueButton.disabled = value || !telegram || !apiBase;
-    verifyButton.disabled = value || !telegram || !apiBase || codePanel.hidden;
+    issueButton.disabled = value || linked || !telegram || !apiBase;
+    verifyButton.disabled = value || linked || !telegram || !apiBase || codePanel.hidden;
     issueButton.textContent = value ? "ПОДОЖДИ…" : "ПОЛУЧИТЬ КОД";
   }
   function apiUrl(path) {
@@ -93,6 +94,7 @@
       codePanel.hidden = true;
       clearInterval(expiryTimer);
       const player = profile && profile.profile && profile.profile.username;
+      linked = true;
       setStatus("Аккаунт успешно привязан. Защищённая сессия создана." + (player ? " Игрок: " + player : ""));
       verifyButton.disabled = true;
       issueButton.disabled = true;
