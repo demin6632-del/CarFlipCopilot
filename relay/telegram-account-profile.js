@@ -51,10 +51,6 @@ function toProfileDto(state) {
   };
 }
 
-/**
- * Reads a linked player's game state without calling autonomousGame.load().
- * This query is intentionally read-only and never creates or normalizes state.
- */
 async function readLinkedTelegramProfile(pool, telegramUserId) {
   if (!pool || typeof pool.query !== "function") throw new Error("DATABASE_POOL_REQUIRED");
   const userId = normalizeTelegramUserId(telegramUserId);
