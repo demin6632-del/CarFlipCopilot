@@ -2,7 +2,7 @@
 
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { createWebAccountServer } = require("./web-account-server");
+const { createWebAccountServer, databasePoolOptions } = require("./web-account-server");
 
 async function withServer(server, run) {
   await new Promise(resolve => server.listen(0, "127.0.0.1", resolve));
@@ -13,6 +13,19 @@ async function withServer(server, run) {
     await new Promise((resolve, reject) => server.close(error => error ? reject(error) : resolve()));
   }
 }
+
+test("PostgreSQL TLS certificate verification is enabled by default", () => {
+  const options = databasePoolOptions({ DATABASE_URL: "postgres://example/db" });
+  assert.deepEqual(options.ssl, { rejectUnauthorized: true });
+});
+
+test("PostgreSQL TLS can only be disabled through an explicit local/test override", () => {
+  const options = databasePoolOptions({
+    DATABASE_URL: "postgres://localhost/test",
+    DATABASE_SSL: "false"
+  });
+  assert.equal(options.ssl, false);
+});
 
 test("dedicated web account server exposes a minimal database-backed health route", async () => {
   const calls = [];
