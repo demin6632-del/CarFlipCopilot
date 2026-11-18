@@ -1,7 +1,22 @@
 (() => {
   "use strict";
   const telegram = window.Telegram && window.Telegram.WebApp;
-  if (!telegram || !telegram.initData) return;
+  if (!telegram || !telegram.initData) {
+    document.body.style.cssText = "margin:0;background:#101216;color:#f5f5f5;font:16px Arial,sans-serif";
+    const notice = document.createElement("main");
+    notice.style.cssText = "max-width:520px;margin:15vh auto;padding:28px;line-height:1.5";
+    const title = document.createElement("h1");
+    title.textContent = "AUTOFLIP";
+    const message = document.createElement("p");
+    message.textContent = "Игровая страница открывается только внутри Telegram. Вернись в чат с ботом и нажми кнопку открытия Mini App.";
+    const link = document.createElement("a");
+    link.href = "https://t.me/autoflip_test_bot";
+    link.textContent = "ОТКРЫТЬ TELEGRAM";
+    link.style.cssText = "display:inline-block;margin-top:14px;color:#ff7848";
+    notice.append(title, message, link);
+    document.body.replaceChildren(notice);
+    return;
+  }
   document.body.classList.add("autoflip-miniapp");
   try { telegram.ready(); telegram.expand(); } catch (_) {}
   const root = document.querySelector("[data-game-shell]");
