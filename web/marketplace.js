@@ -75,7 +75,15 @@
 
   function createListingCard(listing) {
     const vehicle = listing.vehicle || {};
-    const card = element("article", "listing-card");\n    card.tabIndex = 0;\n    card.setAttribute("role", "button");\n    card.setAttribute("aria-label", "Открыть подробности: " + (vehicle.model || "автомобиль"));\n    card.addEventListener("click", () => openListingDetails(listing));\n    card.addEventListener("keydown", event => {\n      if (event.target !== card) return;\n      if (event.key === "Enter" || event.key === " ") { event.preventDefault(); openListingDetails(listing); }\n    });
+    const card = element("article", "listing-card");
+    card.tabIndex = 0;
+    card.setAttribute("role", "button");
+    card.setAttribute("aria-label", "Открыть подробности: " + (vehicle.model || "автомобиль"));
+    card.addEventListener("click", () => openListingDetails(listing));
+    card.addEventListener("keydown", event => {
+      if (event.target !== card) return;
+      if (event.key === "Enter" || event.key === " ") { event.preventDefault(); openListingDetails(listing); }
+    });
     const photo = element("div", "listing-photo listing-photo-placeholder");
     photo.setAttribute("aria-label", "Фотография автомобиля пока не добавлена");
     photo.append(element("span", "", "ФОТО НЕ ДОБАВЛЕНО"));
