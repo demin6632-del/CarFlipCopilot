@@ -50,16 +50,121 @@
       : "Срок действия кода истёк. Получи новый код.";
     if (!seconds) clearInterval(expiryTimer);
   }
+  function formatNumber(value) {
+    const number = Number(value);
+    return Number.isFinite(number) ? new Intl.NumberFormat("ru-RU").format(number) : "—";
+  }
+  function addText(parent, tag, className, value) {
+    const node = document.createElement(tag);
+    if (className) node.className = className;
+    node.textContent = value;
+    parent.appendChild(node);
+    return node;
+  }
+  function renderGameProfile(payload) {
+    if (!payload || payload.profileStatus !== "CONNECTED" || !payload.profile) return;
+    const profile = payload.profile;
+    const player = profile.player || {};
+    const garage = Array.isArray(profile.garage) ? profile.garage : [];
+    const stats = document.querySelectorAll(".profile-stats > div");
+    if (stats[0]) stats[0].querySelector("b").textContent =
+      formatNumber(player.garageUsed) + " / " + formatNumber(player.garageCapacity);
+    if (stats[1]) stats[1].querySelector("b").textContent = formatNumber(player.balance) + " ₽";
+    if (stats[2]) stats[2].querySelector("b").textContent = formatNumber(player.respect);
+    const profileName = document.querySelector(".profile-user b");
+    const profileCaption = document.querySelector(".profile-user small");
+    if (profileName) profileName.textContent = player.displayName || "Игрок AUTOFLIP";
+    if (profileCaption) profileCaption.textContent = "Уровень " + formatNumber(player.level) +
+      " · " + formatNumber(player.xp) + " XP · Игровой день " + formatNumber(profile.gameDay);
+    const badge = document.querySelector(".mock-badge");
+    if (badge) badge.textContent = "CONNECTED";
+    const lock = document.querySelector(".profile-lock");
+    if (lock) lock.hidden = true;
+    const overview = document.querySelector("#profile-panel-overview");
+    if (overview) {
+      overview.replaceChildren();
+      addText(overview, "b", "", "ПРОФИЛЬ ИГРОКА");
+      addText(overview, "p", "", "Игрок: " + (player.displayName || "—") +
+        ". Уровень " + formatNumber(player.level) + ", опыт " + formatNumber(player.xp) +
+        ", репутация " + formatNumber(player.respect) + ".");
+      addText(overview, "small", "", "ДАННЫЕ ПОЛУЧЕНЫ ИЗ ИГРОВОГО ПРОФИЛЯ");
+    }
+    const finance = document.querySelector("#profile-panel-finance");
+    if (finance) {
+      finance.replaceChildren();
+      addText(finance, "b", "", "ФИНАНСЫ И ОПЕРАЦИИ");
+      addText(finance, "p", "", "Баланс: " + formatNumber(player.balance) +
+        " ₽. Долг: " + formatNumber(player.debt) + " ₽.");
+      addText(finance, "small", "", "ОТОБРАЖАЮТСЯ ДАННЫЕ ИГРОВОГО ПРОФИЛЯ");
+    }
+    const garagePanel = document.querySelector("#profile-panel-garage");
+    if (garagePanel) {
+      garagePanel.replaceChildren();
+      addText(garagePanel, "b", "", "ГАРАЖ И ИСТОРИЯ МАШИН");
+      addText(garagePanel, "p", "", "Занято мест: " + formatNumber(player.garageUsed) +
+        " из " + formatNumber(player.garageCapacity) + ".");
+      if (!garage.length) {
+        addText(garagePanel, "small", "", "В ГАРАЖЕ ПОКА НЕТ АВТОМОБИЛЕЙ");
+      } else {
+        garage.forEach((car) => {
+          const item = addText(garagePanel, "article", "profile-car-row", "");
+          addText(item, "b", "", car.model || "Автомобиль");
+          addText(item, "span", "", "Год: " + (car.year || "—") +
+            " · Номер: " + (car.plate || "—") +
+            " · Пробег: " + formatNumber(car.mileage) + " км" +
+            " · Состояние: " + formatNumber(car.condition) + "%");
+        });
+      }
+    }
+    const garageSummary = document.querySelector(".garage-summary");
+    if (garageSummary) {
+      const values = garageSummary.querySelectorAll("div b");
+      if (values[0]) values[0].textContent = formatNumber(player.garageUsed) +
+        " / " + formatNumber(player.garageCapacity);
+      if (values[1]) values[1].textContent = "— ₽";
+      if (values[2]) values[2].textContent = garage.length ? "ДАННЫЕ ЗАГРУЖЕНЫ" : "ПОКА НЕТ АВТОМОБИЛЕЙ";
+    }
+    const garageCars = document.querySelector(".garage-cars");
+    if (garageCars) {
+      garageCars.replaceChildren();
+      if (!garage.length) {
+        const empty = addText(garageCars, "article", "garage-car garage-empty", "");
+        addText(empty, "b", "", "В ГАРАЖЕ ПОКА НЕТ АВТОМОБИЛЕЙ");
+        addText(empty, "span", "", "СВОБОДНО МЕСТ: " +
+          formatNumber(Math.max(0, Number(player.garageCapacity || 0) - Number(player.garageUsed || 0))));
+      } else {
+        garage.forEach((car, index) => {
+          const card = addText(garageCars, "article", "garage-car garage-car-live", "");
+          const info = addText(card, "div", "garage-car-info", "");
+          addText(info, "span", "", "АВТОМОБИЛЬ / " + String(index + 1).padStart(3, "0"));
+          addText(info, "h4", "", car.model || "Автомобиль");
+          addText(info, "p", "", "Год выпуска " + (car.year || "—") +
+            " · Пробег " + formatNumber(car.mileage) + " км");
+          const plate = addText(info, "div", "", "");
+          addText(plate, "span", "", "ГОСНОМЕР");
+          addText(plate, "strong", "", car.plate || "—");
+          addText(info, "p", "", "Состояние: " + formatNumber(car.condition) + "%");
+        });
+      }
+    }
+    const disclaimer = document.querySelector(".showcase-disclaimer");
+    if (disclaimer) disclaimer.textContent = "Гараж загружен из игрового профиля. Стоимость автомобилей не передаётся источником данных и поэтому не рассчитывается.";
+    const accountIntro = document.querySelector(".account-layout > div > p");
+    if (accountIntro) accountIntro.textContent = "Защищённый аккаунт подключён. Данные профиля загружаются из игрового сервера.";
+    const accountNote = document.querySelector(".account-note");
+    if (accountNote) accountNote.textContent = "ИГРОВОЙ ПРОФИЛЬ ПОДКЛЮЧЁН";
+  }
   function markLinked(profile) {
     codePanel.hidden = true;
     clearInterval(expiryTimer);
     linked = true;
     const player = profile && profile.profile && profile.profile.player && profile.profile.player.displayName;
     const gameDataReady = profile && profile.profileStatus === "CONNECTED" && profile.profile;
+    if (gameDataReady) renderGameProfile(profile);
     setStatus(
       "Telegram-аккаунт успешно привязан. Защищённая сессия активна." +
       (player ? " Игрок: " + player + "." : "") +
-      (gameDataReady ? "" : " Игровые данные пока не подключены.")
+      (gameDataReady ? " Игровой профиль загружен." : " Игровые данные пока не подключены.")
     );
     issueButton.disabled = true;
     verifyButton.disabled = true;
