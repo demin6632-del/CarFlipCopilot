@@ -6,6 +6,7 @@ const { handleTelegramLinkCommand } = require("./telegram-link-command");
 
 const TOKEN = process.env.TELEGRAM_BOT_TOKEN || "";
 const PORT = Number(process.env.PORT || 10000);
+const WEB_APP_URL = "https://autoflip-e2e-web-test.onrender.com/";
 const API = "https://api.telegram.org/bot" + TOKEN;
 let offset = 0;
 let stopping = false;
@@ -43,14 +44,31 @@ async function telegram(method, body) {
   return payload.result;
 }
 
-async function send(chatId, message) {
-  await telegram("sendMessage", { chat_id: chatId, text: String(message), disable_web_page_preview: true });
+async function send(chatId, message, replyMarkup) {
+  const payload = { chat_id: chatId, text: String(message), disable_web_page_preview: true };
+  if (replyMarkup) payload.reply_markup = replyMarkup;
+  await telegram("sendMessage", payload);
+}
+
+async function sendStart(chatId, chatType) {
+  if (chatType !== "private") {
+    await send(chatId, "Открой тестового бота в личном чате, чтобы запустить AUTOFLIP.");
+    return;
+  }
+  await send(chatId,
+    "Добро пожаловать в AUTOFLIP! Открой тестовый Mini App кнопкой ниже. После запуска перейди к привязке аккаунта и получи одноразовый код.",
+    { inline_keyboard: [[{ text: "ОТКРЫТЬ AUTOFLIP", web_app: { url: WEB_APP_URL } }]] }
+  );
 }
 
 async function handleUpdate(update) {
   const message = update && update.message;
   if (!message || typeof message.text !== "string") return;
   const command = message.text.trim().split(/\s/, 1)[0].split("@")[0].toLowerCase();
+  if (command === "/start") {
+    await sendStart(message.chat.id, message.chat.type);
+    return;
+  }
   if (command !== "/link") return;
   await handleTelegramLinkCommand(message, {
     pool,
