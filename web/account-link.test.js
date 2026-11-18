@@ -92,6 +92,17 @@ test("expired browser session is renewed from verified Telegram initData", async
   assert.match(app.nodes["[data-link-status]"].textContent, /Аккаунт успешно привязан.*Renewed Player/);
 });
 
+test("linked Telegram account is shown even when game profile data is not connected", async () => {
+  const app = harness({
+    fetchImpl: async () => reply(200, { ok: true, profile: null, profileStatus: "GAME_DATA_NOT_CONNECTED" })
+  });
+  await ready(app);
+  assert.match(app.nodes["[data-link-status]"].textContent, /Telegram-аккаунт успешно привязан/);
+  assert.match(app.nodes["[data-link-status]"].textContent, /Игровые данные пока не подключены/);
+  assert.equal(app.nodes["[data-link-code-panel]"].hidden, true);
+  assert.equal(app.nodes["[data-link-issue]"].disabled, true);
+});
+
 test("outside Telegram Mini App the panel is informational and sends no requests", () => {
   const app = harness({ telegram: false });
   assert.match(app.nodes["[data-link-status]"].textContent, /внутри Telegram Mini App/);
