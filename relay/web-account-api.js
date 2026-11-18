@@ -4,6 +4,7 @@ const crypto = require("node:crypto");
 const { validateTelegramWebAppInitData } = require("./telegram-webapp-auth");
 const { readLinkedTelegramProfile } = require("./telegram-account-profile");
 const { issueTelegramLinkChallenge } = require("./telegram-account-linking");
+const { listActiveMarketplaceListings, listMarketplaceListingsForSeller } = require("./player-marketplace-listings");
 
 const COOKIE_NAME = "__Host-autoflip_session";
 const DEFAULT_SESSION_TTL_SECONDS = 7 * 24 * 60 * 60;
@@ -76,7 +77,7 @@ function createWebAccountApi(options = {}) {
 
   return async function handleWebAccountRequest(req, res) {
     const path = String(req.url || "").split("?")[0];
-    if (!["/api/web/session", "/api/web/profile", "/api/web/logout", "/api/web/link-challenge"].includes(path)) return false;
+    if (!["/api/web/session", "/api/web/profile", "/api/web/logout", "/api/web/link-challenge", "/api/web/marketplace", "/api/web/marketplace/mine"].includes(path)) return false;
 
     try {
       if (path !== "/api/web/profile") {
@@ -225,6 +226,25 @@ function createWebAccountApi(options = {}) {
         send(res, 401, { error: "SESSION_EXPIRED" });
         return true;
       }
+      if (path === "/api/web/marketplace" || path === "/api/web/marketplace/mine") {
+        const url = new URL(req.url || "/", expectedOrigin);
+        const limit = url.searchParams.has("limit") ? Number(url.searchParams.get("limit")) : 10;
+        const offset = url.searchParams.has("offset") ? Number(url.searchParams.get("offset")) : 0;
+        if (!Number.isInteger(limit) || !Number.isInteger(offset)) {
+          send(res, 400, { error: "INVALID_PAGINATION" });
+          return true;
+        }
+        let listings;
+        if (path === "/api/web/marketplace") {
+          listings = await listActiveMarketplaceListings(pool, { limit, offset, search: url.searchParams.get("search") || "" });
+        } else {
+          const linked = await pool.query("SELECT private_chat_id FROM autonomous_telegram_account_links WHERE telegram_user_id=$1 LIMIT 1", [String(session.rows[0].telegram_user_id)]);
+          if (!linked || !linked.rowCount) { send(res, 401, { error: "ACCOUNT_LINK_REQUIRED" }); return true; }
+          listings = await listMarketplaceListingsForSeller(pool, String(linked.rows[0].private_chat_id), { limit, offset });
+        }
+        send(res, 200, { ok: true, listings });
+        return true;
+      }
       const profile = await readLinkedTelegramProfile(pool, session.rows[0].telegram_user_id);
       if (!profile) {
         send(res, 401, { error: "ACCOUNT_LINK_REQUIRED" });
@@ -233,8 +253,9 @@ function createWebAccountApi(options = {}) {
       send(res, 200, { ok: true, profile });
       return true;
     } catch (error) {
-      const status = Number.isInteger(error.statusCode) ? error.statusCode : 500;
-      send(res, status, { error: status === 500 ? "INTERNAL_ERROR" : error.message });
+      const status = Number.isInteger(error.statusCode) ? error.statusCode : (error.code === "42P01" ? 503 : 500);
+      const code = error.code === "42P01" ? "MARKETPLACE_NOT_READY" : (status === 500 ? "INTERNAL_ERROR" : error.message);
+      send(res, status, { error: code });
       if (status === 500 && typeof options.onError === "function") options.onError(error);
       return true;
     }
