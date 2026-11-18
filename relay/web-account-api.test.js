@@ -150,7 +150,7 @@ test("linked session remains valid when the isolated database has no game-state 
   const { pool: base } = makePool();
   const pool = {
     async query(sql, params) {
-      if (/SELECT s\\.state/.test(sql)) {
+      if (/SELECT s\.state/.test(sql)) {
         const error = new Error("relation does not exist");
         error.code = "42P01";
         throw error;
