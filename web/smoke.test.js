@@ -36,11 +36,12 @@ test("mobile navigation has accessible control semantics", () => {
   assert.match(js, /event\.key === "Escape"/);
 });
 
-test("prototype labels preview data and keeps market purchases disabled", () => {
+test("connected marketplace is read-only and exposes personal listings", () => {
   assert.doesNotMatch(html, /DATABASE_URL|TELEGRAM_BOT_TOKEN|COPILOT_TOKEN/);
-  assert.match(html, /появятся после подключения и проверки безопасного серверного API/i);
-  assert.match(html, /Купить здесь пока нельзя/i);
-  assert.match(html, /ПРЕДПРОСМОТР ДИЗАЙНА · НЕ АКТИВНЫЕ ОБЪЯВЛЕНИЯ/i);
+  assert.match(html, /data-marketplace-listings/);
+  assert.match(html, /data-market-mine/);
+  assert.match(html, /Покупка будет доступна только после проверки сделки/i);
+  assert.doesNotMatch(html, /data-market-buy|data-listing-purchase/);
 });
 
 test("account linking is gated behind Telegram and same-origin API configuration", () => {
