@@ -75,7 +75,12 @@ async function proxyApi(req, res, url) {
     if (cookies.length) responseHeaders["set-cookie"] = cookies;
     res.writeHead(response.status, responseHeaders);
     res.end(Buffer.from(await response.arrayBuffer()));
-  } catch (_) {
+  } catch (error) {
+    console.error("Test API proxy failed:", {
+      name: error && error.name,
+      code: error && error.cause && error.cause.code,
+      message: error && error.message
+    });
     if (!res.headersSent) send(res, 502, "Test API is temporarily unavailable.");
     else res.end();
   }
