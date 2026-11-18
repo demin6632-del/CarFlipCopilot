@@ -8,6 +8,14 @@
   const searchInput = searchForm?.querySelector('input[name="search"]');
   const countLabel = document.querySelector("[data-market-count]");
   const statusPanel = document.querySelector("[data-market-status]");
+  const toolbar = document.querySelector(".market-toolbar");
+  let showingMine = false;
+  const mineButton = document.createElement("button");
+  mineButton.type = "button";
+  mineButton.className = "button button-outline market-mine-button";
+  mineButton.textContent = "МОИ ОБЪЯВЛЕНИЯ";
+  mineButton.setAttribute("aria-pressed", "false");
+  if (toolbar) toolbar.insertBefore(mineButton, countLabel || null);
   const money = new Intl.NumberFormat("ru-RU", { maximumFractionDigits: 0 });
   const number = new Intl.NumberFormat("ru-RU", { maximumFractionDigits: 0 });
 
@@ -111,24 +119,24 @@
     const footer = element("div", "listing-footer");
     footer.append(
       element("span", "", vehicle.plate ? "НОМЕР " + vehicle.plate : "НОМЕР НЕ УКАЗАН"),
-      element("span", "", "АКТИВНОЕ ОБЪЯВЛЕНИЕ")
+      element("span", "", listing.status === "active" ? "АКТИВНОЕ ОБЪЯВЛЕНИЕ" : "СТАТУС: " + String(listing.status || "НЕИЗВЕСТЕН").toUpperCase())
     );
     body.append(top, title, specs, footer);
     card.append(photo, body);
     return card;
   }
 
-  async function loadListings(search = "") {
+  async function loadListings(search = "", endpoint = "/api/web/marketplace") {
     grid.setAttribute("aria-busy", "true");
     showMessage("ЗАГРУЖАЕМ РЕАЛЬНЫЕ ОБЪЯВЛЕНИЯ…");
     setStatus("ПОДКЛЮЧАЕМ АВТОРЫНОК", "Получаем данные тестовой базы.");
     if (countLabel) countLabel.textContent = "ЗАГРУЗКА…";
 
     const params = new URLSearchParams({ limit: "20" });
-    if (search.trim()) params.set("search", search.trim());
+    if (endpoint === "/api/web/marketplace" && search.trim()) params.set("search", search.trim());
 
     try {
-      const response = await fetch("/api/web/marketplace?" + params.toString(), {
+      const response = await fetch(endpoint + "?" + params.toString(), {
         method: "GET",
         credentials: "same-origin",
         cache: "no-store",
@@ -137,8 +145,9 @@
       const payload = await response.json().catch(() => ({}));
 
       if (response.status === 401) {
-        showMessage("ОТКРОЙТЕ AUTOFLIP В TELEGRAM MINI APP, ЧТОБЫ ПОСМОТРЕТЬ АВТОРЫНОК.");
-        setStatus("ТРЕБУЕТСЯ ВХОД", "Авторынок доступен после проверки Telegram-сессии.", "warning");
+        const ownListings = endpoint.endsWith("/mine");
+        showMessage(ownListings ? "ПРИВЯЖИТЕ TELEGRAM-АККАУНТ, ЧТОБЫ ПОСМОТРЕТЬ СВОИ ОБЪЯВЛЕНИЯ." : "ОТКРОЙТЕ AUTOFLIP В TELEGRAM MINI APP, ЧТОБЫ ПОСМОТРЕТЬ АВТОРЫНОК.");
+        setStatus("ТРЕБУЕТСЯ ВХОД", ownListings ? "Для личных объявлений нужна активная привязка Telegram." : "Авторынок доступен после проверки Telegram-сессии.", "warning");
         if (countLabel) countLabel.textContent = "НУЖЕН ВХОД";
         return;
       }
@@ -155,16 +164,16 @@
       const listings = payload.listings;
       if (countLabel) countLabel.textContent = "ОБЪЯВЛЕНИЙ: " + listings.length;
       if (!listings.length) {
-        showMessage(search.trim()
-          ? "ПО ЭТОМУ ЗАПРОСУ ОБЪЯВЛЕНИЙ НЕ НАЙДЕНО."
-          : "ПОКА НЕТ АКТИВНЫХ ОБЪЯВЛЕНИЙ. КОГДА ИГРОКИ ВЫСТАВЯТ АВТОМОБИЛИ, ОНИ ПОЯВЯТСЯ ЗДЕСЬ.");
-        setStatus("АВТОРЫНОК ПОДКЛЮЧЁН", "Активных объявлений пока нет. Игровые данные не изменялись.", "ready");
+        showMessage(endpoint.endsWith("/mine")
+          ? "У ТЕБЯ ПОКА НЕТ ОБЪЯВЛЕНИЙ."
+          : search.trim() ? "ПО ЭТОМУ ЗАПРОСУ ОБЪЯВЛЕНИЙ НЕ НАЙДЕНО." : "ПОКА НЕТ АКТИВНЫХ ОБЪЯВЛЕНИЙ. КОГДА ИГРОКИ ВЫСТАВЯТ АВТОМОБИЛИ, ОНИ ПОЯВЯТСЯ ЗДЕСЬ.");
+        setStatus(endpoint.endsWith("/mine") ? "МОИ ОБЪЯВЛЕНИЯ" : "АВТОРЫНОК ПОДКЛЮЧЁН", endpoint.endsWith("/mine") ? "Активных или завершённых личных объявлений нет." : "Активных объявлений пока нет. Игровые данные не изменялись.", "ready");
         return;
       }
 
       grid.replaceChildren(...listings.map(createListingCard));
       grid.setAttribute("aria-busy", "false");
-      setStatus("АВТОРЫНОК ПОДКЛЮЧЁН", "Показаны реальные активные объявления из тестовой базы.", "ready");
+      setStatus(endpoint.endsWith("/mine") ? "МОИ ОБЪЯВЛЕНИЯ" : "АВТОРЫНОК ПОДКЛЮЧЁН", endpoint.endsWith("/mine") ? "Показаны объявления твоего аккаунта." : "Показаны реальные активные объявления из тестовой базы.", "ready");
     } catch (_) {
       showMessage("НЕ УДАЛОСЬ ЗАГРУЗИТЬ ОБЪЯВЛЕНИЯ. ПОПРОБУЙТЕ ОБНОВИТЬ СТРАНИЦУ.");
       setStatus("ОШИБКА ПОДКЛЮЧЕНИЯ", "Сервер авторынка временно не отвечает.", "warning");
@@ -172,9 +181,20 @@
     }
   }
 
+  mineButton.addEventListener("click", () => {
+    showingMine = !showingMine;
+    mineButton.textContent = showingMine ? "ВСЕ ОБЪЯВЛЕНИЯ" : "МОИ ОБЪЯВЛЕНИЯ";
+    mineButton.setAttribute("aria-pressed", String(showingMine));
+    if (searchInput) searchInput.value = "";
+    loadListings("", showingMine ? "/api/web/marketplace/mine" : "/api/web/marketplace");
+  });
+
   searchForm?.addEventListener("submit", event => {
     event.preventDefault();
-    loadListings(searchInput?.value || "");
+    showingMine = false;
+    mineButton.textContent = "МОИ ОБЪЯВЛЕНИЯ";
+    mineButton.setAttribute("aria-pressed", "false");
+    loadListings(searchInput?.value || "", "/api/web/marketplace");
   });
 
   loadListings();
