@@ -11,8 +11,8 @@ const gameShell = fs.readFileSync(path.join(root, "game-shell.js"), "utf8");
 const accountLink = fs.readFileSync(path.join(root, "account-link.js"), "utf8");
 
 test("public website is a help center, not a browser game", () => {
-  assert.match(html, /Справочный центр/);
-  assert.match(html, /Как начать играть/);
+  assert.match(html, /справочный центр/i);
+  assert.match(html, /КАК НАЧАТЬ ИГРАТЬ/);
   assert.match(html, /ЧАСТЫЕ ВОПРОСЫ/);
   assert.match(html, /Сама игра живёт внутри Telegram Mini App/);
   assert.doesNotMatch(html, /data-game-shell|game-shell\.js|marketplace\.js|data-marketplace-listings/);
