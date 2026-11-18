@@ -87,15 +87,32 @@
       addText(overview, "p", "", "Игрок: " + (player.displayName || "—") +
         ". Уровень " + formatNumber(player.level) + ", опыт " + formatNumber(player.xp) +
         ", репутация " + formatNumber(player.respect) + ".");
+      addText(overview, "p", "profile-detail", "Игровой день: " + formatNumber(profile.gameDay) +
+        ". Свободно мест в гараже: " +
+        formatNumber(Math.max(0, Number(player.garageCapacity || 0) - Number(player.garageUsed || 0))) + ".");
       addText(overview, "small", "", "ДАННЫЕ ПОЛУЧЕНЫ ИЗ ИГРОВОГО ПРОФИЛЯ");
     }
     const finance = document.querySelector("#profile-panel-finance");
     if (finance) {
       finance.replaceChildren();
       addText(finance, "b", "", "ФИНАНСЫ И ОПЕРАЦИИ");
-      addText(finance, "p", "", "Баланс: " + formatNumber(player.balance) +
-        " ₽. Долг: " + formatNumber(player.debt) + " ₽.");
-      addText(finance, "small", "", "ОТОБРАЖАЮТСЯ ДАННЫЕ ИГРОВОГО ПРОФИЛЯ");
+      addText(finance, "p", "", "Игровой баланс: " + formatNumber(player.balance) + " ₽.");
+      if (player.debt !== undefined && player.debt !== null && Number.isFinite(Number(player.debt))) {
+        addText(finance, "p", "profile-detail", "Текущий долг: " + formatNumber(player.debt) + " ₽.");
+      } else {
+        addText(finance, "p", "profile-detail", "Информация о долге не передана игровым сервером.");
+      }
+      addText(finance, "p", "profile-detail", "История операций пока недоступна: сервер не передаёт журнал транзакций.");
+      addText(finance, "small", "", "БАЛАНС ЗАГРУЖЕН ИЗ ИГРОВОГО ПРОФИЛЯ · ПОКУПКИ И ПЕРЕВОДЫ НЕ ВЫПОЛНЯЮТСЯ");
+    }
+    const security = document.querySelector("#profile-panel-security");
+    if (security) {
+      security.replaceChildren();
+      addText(security, "b", "", "ЗАЩИТА АККАУНТА");
+      addText(security, "p", "", "Статус Telegram: аккаунт привязан.");
+      addText(security, "p", "profile-detail", "Статус сессии: активна на момент проверки.");
+      addText(security, "p", "profile-detail", "Игровой профиль загружен через защищённый серверный API.");
+      addText(security, "small", "", "СЕКРЕТЫ И ДАННЫЕ СЕССИИ НЕ ПОКАЗЫВАЮТСЯ · УПРАВЛЕНИЕ СЕССИЯМИ ПОКА НЕ ПОДДЕРЖИВАЕТСЯ");
     }
     const garagePanel = document.querySelector("#profile-panel-garage");
     if (garagePanel) {
