@@ -6,7 +6,7 @@ const { handleTelegramLinkCommand } = require("./telegram-link-command");
 
 const TOKEN = process.env.TELEGRAM_BOT_TOKEN || "";
 const PORT = Number(process.env.PORT || 10000);
-const WEB_APP_URL = "https://autoflip-e2e-web-test.onrender.com/";
+const WEB_APP_URL = "https://autoflip-e2e-web-test.onrender.com/app";
 const API = "https://api.telegram.org/bot" + TOKEN;
 let offset = 0;
 let stopping = false;
