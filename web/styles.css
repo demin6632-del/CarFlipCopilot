@@ -167,3 +167,22 @@
  .market-search .button{padding-inline:15px}
  .market-empty{min-height:130px;padding:20px;font-size:8px}
 }
+
+
+/* Read-only listing details */
+.listing-card{cursor:pointer;transition:transform .18s,border-color .18s,box-shadow .18s}
+.listing-card:hover,.listing-card:focus-visible{transform:translateY(-3px);border-color:#c74920;box-shadow:0 10px 28px rgba(23,24,25,.12);outline:none}
+.listing-card:focus-visible{outline:2px solid #c74920;outline-offset:3px}
+.listing-dialog{width:min(560px,calc(100% - 28px));max-height:calc(100% - 32px);padding:0;border:1px solid rgba(23,24,25,.2);background:#f5f3ee;color:#171819;box-shadow:0 24px 80px rgba(0,0,0,.45)}
+.listing-dialog::backdrop{background:rgba(5,6,7,.78);backdrop-filter:blur(4px)}
+.listing-dialog-panel{padding:clamp(18px,4vw,30px)}
+.listing-dialog-header{display:flex;align-items:center;justify-content:space-between;gap:14px;font-size:8px;font-weight:900;letter-spacing:.13em;color:#77766f}
+.listing-dialog-close{width:34px;height:34px;border:0;background:#e3e0d8;color:#171819;font-size:24px;cursor:pointer}
+.listing-dialog h2{font-size:clamp(24px,6vw,38px);margin:24px 0 6px;letter-spacing:-.04em}
+.listing-dialog-price{font-size:23px;font-weight:900;color:#bd421c;margin:0 0 20px}
+.listing-dialog-specs{display:grid;grid-template-columns:1fr 1fr;margin:0;border-top:1px solid rgba(23,24,25,.15)}
+.listing-dialog-specs dt,.listing-dialog-specs dd{margin:0;padding:12px 0;border-bottom:1px solid rgba(23,24,25,.12);font-size:11px}
+.listing-dialog-specs dt{color:#77766f}
+.listing-dialog-specs dd{text-align:right;font-weight:800}
+.listing-dialog-note{margin:20px 0 0;padding:12px;background:#e8e5dd;color:#555650;font-size:10px;line-height:1.7}
+.listing-dialog-actions{display:flex;justify-content:flex-end;margin-top:18px}
