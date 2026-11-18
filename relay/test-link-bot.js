@@ -63,18 +63,23 @@ async function sendStart(chatId, chatType) {
 
 async function handleUpdate(update) {
   const message = update && update.message;
+  console.log("TEST TELEGRAM UPDATE RECEIVED message=" + Boolean(message) +
+    " has_text=" + Boolean(message && typeof message.text === "string"));
   if (!message || typeof message.text !== "string") return;
   const command = message.text.trim().split(/\s/, 1)[0].split("@")[0].toLowerCase();
   if (command === "/start") {
     await sendStart(message.chat.id, message.chat.type);
+    console.log("TEST TELEGRAM COMMAND PROCESSED command=/start");
     return;
   }
   if (command !== "/link") return;
+  console.log("TEST TELEGRAM COMMAND RECEIVED command=/link");
   await handleTelegramLinkCommand(message, {
     pool,
     send,
     onError: () => console.error("TEST ACCOUNT LINK DATABASE OPERATION FAILED")
   });
+  console.log("TEST TELEGRAM COMMAND HANDLER FINISHED command=/link");
 }
 
 async function poll() {
@@ -118,10 +123,16 @@ async function start() {
   await pool.query("SELECT 1");
   startupStage = "telegram_token_validation";
   await telegram("getMe", {});
+  startupStage = "telegram_webhook_diagnostic";
+  const webhookInfo = await telegram("getWebhookInfo", {});
+  console.log("TEST TELEGRAM WEBHOOK DIAGNOSTIC configured=" + Boolean(webhookInfo && webhookInfo.url) +
+    " pending_updates=" + (Number.isInteger(webhookInfo && webhookInfo.pending_update_count)
+      ? webhookInfo.pending_update_count : "unknown"));
   startupStage = "health_server_start";
   server.listen(PORT, "0.0.0.0", () => {
     console.log("AUTOFLIP isolated test link bot health server listening on port " + PORT);
   });
+  console.log("TEST TELEGRAM POLLING STARTED mode=getUpdates");
   await poll();
 }
 
