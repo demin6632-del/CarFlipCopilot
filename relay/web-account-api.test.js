@@ -294,3 +294,50 @@ test("unknown routes are left to the hosting application", async () => {
   const api = apiFor(makePool().pool);
   assert.equal(await api(request("GET", "/health"), response()), false);
 });
+
+test("marketplace browse requires a valid web session and returns only public listing data", async () => {
+  const token = "c".repeat(43);
+  const digest = crypto.createHash("sha256").update(token).digest("hex");
+  const calls = [];
+  const pool = { async query(sql, params = []) {
+    calls.push({ sql, params });
+    if (/SELECT telegram_user_id/.test(sql)) return { rowCount: 1, rows: [{ telegram_user_id: "123456789" }] };
+    if (/FROM autonomous_marketplace_listings/.test(sql)) return { rowCount: 1, rows: [{
+      id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+      seller_chat_id: "private-chat-secret",
+      asking_price: "1250000",
+      status: "active",
+      vehicle_snapshot: { model: "Lada Vesta", year: 2020, plate: "А123ВС 77", mileage: 45000, condition: 92 },
+      created_at: new Date(NOW).toISOString(),
+      expires_at: new Date(NOW + 86400000).toISOString()
+    }] };
+    throw new Error("Unexpected SQL: " + sql);
+  }};
+  const api = apiFor(pool);
+  const res = response();
+  await api(request("GET", "/api/web/marketplace?limit=5&search=Vesta", { cookie: COOKIE_NAME + "=" + token }), res);
+  assert.equal(res.status, 200);
+  assert.equal(res.json().listings.length, 1);
+  assert.equal(res.json().listings[0].vehicle.model, "Lada Vesta");
+  assert.equal(JSON.stringify(res.json()).includes("private-chat-secret"), false);
+  assert.deepEqual(calls[1].params, ["%Vesta%", 5, 0]);
+});
+
+test("marketplace endpoints reject invalid pagination and require a linked seller account", async () => {
+  const token = "d".repeat(43);
+  const pool = { async query(sql) {
+    if (/SELECT telegram_user_id/.test(sql)) return { rowCount: 1, rows: [{ telegram_user_id: "123456789" }] };
+    if (/SELECT private_chat_id/.test(sql)) return { rowCount: 0, rows: [] };
+    throw new Error("Unexpected SQL: " + sql);
+  }};
+  const api = apiFor(pool);
+  const invalid = response();
+  await api(request("GET", "/api/web/marketplace?limit=999", { cookie: COOKIE_NAME + "=" + token }), invalid);
+  assert.equal(invalid.status, 400);
+  assert.equal(invalid.json().error, "INVALID_PAGINATION");
+
+  const mine = response();
+  await api(request("GET", "/api/web/marketplace/mine", { cookie: COOKIE_NAME + "=" + token }), mine);
+  assert.equal(mine.status, 401);
+  assert.equal(mine.json().error, "ACCOUNT_LINK_REQUIRED");
+});
