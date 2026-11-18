@@ -4,146 +4,31 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#111214">
-  <meta name="description" content="AUTOFLIP — автомобильный онлайн-мир. Собирай гараж, торгуй на рынке и соревнуйся с реальными игроками.">
-  <title>AUTOFLIP — автомобильный мир игроков</title>
-  <link rel="preconnect" href="https://images.unsplash.com">
-  <link rel="stylesheet" href="./styles.css">
-  <link rel="stylesheet" href="./account-link.css">
-  <link rel="stylesheet" href="./game-shell.css">
-  <script src="https://telegram.org/js/telegram-web-app.js"></script>
-  <script src="./app.js" defer></script>
-  <script src="./marketplace.js" defer></script>
-  <script src="./account-link.js" defer></script>
-  <script src="./game-shell.js" defer></script>
+  <meta name="description" content="Справочный центр AUTOFLIP: руководство по игре, правила, авторынок, гараж и помощь с аккаунтом.">
+  <title>AUTOFLIP — справочный центр</title>
+  <link rel="stylesheet" href="./help.css">
 </head>
 <body>
-  <div data-game-shell></div>
-  <a class="skip-link" href="#main">Перейти к содержимому</a>
-  <header class="site-header">
-    <div class="container header-inner">
-      <a class="brand" href="#top" aria-label="AUTOFLIP — главная"><span class="brand-symbol">A<span>F</span></span><span class="brand-word">AUTOFLIP</span></a>
-      <button class="menu-toggle" type="button" aria-expanded="false" aria-controls="primary-nav" aria-label="Открыть меню"><span></span><span></span></button>
-      <nav class="primary-nav" id="primary-nav" aria-label="Основная навигация">
-        <a href="#world">Мир</a><a href="#garage">Гараж</a><a href="#market">Авторынок</a><a href="#racing">Соревнования</a><a href="#roadmap">Разработка</a>
-      </nav>
-      <a class="header-cta" href="#account">Личный кабинет <span>↗</span></a>
-    </div>
-  </header>
-
-  <main id="main">
-    <section class="hero" id="top">
-      <div class="hero-photo" role="img" aria-label="Спортивный автомобиль на дороге"></div>
-      <div class="hero-shade"></div>
-      <div class="container hero-content">
-        <div class="hero-kicker"><i></i> АВТОМОБИЛЬНЫЙ МИР РЕАЛЬНЫХ ИГРОКОВ</div>
-        <h1>ТВОЯ ИСТОРИЯ.<br><em>ТВОИ</em> ПРАВИЛА.</h1>
-        <p class="hero-lead">Покупай машины. Создавай коллекцию. Строй капитал. Выходи на старт против реальных игроков.</p>
-        <div class="hero-actions"><a class="button button-primary" href="#world">ОТКРЫТЬ МИР <span>↗</span></a><a class="button button-outline" href="#roadmap">СЛЕДИТЬ ЗА ПРОЕКТОМ</a></div>
-        <div class="hero-bottom"><span>01 / 05</span><span class="hero-rule"></span><span>AUTOMOTIVE LIFE SIMULATOR</span></div>
-      </div>
-      <div class="hero-side-note">DRIVE YOUR OWN STORY</div>
-    </section>
-
-    <section class="ticker" aria-label="Разделы AUTOFLIP"><div class="ticker-track"><span>АВТОМОБИЛИ</span><b>✳</b><span>РЫНОК И СДЕЛКИ</span><b>✳</b><span>ГАРАЖИ</span><b>✳</b><span>АУКЦИОНЫ</span><b>✳</b><span>ГОНКИ</span><b>✳</b><span>ЭКОНОМИКА</span><b>✳</b><span>АВТОМОБИЛИ</span><b>✳</b><span>РЫНОК И СДЕЛКИ</span></div></section>
-
-    <section class="section intro-section" id="world">
-      <div class="container">
-        <div class="section-topline"><span>01 — КОНЦЕПЦИЯ</span><span>БОЛЬШЕ, ЧЕМ ИГРА</span></div>
-        <div class="intro-heading"><h2>МИР, ГДЕ КАЖДАЯ<br><em>МАШИНА ИМЕЕТ ИСТОРИЮ.</em></h2><p>AUTOFLIP объединяет автомобильную культуру, торговлю и соревнование. Здесь важны не только характеристики машины, но и решения, которые ты принимаешь.</p></div>
-        <div class="world-grid">
-          <article class="world-card world-card-main" id="garage-teaser"><div class="world-image garage-image"></div><div class="world-card-content"><span class="card-index">01 / КОЛЛЕКЦИЯ</span><h3>ТВОЙ ГАРАЖ</h3><p>Собирай автомобили, следи за пробегом, состоянием, историей и уникальными номерами.</p><a href="#account" aria-label="Подробнее о гараже">↗</a></div></article>
-          <article class="world-card"><div class="world-image market-image"></div><div class="world-card-content"><span class="card-index">02 / ТОРГОВЛЯ</span><h3>АВТОРЫНОК</h3><p>Находи предложения, выставляй машины и заключай сделки с игроками.</p><a href="#market" aria-label="Подробнее об авторынке">↗</a></div></article>
-          <article class="world-card"><div class="world-image race-image"></div><div class="world-card-content"><span class="card-index">03 / СОПЕРНИЧЕСТВО</span><h3>ГОНКИ И ДУЭЛИ</h3><p>Проверяй свои машины и навыки в соревнованиях с реальными соперниками.</p><a href="#racing" aria-label="Подробнее о соревнованиях">↗</a></div></article>
-        </div> 
-        <section class="garage-showcase" id="garage" aria-labelledby="garage-title">
-          <div class="showcase-heading"><div><span class="eyebrow">AF / GARAGE PREVIEW</span><h3 id="garage-title">ГАРАЖ — ТВОЯ КОЛЛЕКЦИЯ</h3></div><span class="preview-label">КОНЦЕПТ ИНТЕРФЕЙСА</span></div>
-          <div class="garage-panel">
-            <div class="garage-summary"><div><small>АВТОМОБИЛИ В ГАРАЖЕ</small><b>— <span>/ —</span></b></div><div><small>ОБЩАЯ СТОИМОСТЬ</small><b>— ₽</b></div><div><small>СОСТОЯНИЕ</small><b>ИСТОРИЯ ЭКЗЕМПЛЯРА</b></div></div>
-            <div class="garage-cars">
-              <article class="garage-car"><img src="https://images.unsplash.com/photo-1492144534655-ae79c964c9d7?auto=format&fit=crop&w=900&q=80" alt="Спортивный автомобиль, пример карточки гаража" loading="lazy"><div class="garage-car-info"><span>ЭКЗЕМПЛЯР / 001</span><h4>ТВОЙ АВТОМОБИЛЬ</h4><p>Год выпуска <b>—</b> · Пробег <b>— км</b></p><div><span>ГОСНОМЕР</span><strong>—</strong></div></div></article>
-              <article class="garage-car"><img src="https://images.unsplash.com/photo-1503376780353-7e6692767b70?auto=format&fit=crop&w=900&q=80" alt="Купе, пример карточки гаража" loading="lazy"><div class="garage-car-info"><span>ЭКЗЕМПЛЯР / 002</span><h4>ТВОЙ АВТОМОБИЛЬ</h4><p>Год выпуска <b>—</b> · Пробег <b>— км</b></p><div><span>ГОСНОМЕР</span><strong>—</strong></div></div></article>
-              <article class="garage-car garage-empty"><div class="empty-plus">＋</div><b>МЕСТО ДЛЯ НОВОГО АВТО</b><span>СЛЕДУЮЩАЯ ПОКУПКА НАЧИНАЕТСЯ ЗДЕСЬ</span></article>
-            </div>
-            <p class="showcase-disclaimer">Это демонстрационный макет будущего интерфейса. Реальные автомобили, номера, пробег и стоимость появятся после подключения игровых данных.</p>
-          </div>
-        </section>
-      </div>
-    </section>
-
-    <section class="section market-section" id="market">
-      <div class="container">
-        <div class="market-heading">
-          <div><div class="eyebrow">02 / PLAYER MARKET</div><h2>АВТОРЫНОК<br><em>БЕЗ СЛУЧАЙНОСТЕЙ.</em></h2></div>
-          <p>Понятная карточка каждого автомобиля: фото, характеристики, состояние и история. Покупка будет доступна только после проверки сделки.</p>
-        </div>
-        <div class="market-toolbar">
-          <span class="market-tab active">АКТИВНЫЕ ОБЪЯВЛЕНИЯ</span>
-          <button class="button button-outline market-mine-button" type="button" data-market-mine aria-pressed="false">МОИ ОБЪЯВЛЕНИЯ</button>
-          <span class="market-demo" data-market-count>ПОДКЛЮЧЕНИЕ К ТЕСТОВОЙ БАЗЕ…</span>
-        </div>
-        <form class="market-search" data-market-search role="search">
-          <label for="market-search-input">ПОИСК ПО МОДЕЛИ АВТОМОБИЛЯ</label>
-          <div><input id="market-search-input" name="search" type="search" maxlength="80" placeholder="Например, Lada Vesta"><button class="button button-primary" type="submit">НАЙТИ</button></div>
-        </form>
-        <div class="listing-grid" data-marketplace-listings aria-live="polite" aria-busy="true">
-          <p class="market-empty">ЗАГРУЖАЕМ РЕАЛЬНЫЕ ОБЪЯВЛЕНИЯ…</p>
-        </div>
-        <div class="market-bottom">
-          <div class="market-status" data-market-status role="status"><i></i><span><b>ПОДКЛЮЧАЕМ АВТОРЫНОК</b><small>Загружаем данные тестовой базы.</small></span></div>
-          <a class="text-link" href="#roadmap">СМОТРЕТЬ ДОРОЖНУЮ КАРТУ ↗</a>
-        </div>
-      </div>
-    </section>
-
-    <section class="section pillars-section" id="racing">
-      <div class="container"><div class="section-topline"><span>03 — ТВОЙ ПУТЬ</span><span>ИГРАЙ В СВОЁМ ТЕМПЕ</span></div><div class="pillars-heading"><h2>СОЗДАЙ СВОЮ<br><em>АВТОМОБИЛЬНУЮ ИМПЕРИЮ.</em></h2></div>
-        <div class="pillars-grid">
-          <article><span>01</span><div class="pillar-icon">⌂</div><h3>ГАРАЖ И БИЗНЕС</h3><p>Развивай коллекцию, управляй имуществом и открывай новые возможности.</p></article>
-          <article><span>02</span><div class="pillar-icon">₽</div><h3>ЭКОНОМИКА</h3><p>Планируй расходы, развивай капитал и принимай решения на рынке.</p></article>
-          <article><span>03</span><div class="pillar-icon">⌁</div><h3>РЕПУТАЦИЯ</h3><p>Получай опыт, достижения и признание за реальные результаты.</p></article>
-          <article><span>04</span><div class="pillar-icon">旗</div><h3>СОРЕВНОВАНИЯ</h3><p>Участвуй в заездах, турнирах и рейтингах среди игроков.</p></article>
-        </div>
-      </div>
-    </section>
-
-    <section class="section account-section" id="account"><div class="container account-layout"><div><div class="eyebrow">04 / ЕДИНЫЙ АККАУНТ</div><h2>ОДИН ПРОФИЛЬ.<br><em>ВЕСЬ AUTOFLIP.</em></h2><p>Сайт и Telegram Mini App будут использовать общий аккаунт. Личный кабинет, гараж и баланс появятся после подключения и проверки безопасного серверного API.</p><span class="account-note">ИНТЕРФЕЙС ЛИЧНОГО КАБИНЕТА ГОТОВИТСЯ</span></div><div class="profile-mock"><div class="profile-head"><span>AUTOFLIP / PROFILE</span><span class="mock-badge">PREVIEW</span></div><div class="profile-user"><div class="profile-avatar">AF</div><div><b>ТВОЙ ПРОФИЛЬ</b><small>Персональная панель игрока</small></div></div><div class="profile-stats"><div><small>ГАРАЖ</small><b>—</b></div><div><small>БАЛАНС</small><b>— ₽</b></div><div><small>РЕПУТАЦИЯ</small><b>—</b></div></div>
-          <div class="profile-tabs" role="tablist" aria-label="Разделы личного кабинета">
-            <button class="profile-tab is-active" type="button" role="tab" id="profile-tab-overview" aria-controls="profile-panel-overview" aria-selected="true" data-profile-tab="overview">ОБЗОР</button>
-            <button class="profile-tab" type="button" role="tab" id="profile-tab-garage" aria-controls="profile-panel-garage" aria-selected="false" tabindex="-1" data-profile-tab="garage">ГАРАЖ</button>
-            <button class="profile-tab" type="button" role="tab" id="profile-tab-finance" aria-controls="profile-panel-finance" aria-selected="false" tabindex="-1" data-profile-tab="finance">ФИНАНСЫ</button>
-            <button class="profile-tab" type="button" role="tab" id="profile-tab-security" aria-controls="profile-panel-security" aria-selected="false" tabindex="-1" data-profile-tab="security">БЕЗОПАСНОСТЬ</button>
-          </div>
-          <div class="profile-panels">
-            <section class="profile-panel is-active" role="tabpanel" id="profile-panel-overview" aria-labelledby="profile-tab-overview"><b>ТВОЙ АВТОМОБИЛЬНЫЙ ПРОФИЛЬ</b><p>Здесь появятся последние события, достижения и состояние аккаунта.</p><small>ДАННЫЕ ПОКА НЕ ПОДКЛЮЧЕНЫ</small></section>
-            <section class="profile-panel" role="tabpanel" id="profile-panel-garage" aria-labelledby="profile-tab-garage" hidden><b>ГАРАЖ И ИСТОРИЯ МАШИН</b><p>Список автомобилей, номера, пробег, обслуживание и история владельцев.</p><small>ОЖИДАЕТСЯ БЕЗОПАСНОЕ ПОДКЛЮЧЕНИЕ ИГРОВОГО ПРОФИЛЯ</small></section>
-            <section class="profile-panel" role="tabpanel" id="profile-panel-finance" aria-labelledby="profile-tab-finance" hidden><b>ФИНАНСЫ И ОПЕРАЦИИ</b><p>Баланс, журнал операций, сделки, кредиты и доходы будут отображаться только после серверной проверки доступа.</p><small>РЕАЛЬНЫЕ ДЕНЬГИ И ИГРОВОЙ БАЛАНС НЕ СМЕШИВАЮТСЯ</small></section>
-            <section class="profile-panel" role="tabpanel" id="profile-panel-security" aria-labelledby="profile-tab-security" hidden><b>ЗАЩИТА АККАУНТА</b><p>Привязанные способы входа, история сессий и инструменты защиты профиля.</p><small>УПРАВЛЕНИЕ ДОСТУПОМ ПОКА НЕ АКТИВНО</small></section>
-          </div>
-          <div class="profile-lock"><span>◈</span> ДЕМОНСТРАЦИОННЫЙ ИНТЕРФЕЙС · БЕЗ ПОДКЛЮЧЕНИЯ К ИГРЕ</div>
-          <section class="account-link" data-account-link aria-labelledby="account-link-title">
-            <div class="account-link-heading"><span class="eyebrow">TELEGRAM / ACCOUNT LINK</span><h3 id="account-link-title">ПРИВЯЗКА АККАУНТА</h3></div>
-            <p class="account-link-status" data-link-status role="status" aria-live="polite">Проверяем доступность защищённой привязки…</p>
-            <div class="account-link-actions">
-              <button class="button button-primary" type="button" data-link-issue disabled>ПОЛУЧИТЬ КОД</button>
-              <button class="button button-outline" type="button" data-link-verify disabled>Я ОТПРАВИЛ КОД — ПРОВЕРИТЬ</button>
-            </div>
-            <div class="account-link-code" data-link-code-panel hidden>
-              <label for="account-link-code">ОДНОРАЗОВЫЙ КОД</label>
-              <div><input id="account-link-code" data-link-code readonly autocomplete="off" spellcheck="false"><button type="button" data-link-copy>КОПИРОВАТЬ</button></div>
-              <p>Отправь боту в личном чате команду <code>/link КОД</code>. Код действует 5 минут и используется один раз.</p>
-              <a href="https://t.me/autoflip_test_bot" target="_blank" rel="noopener noreferrer">ОТКРЫТЬ @CarFlipCopilotBot ↗</a>
-              <p class="account-link-expiry" data-link-expiry></p>
-            </div>
-            <p class="account-link-footnote">Привязка подтверждается ботом. Баланс и игровые данные не изменяются.</p>
-          </section></div></div></section>
-
-    <section class="section roadmap-section" id="roadmap"><div class="container"><div class="section-topline"><span>05 — ДОРОЖНАЯ КАРТА</span><span>РАЗРАБАТЫВАЕМ ПОЭТАПНО</span></div><div class="roadmap-heading"><h2>СНАЧАЛА НАДЁЖНО.<br><em>ЗАТЕМ МАСШТАБНО.</em></h2><p>Не выдаём планы за готовые функции. Каждый этап должен пройти тестирование до подключения к реальным игрокам.</p></div><div class="roadmap-list">
-      <div class="roadmap-item done"><span class="roadmap-number">01</span><div><small>ОСНОВА ИГРЫ</small><h3>Сервер и экономика</h3><p>Базовые игровые системы и сохранение профилей.</p></div><b>ОСНОВА ЕСТЬ</b></div>
-      <div class="roadmap-item active"><span class="roadmap-number">02</span><div><small>ТЕКУЩИЙ ЭТАП</small><h3>Защищённый рынок</h3><p>Объявления, подтверждение покупки и безопасная передача автомобиля.</p></div><b>РАЗРАБОТКА</b></div>
-      <div class="roadmap-item"><span class="roadmap-number">03</span><div><small>СЛЕДУЮЩИЙ ЭТАП</small><h3>Сайт и Mini App</h3><p>Личный кабинет, гараж, рынок и единый аккаунт.</p></div><b>В ПЛАНАХ</b></div>
-      <div class="roadmap-item"><span class="roadmap-number">04</span><div><small>ПОЗЖЕ</small><h3>Расширение мира</h3><p>Новые системы после стабилизации основного игрового цикла.</p></div><b>В ПЛАНАХ</b></div>
-    </div></div></section>
+  <header class="top"><a class="brand" href="#top"><span class="mark">AF</span><span>AUTOFLIP</span></a><nav><a href="#start">Начало</a><a href="#guide">Руководство</a><a href="#faq">Вопросы</a><a href="#support">Поддержка</a></nav><a class="top-cta" href="https://t.me/autoflip_test_bot">ОТКРЫТЬ ИГРУ ↗</a></header>
+  <main id="top">
+    <section class="hero"><div class="hero-inner"><span class="eyebrow">OFFICIAL HELP CENTER</span><h1>ТВОЙ ПУТЬ В<br><em>AUTOFLIP.</em></h1><p>Здесь собраны инструкции, правила и ответы. Сама игра живёт внутри Telegram Mini App — сайт помогает разобраться и решить вопросы.</p><div class="actions"><a class="primary" href="https://t.me/autoflip_test_bot">ЗАПУСТИТЬ В TELEGRAM ↗</a><a class="secondary" href="#guide">ЧИТАТЬ РУКОВОДСТВО</a></div><div class="hint">ИГРАЙ В TELEGRAM · ИЩИ ПОМОЩЬ ЗДЕСЬ</div></div></section>
+    <section class="section" id="start"><div class="eyebrow">01 / БЫСТРЫЙ СТАРТ</div><h2>КАК НАЧАТЬ ИГРАТЬ</h2><div class="steps"><article><b>01</b><h3>Открой бота</h3><p>Перейди в официальный Telegram-бот AUTOFLIP и нажми «Запустить».</p></article><article><b>02</b><h3>Запусти Mini App</h3><p>Нажми кнопку открытия игры в чате. Игровые разделы доступны внутри Telegram.</p></article><article><b>03</b><h3>Создай свой путь</h3><p>Изучай автомобили, развивай гараж и осваивай игровые механики.</p></article></div></section>
+    <section class="section dark" id="guide"><div class="eyebrow">02 / РУКОВОДСТВО</div><h2>ПОМОЩЬ ПО ИГРЕ</h2><div class="guide-grid">
+      <article><span>01</span><h3>Гараж</h3><p>В гараже хранятся твои автомобили. Следи за пробегом, состоянием, номерами и свободными местами.</p></article>
+      <article><span>02</span><h3>Авторынок</h3><p>Изучай предложения игроков. Перед сделкой внимательно проверяй характеристики и цену автомобиля.</p></article>
+      <article><span>03</span><h3>Покупка и продажа</h3><p>Игровые сделки выполняются только в интерфейсе Mini App или игровых меню бота, когда соответствующая функция доступна.</p></article>
+      <article><span>04</span><h3>Баланс и прогресс</h3><p>Баланс, опыт и уровень относятся к игровому аккаунту. Не передавай коды входа и данные сессии другим людям.</p></article>
+      <article><span>05</span><h3>Привязка аккаунта</h3><p>Если игра попросит связать профиль, получи одноразовый код в Mini App и отправь боту команду /link КОД в личном чате.</p></article>
+      <article><span>06</span><h3>Безопасность</h3><p>Команда поддержки никогда не должна просить пароль, токен бота, cookie или полный код доступа к аккаунту.</p></article>
+    </div></section>
+    <section class="section" id="faq"><div class="eyebrow">03 / FAQ</div><h2>ЧАСТЫЕ ВОПРОСЫ</h2><div class="faq">
+      <details><summary>Можно ли играть прямо на этом сайте?</summary><p>Нет. Сайт предназначен для справки. Чтобы играть, открой AUTOFLIP через Telegram-бота и запусти Mini App.</p></details>
+      <details><summary>Где находится мой гараж и баланс?</summary><p>Внутри Telegram Mini App. Справочный сайт не управляет автомобилями, балансом или игровыми сделками.</p></details>
+      <details><summary>Как привязать Telegram-аккаунт?</summary><p>Открой привязку в Mini App, получи одноразовый код и отправь в личный чат бота команду /link КОД. Затем вернись в Mini App и проверь статус.</p></details>
+      <details><summary>Что делать, если Mini App не загружается?</summary><p>Закрой Mini App, полностью перезапусти Telegram и открой игру снова. Если ошибка повторяется, обратись в поддержку и приложи описание ошибки без секретных данных.</p></details>
+      <details><summary>Покупка на сайте изменит мой баланс?</summary><p>Нет. Справочный сайт не проводит игровые покупки, продажи и списания.</p></details>
+    </div></section>
+    <section class="support" id="support"><div><div class="eyebrow">04 / SUPPORT</div><h2>НУЖНА ПОМОЩЬ?</h2><p>Опиши проблему: что нажимал, что ожидал увидеть и какой текст ошибки появился. Не отправляй пароли, токены и одноразовые коды.</p></div><a class="primary" href="https://t.me/autoflip_test_bot">ОТКРЫТЬ TELEGRAM ↗</a></section>
   </main>
-  <footer class="site-footer"><div class="container footer-main"><a class="brand" href="#top"><span class="brand-symbol">A<span>F</span></span><span class="brand-word">AUTOFLIP</span></a><p>АВТОМОБИЛЬНЫЙ МИР, КОТОРЫЙ СОЗДАЁТСЯ ВМЕСТЕ С ИГРОКАМИ.</p><a href="#top" class="back-top">НАВЕРХ ↑</a></div><div class="container footer-bottom"><span>© AUTOFLIP</span><span>САЙТ В РАЗРАБОТКЕ</span><span>BUILT FOR REAL PLAYERS</span></div></footer>
-</body>
-</html>
+  <footer><a class="brand" href="#top"><span class="mark">AF</span><span>AUTOFLIP</span></a><span>СПРАВОЧНЫЙ ЦЕНТР · ИГРА В TELEGRAM MINI APP</span></footer>
+</body></html>
