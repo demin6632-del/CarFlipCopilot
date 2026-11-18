@@ -341,3 +341,42 @@ test("marketplace endpoints reject invalid pagination and require a linked selle
   assert.equal(mine.status, 401);
   assert.equal(mine.json().error, "ACCOUNT_LINK_REQUIRED");
 });
+
+
+test("read-only marketplace browse accepts same-origin GET without an Origin header", async () => {
+  const token = "e".repeat(43);
+  const pool = { async query(sql) {
+    if (/SELECT telegram_user_id/.test(sql)) {
+      return { rowCount: 1, rows: [{ telegram_user_id: "123456789" }] };
+    }
+    if (/FROM autonomous_marketplace_listings/.test(sql)) {
+      return { rowCount: 0, rows: [] };
+    }
+    throw new Error("Unexpected SQL: " + sql);
+  }};
+  const api = apiFor(pool);
+  const res = response();
+  await api(request("GET", "/api/web/marketplace", {
+    cookie: COOKIE_NAME + "=" + token
+  }), res);
+  assert.equal(res.status, 200);
+  assert.deepEqual(res.json(), { ok: true, listings: [] });
+});
+
+test("read-only marketplace browse rejects a supplied foreign Origin", async () => {
+  const token = "f".repeat(43);
+  const calls = [];
+  const pool = { async query(sql) {
+    calls.push(sql);
+    return { rowCount: 1, rows: [{ telegram_user_id: "123456789" }] };
+  }};
+  const api = apiFor(pool);
+  const res = response();
+  await api(request("GET", "/api/web/marketplace", {
+    cookie: COOKIE_NAME + "=" + token,
+    origin: "https://attacker.example"
+  }), res);
+  assert.equal(res.status, 403);
+  assert.equal(res.json().error, "ORIGIN_NOT_ALLOWED");
+  assert.equal(calls.length, 0);
+});
