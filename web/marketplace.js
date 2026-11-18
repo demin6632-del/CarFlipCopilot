@@ -8,14 +8,9 @@
   const searchInput = searchForm?.querySelector('input[name="search"]');
   const countLabel = document.querySelector("[data-market-count]");
   const statusPanel = document.querySelector("[data-market-status]");
-  const toolbar = document.querySelector(".market-toolbar");
   let showingMine = false;
-  const mineButton = document.createElement("button");
-  mineButton.type = "button";
-  mineButton.className = "button button-outline market-mine-button";
-  mineButton.textContent = "МОИ ОБЪЯВЛЕНИЯ";
-  mineButton.setAttribute("aria-pressed", "false");
-  if (toolbar) toolbar.insertBefore(mineButton, countLabel || null);
+  const mineButton = document.querySelector("[data-market-mine]");
+  if (!mineButton) return;
   const money = new Intl.NumberFormat("ru-RU", { maximumFractionDigits: 0 });
   const number = new Intl.NumberFormat("ru-RU", { maximumFractionDigits: 0 });
 
