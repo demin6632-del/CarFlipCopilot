@@ -143,3 +143,8 @@
 .profile-panel>p{font-size:9px;line-height:1.8;color:#a7a69f;margin:8px 0}
 .profile-panel>small{font-size:7px;line-height:1.6;color:#ff9775;letter-spacing:.08em}
 .profile-tab:focus-visible{outline:2px solid #ff865f;outline-offset:-2px}
+
+.profile-panel .profile-detail{padding:9px 11px;margin:8px 0;background:rgba(255,255,255,.035);border-left:2px solid rgba(240,90,40,.55);color:#c6c4bd}
+.profile-car-row{display:flex;flex-direction:column;gap:5px;padding:11px 12px;margin-top:9px;background:#202224;border:1px solid var(--line)}
+.profile-car-row b{font-size:10px}
+.profile-car-row span{font-size:8px;line-height:1.7;color:#a7a69f}
