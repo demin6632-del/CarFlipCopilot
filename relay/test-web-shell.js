@@ -112,14 +112,6 @@ async function serveStatic(req, res, url) {
     return send(res, 404, "Not found.");
   }
 
-  if (path.basename(filePath) === "index.html") {
-    const html = data.toString("utf8").replace(
-      '<script src="./account-link.js" defer></script>',
-      '<script>window.AUTOFLIP_WEB_API_BASE = "/";</script>\n  <script src="./account-link.js" defer></script>'
-    );
-    data = Buffer.from(html);
-  }
-
   res.writeHead(200, {
     "content-type": MIME[path.extname(filePath).toLowerCase()] || "application/octet-stream",
     "content-length": data.length,
