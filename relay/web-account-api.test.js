@@ -315,7 +315,7 @@ test("marketplace browse requires a valid web session and returns only public li
   }};
   const api = apiFor(pool);
   const res = response();
-  await api(request("GET", "/api/web/marketplace?limit=5&search=Vesta", { cookie: COOKIE_NAME + "=" + token }), res);
+  await api(request("GET", "/api/web/marketplace?limit=5&search=Vesta", { cookie: COOKIE_NAME + "=" + token, origin: ORIGIN }), res);
   assert.equal(res.status, 200);
   assert.equal(res.json().listings.length, 1);
   assert.equal(res.json().listings[0].vehicle.model, "Lada Vesta");
@@ -332,12 +332,12 @@ test("marketplace endpoints reject invalid pagination and require a linked selle
   }};
   const api = apiFor(pool);
   const invalid = response();
-  await api(request("GET", "/api/web/marketplace?limit=999", { cookie: COOKIE_NAME + "=" + token }), invalid);
+  await api(request("GET", "/api/web/marketplace?limit=999", { cookie: COOKIE_NAME + "=" + token, origin: ORIGIN }), invalid);
   assert.equal(invalid.status, 400);
   assert.equal(invalid.json().error, "INVALID_PAGINATION");
 
   const mine = response();
-  await api(request("GET", "/api/web/marketplace/mine", { cookie: COOKIE_NAME + "=" + token }), mine);
+  await api(request("GET", "/api/web/marketplace/mine", { cookie: COOKIE_NAME + "=" + token, origin: ORIGIN }), mine);
   assert.equal(mine.status, 401);
   assert.equal(mine.json().error, "ACCOUNT_LINK_REQUIRED");
 });
