@@ -1,5 +1,7 @@
 "use strict";
 
+// CI regression run: validate listing creation, ownership, cancellation and expiry guards.
+
 const assert = require("node:assert/strict");
 const marketplace = require("./player-marketplace-listings");
 
