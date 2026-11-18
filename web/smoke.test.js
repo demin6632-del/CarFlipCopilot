@@ -22,7 +22,7 @@ test("public website is a help center, not a browser game", () => {
 test("game shell is isolated on the dedicated Telegram Mini App page", () => {
   assert.match(appHtml, /data-game-shell/);
   assert.match(appHtml, /game-shell\.js/);
-  assert.match(appHtml, /Telegram\.WebApp/);
+  assert.match(appHtml, /telegram-web-app\.js/);
   assert.match(appHtml, /AUTOFLIP_WEB_API_BASE/);
   assert.match(gameShell, /Telegram\.WebApp/);
   assert.match(gameShell, /initData/);
