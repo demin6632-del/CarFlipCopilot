@@ -46,7 +46,10 @@ function harness({ telegram = true, apiBase = "/", fetchImpl = async () => ({ ok
   };
   const context = {
     window,
-    document: { querySelector(selector) { return selector === "[data-account-link]" ? root : null; } },
+    document: {
+      querySelector(selector) { return selector === "[data-account-link]" ? root : null; },
+      querySelectorAll() { return []; }
+    },
     URL,
     Date: class extends Date { constructor(...args) { super(...(args.length ? args : [NOW])); } static now() { return NOW; } },
     fetch: async (...args) => { calls.push(args); return fetchImpl(...args); },
@@ -73,6 +76,7 @@ test("existing session restores the linked profile without issuing another sessi
   await ready(app);
   assert.equal(app.calls.length, 1);
   assert.match(app.nodes["[data-link-status]"].textContent, /Аккаунт успешно привязан.*Returning Player/);
+  assert.match(app.nodes["[data-link-status]"].textContent, /Игровой профиль загружен/);
   assert.equal(app.nodes["[data-link-issue]"].disabled, true);
 });
 
@@ -175,6 +179,7 @@ test("successful bot confirmation creates session and loads player DTO", async (
   assert.equal(app.calls[3][0], "https://preview.autoflip.example/api/web/session");
   assert.equal(app.calls[4][0], "https://preview.autoflip.example/api/web/profile");
   assert.match(app.nodes["[data-link-status]"].textContent, /Аккаунт успешно привязан.*Tester/);
+  assert.match(app.nodes["[data-link-status]"].textContent, /Игровой профиль загружен/);
   assert.equal(app.nodes["[data-link-code-panel]"].hidden, true);
   assert.equal(app.nodes["[data-link-issue]"].disabled, true);
   assert.equal(app.nodes["[data-link-verify]"].disabled, true);
