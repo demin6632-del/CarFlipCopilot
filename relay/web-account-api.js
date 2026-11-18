@@ -81,7 +81,15 @@ function createWebAccountApi(options = {}) {
 
     try {
       if (path !== "/api/web/profile") {
-        if (req.headers?.origin !== expectedOrigin) {
+        // Browsers normally omit Origin on same-origin GET requests. Marketplace
+        // GETs are read-only and use the HttpOnly, SameSite=Strict session cookie;
+        // reject a supplied foreign Origin, while requiring exact Origin on writes.
+        const isReadOnlyMarketplaceGet = req.method === "GET" &&
+          (path === "/api/web/marketplace" || path === "/api/web/marketplace/mine");
+        const origin = req.headers?.origin;
+        if (isReadOnlyMarketplaceGet
+          ? (origin != null && origin !== expectedOrigin)
+          : origin !== expectedOrigin) {
           send(res, 403, { error: "ORIGIN_NOT_ALLOWED" });
           return true;
         }
