@@ -98,6 +98,7 @@ async function serveStatic(req, res, url) {
     return send(res, 400, "Bad request.");
   }
   if (pathname === "/") pathname = "/index.html";
+  if (pathname === "/app" || pathname === "/app/") pathname = "/app.html";
   const filePath = path.resolve(WEB_ROOT, "." + pathname);
   if (filePath !== WEB_ROOT && !filePath.startsWith(WEB_ROOT + path.sep)) {
     return send(res, 404, "Not found.");
