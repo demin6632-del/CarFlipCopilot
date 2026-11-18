@@ -31,7 +31,15 @@ async function telegram(method, body) {
     signal: AbortSignal.timeout(30000)
   });
   const payload = await response.json();
-  if (!response.ok || !payload.ok) throw new Error("TELEGRAM_API_ERROR");
+  if (!response.ok || !payload.ok) {
+    const error = new Error("TELEGRAM_API_ERROR");
+    error.telegramHttpStatus = response.status;
+    error.telegramErrorCode = Number.isInteger(payload.error_code) ? payload.error_code : null;
+    error.telegramDescription = typeof payload.description === "string"
+      ? payload.description.replace(/[^a-zA-Z0-9 _-]/g, "").slice(0, 100)
+      : "unknown";
+    throw error;
+  }
   return payload.result;
 }
 
@@ -110,7 +118,11 @@ start().catch(async (error) => {
   const safeCode = typeof error?.code === "string" ? error.code.replace(/[^A-Z0-9_:-]/gi, "").slice(0, 40) : "none";
   const safeName = typeof error?.name === "string" ? error.name.replace(/[^A-Z0-9_]/gi, "").slice(0, 30) : "Error";
   const failedStage = startupStage;
-  console.error("AUTOFLIP_TEST_STARTUP_FAILURE stage=" + failedStage + " name=" + safeName + " code=" + safeCode);
+  const telegramStatus = Number.isInteger(error?.telegramHttpStatus) ? error.telegramHttpStatus : "none";
+  const telegramCode = Number.isInteger(error?.telegramErrorCode) ? error.telegramErrorCode : "none";
+  const telegramDescription = typeof error?.telegramDescription === "string" ? error.telegramDescription : "none";
+  console.error("AUTOFLIP_TEST_STARTUP_FAILURE stage=" + failedStage + " name=" + safeName + " code=" + safeCode +
+    " telegram_http=" + telegramStatus + " telegram_code=" + telegramCode + " telegram_description=" + telegramDescription);
   if (pool) await pool.end().catch(() => {});
   process.exitCode = 1;
 });
