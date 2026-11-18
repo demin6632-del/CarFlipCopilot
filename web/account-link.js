@@ -175,9 +175,11 @@
     codePanel.hidden = true;
     clearInterval(expiryTimer);
     linked = true;
-    const player = profile && profile.profile && profile.profile.player && profile.profile.player.displayName;
-    const gameDataReady = profile && profile.profileStatus === "CONNECTED" && profile.profile;
-    if (gameDataReady) renderGameProfile(profile);
+    const profileData = profile && profile.profile && typeof profile.profile === "object" ? profile.profile : null;
+    const gameDataReady = Boolean(profileData && profileData.player &&
+      (profile.profileStatus === "CONNECTED" || profile.ok === true));
+    const player = gameDataReady && profileData.player.displayName;
+    if (gameDataReady) renderGameProfile({ ...profile, profileStatus: "CONNECTED" });
     setStatus(
       "Telegram-аккаунт успешно привязан. Защищённая сессия активна." +
       (player ? " Игрок: " + player + "." : "") +
