@@ -51,7 +51,7 @@
     const logo = node("div", "af-logo", "AUTOFLIP");
     const tag = node("span", "af-online", "TELEGRAM EDITION");
     const help = node("a", "af-online", "ПОМОЩЬ");
-    help.href = "https://autoflip-preview.onrender.com/help.html";
+    help.href = "https://autoflip-e2e-web-test.onrender.com/help.html";
     help.target = "_blank";
     help.rel = "noopener noreferrer";
     help.setAttribute("aria-label", "Открыть справочный центр AUTOFLIP");
