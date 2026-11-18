@@ -90,9 +90,12 @@ async function poll() {
         await handleUpdate(update);
         offset = Math.max(offset, Number(update.update_id) + 1);
       }
-    } catch (_) {
+    } catch (error) {
       if (!stopping) {
-        console.error("TEST TELEGRAM POLLING ERROR; retrying shortly");
+        const status = Number.isInteger(error?.telegramHttpStatus) ? error.telegramHttpStatus : "none";
+        const code = Number.isInteger(error?.telegramErrorCode) ? error.telegramErrorCode : "none";
+        const description = typeof error?.telegramDescription === "string" ? error.telegramDescription : "unknown";
+        console.error("TEST TELEGRAM POLLING ERROR status=" + status + " code=" + code + " description=" + description);
         await new Promise(resolve => setTimeout(resolve, 3000));
       }
     }
