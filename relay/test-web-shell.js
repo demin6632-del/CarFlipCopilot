@@ -126,6 +126,15 @@ async function serveStatic(req, res, url) {
 }
 
 const server = http.createServer(async (req, res) => {
+  const requestStartedAt = Date.now();
+  res.on("finish", () => {
+    console.log("AUTOFLIP TEST WEB REQUEST", JSON.stringify({
+      method: req.method,
+      path: String(req.url || "/").split("?")[0],
+      status: res.statusCode,
+      durationMs: Date.now() - requestStartedAt
+    }));
+  });
   let url;
   try {
     url = new URL(req.url || "/", "http://localhost");
@@ -139,7 +148,7 @@ const server = http.createServer(async (req, res) => {
   return serveStatic(req, res, url);
 });
 
-server.requestTimeout = 20000;
+server.requestTimeout = 130000;
 server.headersTimeout = 10000;
 server.keepAliveTimeout = 5000;
 server.listen(PORT, "0.0.0.0", () => {
