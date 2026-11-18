@@ -51,6 +51,8 @@ jobs:
           node --check telegram-account-linking.postgres.integration.test.js
           node telegram-webapp-auth.test.js
           node telegram-account-linking.test.js
+          node --check telegram-link-command.js
+          node telegram-link-command.test.js
           node --check telegram-account-profile.js
           node telegram-account-profile.test.js
           node --check web-account-api.js
@@ -110,6 +112,8 @@ jobs:
           const bot = fs.readFileSync('relay/telegram-bot.js','utf8');
           const game = fs.readFileSync('relay/autonomous-game.js','utf8');
           if (!bot.includes('const autonomousGame = require("./autonomous-game");')) throw new Error('autonomous game module is not wired');
+          if (!bot.includes('const { handleTelegramLinkCommand } = require("./telegram-link-command");')) throw new Error('Telegram link command module is not wired');
+          if (!bot.includes('if(command==="/link")')) throw new Error('Telegram /link command route missing');
           for (const route of ['command==="/start"','command==="/perekup"','command==="/game"','data.startsWith("ag:")']) {
             if (!bot.includes(route)) throw new Error('missing autonomous route: '+route);
           }

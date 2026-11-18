@@ -7,19 +7,25 @@ const root = __dirname;
 const html = fs.readFileSync(path.join(root, "index.html"), "utf8");
 const css = fs.readFileSync(path.join(root, "styles.css"), "utf8");
 const js = fs.readFileSync(path.join(root, "app.js"), "utf8");
+const accountLink = fs.readFileSync(path.join(root, "account-link.js"), "utf8");
+const accountLinkCss = fs.readFileSync(path.join(root, "account-link.css"), "utf8");
 
-test("web shell references its local stylesheet and script", () => {
-  assert.match(html, /href="\.\/styles\.css"/);
-  assert.match(html, /src="\.\/app\.js"/);
+test("web shell references its local stylesheets and scripts", () => {
+  assert.ok(html.includes('href="./styles.css"'));
+  assert.ok(html.includes('href="./account-link.css"'));
+  assert.ok(html.includes('src="./app.js"'));
+  assert.ok(html.includes('src="./account-link.js"'));
   assert.ok(css.length > 1000);
+  assert.ok(accountLinkCss.length > 100);
   assert.ok(js.length > 100);
+  assert.ok(accountLink.length > 100);
 });
 
 test("all internal navigation anchors resolve to an element id", () => {
   const ids = new Set([...html.matchAll(/\bid="([^"]+)"/g)].map((match) => match[1]));
   const hrefs = [...html.matchAll(/\bhref="#([^"]+)"/g)].map((match) => match[1]);
   assert.ok(hrefs.length > 0);
-  for (const href of hrefs) assert.ok(ids.has(href), `Missing target for #${href}`);
+  for (const href of hrefs) assert.ok(ids.has(href), "Missing target for #" + href);
 });
 
 test("mobile navigation has accessible control semantics", () => {
@@ -30,10 +36,23 @@ test("mobile navigation has accessible control semantics", () => {
   assert.match(js, /event\.key === "Escape"/);
 });
 
-test("the prototype does not expose credentials or pretend to be connected", () => {
+test("prototype labels preview data and keeps market purchases disabled", () => {
   assert.doesNotMatch(html, /DATABASE_URL|TELEGRAM_BOT_TOKEN|COPILOT_TOKEN/);
-  assert.match(html, /личный кабинет появятся после готовности безопасного серверного API/i);
-  assert.match(html, /веб-покупки ещё не открыты/i);
+  assert.match(html, /появятся после подключения и проверки безопасного серверного API/i);
+  assert.match(html, /Купить здесь пока нельзя/i);
+  assert.match(html, /ПРЕДПРОСМОТР ДИЗАЙНА · НЕ АКТИВНЫЕ ОБЪЯВЛЕНИЯ/i);
+});
+
+test("account linking is gated behind Telegram and same-origin API configuration", () => {
+  assert.match(html, /data-account-link/);
+  assert.match(html, /data-link-issue/);
+  assert.match(html, /data-link-verify/);
+  assert.match(accountLink, /Telegram\.WebApp/);
+  assert.match(accountLink, /AUTOFLIP_WEB_API_BASE/);
+  assert.match(accountLink, /url\.origin !== window\.location\.origin/);
+  assert.match(accountLink, /credentials: "same-origin"/);
+  assert.match(accountLink, /textContent/);
+  assert.doesNotMatch(accountLink, /localStorage|sessionStorage/);
 });
 
 test("document has a language, viewport and main landmark", () => {

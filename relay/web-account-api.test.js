@@ -146,6 +146,33 @@ test("session cookie is secure and profile returns only allowlisted data", async
 });
 
 
+test("linked session remains valid when the isolated database has no game-state table", async () => {
+  const { pool: base } = makePool();
+  const pool = {
+    async query(sql, params) {
+      if (/SELECT s\.state/.test(sql)) {
+        const error = new Error("relation does not exist");
+        error.code = "42P01";
+        throw error;
+      }
+      return base.query(sql, params);
+    }
+  };
+  const api = apiFor(pool);
+  const login = response();
+  await api(request("POST", "/api/web/session", {
+    origin: ORIGIN, "content-type": "application/json"
+  }, JSON.stringify({ initData: signedInitData({ id: 123456789 }) })), login);
+  assert.equal(login.status, 200);
+
+  const token = login.headers["set-cookie"].split(";")[0];
+  const profile = response();
+  await api(request("GET", "/api/web/profile", { cookie: token }), profile);
+  assert.equal(profile.status, 200);
+  assert.equal(profile.json().profile, null);
+  assert.equal(profile.json().profileStatus, "GAME_DATA_NOT_CONNECTED");
+});
+
 test("session creation is rate limited per linked Telegram account", async () => {
   const { pool, calls } = makePool({ rateAttempts: 11 });
   const api = apiFor(pool);
