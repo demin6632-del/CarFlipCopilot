@@ -75,7 +75,7 @@ test("existing session restores the linked profile without issuing another sessi
   });
   await ready(app);
   assert.equal(app.calls.length, 1);
-  assert.match(app.nodes["[data-link-status]"].textContent, /Аккаунт успешно привязан.*Returning Player/);
+  assert.match(app.nodes["[data-link-status]"].textContent, /Telegram-аккаунт успешно привязан.*Returning Player/);
   assert.match(app.nodes["[data-link-status]"].textContent, /Игровой профиль загружен/);
   assert.equal(app.nodes["[data-link-issue]"].disabled, true);
 });
@@ -93,7 +93,7 @@ test("expired browser session is renewed from verified Telegram initData", async
   await ready(app);
   assert.equal(count, 3);
   assert.equal(app.calls[1][0], "https://preview.autoflip.example/api/web/session");
-  assert.match(app.nodes["[data-link-status]"].textContent, /Аккаунт успешно привязан.*Renewed Player/);
+  assert.match(app.nodes["[data-link-status]"].textContent, /Telegram-аккаунт успешно привязан.*Renewed Player/);
 });
 
 test("linked Telegram account is shown even when game profile data is not connected", async () => {
@@ -178,7 +178,7 @@ test("successful bot confirmation creates session and loads player DTO", async (
   assert.equal(count, 5);
   assert.equal(app.calls[3][0], "https://preview.autoflip.example/api/web/session");
   assert.equal(app.calls[4][0], "https://preview.autoflip.example/api/web/profile");
-  assert.match(app.nodes["[data-link-status]"].textContent, /Аккаунт успешно привязан.*Tester/);
+  assert.match(app.nodes["[data-link-status]"].textContent, /Telegram-аккаунт успешно привязан.*Tester/);
   assert.match(app.nodes["[data-link-status]"].textContent, /Игровой профиль загружен/);
   assert.equal(app.nodes["[data-link-code-panel]"].hidden, true);
   assert.equal(app.nodes["[data-link-issue]"].disabled, true);
