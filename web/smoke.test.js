@@ -5,49 +5,33 @@ const path = require("node:path");
 
 const root = __dirname;
 const html = fs.readFileSync(path.join(root, "index.html"), "utf8");
-const css = fs.readFileSync(path.join(root, "styles.css"), "utf8");
-const js = fs.readFileSync(path.join(root, "app.js"), "utf8");
+const appHtml = fs.readFileSync(path.join(root, "app.html"), "utf8");
+const helpCss = fs.readFileSync(path.join(root, "help.css"), "utf8");
+const gameShell = fs.readFileSync(path.join(root, "game-shell.js"), "utf8");
 const accountLink = fs.readFileSync(path.join(root, "account-link.js"), "utf8");
-const accountLinkCss = fs.readFileSync(path.join(root, "account-link.css"), "utf8");
 
-test("web shell references its local stylesheets and scripts", () => {
-  assert.ok(html.includes('href="./styles.css"'));
-  assert.ok(html.includes('href="./account-link.css"'));
-  assert.ok(html.includes('src="./app.js"'));
-  assert.ok(html.includes('src="./account-link.js"'));
-  assert.ok(css.length > 1000);
-  assert.ok(accountLinkCss.length > 100);
-  assert.ok(js.length > 100);
-  assert.ok(accountLink.length > 100);
+test("public website is a help center, not a browser game", () => {
+  assert.match(html, /Справочный центр/);
+  assert.match(html, /Как начать играть/);
+  assert.match(html, /ЧАСТЫЕ ВОПРОСЫ/);
+  assert.match(html, /Сама игра живёт внутри Telegram Mini App/);
+  assert.doesNotMatch(html, /data-game-shell|game-shell\.js|marketplace\.js|data-marketplace-listings/);
+  assert.ok(helpCss.length > 1000);
 });
 
-test("all internal navigation anchors resolve to an element id", () => {
-  const ids = new Set([...html.matchAll(/\bid="([^"]+)"/g)].map((match) => match[1]));
-  const hrefs = [...html.matchAll(/\bhref="#([^"]+)"/g)].map((match) => match[1]);
-  assert.ok(hrefs.length > 0);
-  for (const href of hrefs) assert.ok(ids.has(href), "Missing target for #" + href);
+test("game shell is isolated on the dedicated Telegram Mini App page", () => {
+  assert.match(appHtml, /data-game-shell/);
+  assert.match(appHtml, /game-shell\.js/);
+  assert.match(appHtml, /Telegram\.WebApp/);
+  assert.match(appHtml, /AUTOFLIP_WEB_API_BASE/);
+  assert.match(gameShell, /Telegram\.WebApp/);
+  assert.match(gameShell, /initData/);
 });
 
-test("mobile navigation has accessible control semantics", () => {
-  assert.match(html, /class="menu-toggle"[^>]*aria-expanded="false"/);
-  assert.match(html, /aria-controls="primary-nav"/);
-  assert.match(html, /id="primary-nav"/);
-  assert.match(js, /addEventListener\("keydown"/);
-  assert.match(js, /event\.key === "Escape"/);
-});
-
-test("connected marketplace is read-only and exposes personal listings", () => {
-  assert.doesNotMatch(html, /DATABASE_URL|TELEGRAM_BOT_TOKEN|COPILOT_TOKEN/);
-  assert.match(html, /data-marketplace-listings/);
-  assert.match(html, /data-market-mine/);
-  assert.match(html, /Покупка будет доступна только после проверки сделки/i);
-  assert.doesNotMatch(html, /data-market-buy|data-listing-purchase/);
-});
-
-test("account linking is gated behind Telegram and same-origin API configuration", () => {
-  assert.match(html, /data-account-link/);
-  assert.match(html, /data-link-issue/);
-  assert.match(html, /data-link-verify/);
+test("account linking remains protected by Telegram initData and same-origin API", () => {
+  assert.match(appHtml, /data-account-link/);
+  assert.match(appHtml, /data-link-issue/);
+  assert.match(appHtml, /data-link-verify/);
   assert.match(accountLink, /Telegram\.WebApp/);
   assert.match(accountLink, /AUTOFLIP_WEB_API_BASE/);
   assert.match(accountLink, /url\.origin !== window\.location\.origin/);
@@ -56,8 +40,11 @@ test("account linking is gated behind Telegram and same-origin API configuration
   assert.doesNotMatch(accountLink, /localStorage|sessionStorage/);
 });
 
-test("document has a language, viewport and main landmark", () => {
+test("help page links to the Telegram bot and provides safe account guidance", () => {
+  assert.match(html, /https:\/\/t\.me\/autoflip_test_bot/);
+  assert.match(html, /\/link КОД/);
+  assert.match(html, /Не отправляй пароли, токены/);
   assert.match(html, /<html lang="ru">/);
   assert.match(html, /name="viewport"/);
-  assert.match(html, /<main id="main">/);
+  assert.match(html, /<main id="top">/);
 });
