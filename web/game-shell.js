@@ -50,7 +50,12 @@
     const top = node("header", "af-topbar");
     const logo = node("div", "af-logo", "AUTOFLIP");
     const tag = node("span", "af-online", "TELEGRAM EDITION");
-    top.append(logo, tag);
+    const help = node("a", "af-online", "ПОМОЩЬ");
+    help.href = "https://autoflip-preview.onrender.com/help.html";
+    help.target = "_blank";
+    help.rel = "noopener noreferrer";
+    help.setAttribute("aria-label", "Открыть справочный центр AUTOFLIP");
+    top.append(logo, tag, help);
     const content = node("div", "af-content");
     const nav = node("nav", "af-bottom-nav");
     nav.setAttribute("aria-label", "Игровые разделы");
