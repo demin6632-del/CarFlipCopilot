@@ -55,7 +55,12 @@
     clearInterval(expiryTimer);
     linked = true;
     const player = profile && profile.profile && profile.profile.player && profile.profile.player.displayName;
-    setStatus("Аккаунт успешно привязан. Защищённая сессия активна." + (player ? " Игрок: " + player : ""));
+    const gameDataReady = profile && profile.profileStatus === "CONNECTED" && profile.profile;
+    setStatus(
+      "Telegram-аккаунт успешно привязан. Защищённая сессия активна." +
+      (player ? " Игрок: " + player + "." : "") +
+      (gameDataReady ? "" : " Игровые данные пока не подключены.")
+    );
     issueButton.disabled = true;
     verifyButton.disabled = true;
   }
