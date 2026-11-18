@@ -180,6 +180,7 @@
       (profile.profileStatus === "CONNECTED" || profile.ok === true));
     const player = gameDataReady && profileData.player.displayName;
     if (gameDataReady) renderGameProfile({ ...profile, profileStatus: "CONNECTED" });
+    if (gameDataReady) window.dispatchEvent(new CustomEvent("autoflip:profile", { detail: { profile: profileData } }));
     setStatus(
       "Telegram-аккаунт успешно привязан. Защищённая сессия активна." +
       (player ? " Игрок: " + player + "." : "") +
