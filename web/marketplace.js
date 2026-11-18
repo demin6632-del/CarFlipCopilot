@@ -31,9 +31,51 @@
     grid.setAttribute("aria-busy", "false");
   }
 
+  function openListingDetails(listing) {
+    const vehicle = listing.vehicle || {};
+    const dialog = element("dialog", "listing-dialog");
+    const panel = element("div", "listing-dialog-panel");
+    const header = element("div", "listing-dialog-header");
+    header.append(element("span", "", "AUTOFLIP / ПОДРОБНОСТИ ОБЪЯВЛЕНИЯ"));
+    const close = element("button", "listing-dialog-close", "×");
+    close.type = "button";
+    close.setAttribute("aria-label", "Закрыть подробности");
+    close.addEventListener("click", () => dialog.close());
+    header.append(close);
+    const title = element("h2", "", vehicle.model || "Автомобиль");
+    const price = element("p", "listing-dialog-price", money.format(Number(listing.askingPrice) || 0) + " ₽");
+    const details = element("dl", "listing-dialog-specs");
+    const rows = [
+      ["Год выпуска", vehicle.year ?? "—"],
+      ["Пробег", number.format(Number(vehicle.mileage) || 0) + " км"],
+      ["Состояние", (Number(vehicle.condition) || 0) + "%"],
+      ["Повреждения", Number(vehicle.damage) || 0],
+      ["Государственный номер", vehicle.plate || "Не указан"],
+      ["Статус", listing.status === "active" ? "Активное объявление" : listing.status || "—"]
+    ];
+    for (const [label, value] of rows) {
+      details.append(element("dt", "", label), element("dd", "", value));
+    }
+    const note = element("p", "listing-dialog-note", "Это просмотр объявления. Покупка и любые изменения игрового баланса здесь не выполняются.");
+    const footer = element("div", "listing-dialog-actions");
+    const done = element("button", "button button-primary", "ЗАКРЫТЬ");
+    done.type = "button";
+    done.addEventListener("click", () => dialog.close());
+    footer.append(done);
+    panel.append(header, title, price, details, note, footer);
+    dialog.append(panel);
+    dialog.addEventListener("click", event => {
+      if (event.target === dialog) dialog.close();
+    });
+    dialog.addEventListener("close", () => dialog.remove(), { once: true });
+    document.body.append(dialog);
+    if (typeof dialog.showModal === "function") dialog.showModal();
+    else dialog.setAttribute("open", "");
+  }
+
   function createListingCard(listing) {
     const vehicle = listing.vehicle || {};
-    const card = element("article", "listing-card");
+    const card = element("article", "listing-card");\n    card.tabIndex = 0;\n    card.setAttribute("role", "button");\n    card.setAttribute("aria-label", "Открыть подробности: " + (vehicle.model || "автомобиль"));\n    card.addEventListener("click", () => openListingDetails(listing));\n    card.addEventListener("keydown", event => {\n      if (event.target !== card) return;\n      if (event.key === "Enter" || event.key === " ") { event.preventDefault(); openListingDetails(listing); }\n    });
     const photo = element("div", "listing-photo listing-photo-placeholder");
     photo.setAttribute("aria-label", "Фотография автомобиля пока не добавлена");
     photo.append(element("span", "", "ФОТО НЕ ДОБАВЛЕНО"));
