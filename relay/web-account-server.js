@@ -39,7 +39,16 @@ function createWebAccountServer(options = {}) {
   });
 
   const server = http.createServer(async (req, res) => {
+    const requestStartedAt = Date.now();
     const path = String(req.url || "").split("?")[0];
+    res.on("finish", () => {
+      console.log("AUTOFLIP WEB API REQUEST", JSON.stringify({
+        method: req.method,
+        path,
+        status: res.statusCode,
+        durationMs: Date.now() - requestStartedAt
+      }));
+    });
     if (path === "/health" && req.method === "GET") {
       try {
         await pool.query("SELECT 1");
