@@ -230,7 +230,8 @@ function createWebAccountApi(options = {}) {
         const url = new URL(req.url || "/", expectedOrigin);
         const limit = url.searchParams.has("limit") ? Number(url.searchParams.get("limit")) : 10;
         const offset = url.searchParams.has("offset") ? Number(url.searchParams.get("offset")) : 0;
-        if (!Number.isInteger(limit) || !Number.isInteger(offset)) {
+        if (!Number.isInteger(limit) || limit < 1 || limit > 50 ||
+            !Number.isInteger(offset) || offset < 0 || offset > 1000000) {
           send(res, 400, { error: "INVALID_PAGINATION" });
           return true;
         }
