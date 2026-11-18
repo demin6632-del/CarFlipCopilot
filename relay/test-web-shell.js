@@ -59,7 +59,7 @@ async function proxyApi(req, res, url) {
       headers,
       body: req.method === "POST" ? Buffer.concat(chunks) : undefined,
       redirect: "manual",
-      signal: AbortSignal.timeout(15000)
+      signal: AbortSignal.timeout(120000)
     });
     const responseHeaders = {
       "cache-control": "no-store",
